@@ -19,6 +19,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_hostBuilder__reloadConfigOnChange=false
 COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "HowDidWeGetHere.Api.dll"]
