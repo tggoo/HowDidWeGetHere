@@ -21,5 +21,4 @@ WORKDIR /app
 ENV ASPNETCORE_ENVIRONMENT=Production
 COPY --from=build /app/publish .
 
-CMD ASPNETCORE_URLS=http://0.0.0.0:${PORT:-10000} dotnet HowDidWeGetHere.Api.dll
-
+ENTRYPOINT ["dotnet", "HowDidWeGetHere.Api.dll"]
