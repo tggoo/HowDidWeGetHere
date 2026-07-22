@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace HowDidWeGetHere.Infrastructure.Identity;
 
@@ -15,6 +16,9 @@ public static class AdminSeeder
         }
 
         using var scope = services.CreateScope();
+        var logger = scope.ServiceProvider
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("AdminSeeder");
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
@@ -37,7 +41,10 @@ public static class AdminSeeder
             var created = await userManager.CreateAsync(user, options.Password);
             if (!created.Succeeded)
             {
-                throw new InvalidOperationException(string.Join("; ", created.Errors.Select(error => error.Description)));
+                logger.LogError(
+                    "Admin bootstrap user was not created. Fix AdminBootstrap__Password. Errors: {Errors}",
+                    string.Join("; ", created.Errors.Select(error => error.Description)));
+                return;
             }
         }
 

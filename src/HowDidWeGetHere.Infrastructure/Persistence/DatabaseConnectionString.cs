@@ -29,7 +29,8 @@ public static class DatabaseConnectionString
             Database = uri.AbsolutePath.TrimStart('/'),
             Username = Uri.UnescapeDataString(credentials[0]),
             Password = credentials.Length > 1 ? Uri.UnescapeDataString(credentials[1]) : string.Empty,
-            SslMode = SslMode.Require
+            SslMode = SslMode.Require,
+            GssEncryptionMode = GssEncryptionMode.Disable
         };
 
         return builder.ConnectionString;
