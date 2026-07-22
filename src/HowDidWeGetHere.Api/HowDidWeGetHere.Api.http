@@ -1,0 +1,6 @@
+@HowDidWeGetHere.Api_HostAddress = http://localhost:5141
+
+GET {{HowDidWeGetHere.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
