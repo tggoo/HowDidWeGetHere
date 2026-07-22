@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: howdidwegethere-postgres
+    environment:
+      POSTGRES_DB: howdidwegethere
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - howdidwegethere-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d howdidwegethere"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  howdidwegethere-postgres-data:
+

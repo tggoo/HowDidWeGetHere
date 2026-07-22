@@ -18,6 +18,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
     public DbSet<ActorTranslation> ActorTranslations => Set<ActorTranslation>();
     public DbSet<EntryActor> EntryActors => Set<EntryActor>();
     public DbSet<Entry> Entries => Set<Entry>();
+    public DbSet<EntryAudioTrack> EntryAudioTracks => Set<EntryAudioTrack>();
     public DbSet<EntryImage> EntryImages => Set<EntryImage>();
     public DbSet<EntryImageTranslation> EntryImageTranslations => Set<EntryImageTranslation>();
     public DbSet<EntryPlace> EntryPlaces => Set<EntryPlace>();
@@ -121,6 +122,20 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
             entity.Property(translation => translation.LanguageCode).HasMaxLength(8);
             entity.Property(translation => translation.AltText).HasMaxLength(300);
             entity.Property(translation => translation.Caption).HasMaxLength(600);
+        });
+
+        builder.Entity<EntryAudioTrack>(entity =>
+        {
+            entity.ToTable("entry_audio_tracks");
+            entity.HasIndex(audio => new { audio.EntryId, audio.LanguageCode, audio.IsPrimary });
+            entity.Property(audio => audio.LanguageCode).HasMaxLength(8);
+            entity.Property(audio => audio.StorageKey).HasMaxLength(600);
+            entity.Property(audio => audio.PublicUrl).HasMaxLength(1000);
+            entity.Property(audio => audio.MediaType).HasMaxLength(120);
+            entity.Property(audio => audio.Title).HasMaxLength(260);
+            entity.Property(audio => audio.Attribution).HasMaxLength(500);
+            entity.Property(audio => audio.License).HasMaxLength(120);
+            entity.Property(audio => audio.SourceUrl).HasMaxLength(1000);
         });
 
         builder.Entity<EntryRelationship>(entity =>
@@ -284,4 +299,3 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         });
     }
 }
-

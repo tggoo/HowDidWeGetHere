@@ -706,6 +706,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/entries/{entryId}/audio-tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminEntryAudioTrackRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ResourceCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -764,6 +819,24 @@ export interface components {
             /** Format: int64 */
             expiresIn: number | string;
             refreshToken: string;
+        };
+        AdminEntryAudioTrackRequest: {
+            kind: components["schemas"]["AudioKind"];
+            storageProvider: components["schemas"]["StorageProvider"];
+            storageKey: null | string;
+            publicUrl: null | string;
+            mediaType: null | string;
+            /** Format: int32 */
+            durationSeconds: null | number | string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            isPrimary: boolean;
+            languageCode: null | string;
+            title: null | string;
+            transcript: null | string;
+            attribution: null | string;
+            license: null | string;
+            sourceUrl: null | string;
         };
         AdminEntryImageRequest: {
             kind: components["schemas"]["ImageKind"];
@@ -826,6 +899,8 @@ export interface components {
             primaryTimePeriodId: null | string;
         };
         /** @enum {unknown} */
+        AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other";
+        /** @enum {unknown} */
         ContentStatus: "Draft" | "Published" | "Archived";
         /** @enum {unknown} */
         EntryKind: "Event" | "Invention" | "MythologyEntity" | "MythologyStory" | "Period" | "Discovery" | "Exploration" | "War" | "Civilization" | "Person" | "Place" | "Text" | "Technology" | "ScientificConcept" | "Other";
@@ -843,6 +918,7 @@ export interface components {
             /** Format: uuid */
             primaryTimePeriodId: null | string;
             primaryImageUrl: null | string;
+            primaryAudioUrl: null | string;
         };
         ForgotPasswordRequest: {
             email: string;

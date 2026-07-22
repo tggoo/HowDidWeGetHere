@@ -6,6 +6,7 @@ import {
   Lock,
   MapPin,
   PanelRight,
+  PlayCircle,
   Route,
   Search,
   Tags,
@@ -25,6 +26,7 @@ type EntryListItem = {
   endYear?: number | null
   primaryTimePeriodId?: string | null
   primaryImageUrl?: string | null
+  primaryAudioUrl?: string | null
 }
 
 type TimePeriodListItem = {
@@ -267,6 +269,17 @@ function App() {
             <div>
               <strong>Route-ready record</strong>
               <p>Origins, stops, destinations and route geometry come from the backend model.</p>
+            </div>
+          </div>
+          <div className="route-card">
+            <PlayCircle aria-hidden="true" />
+            <div>
+              <strong>Audio-ready text</strong>
+              <p>
+                {selectedEntry?.primaryAudioUrl
+                  ? 'A narrated track is attached for this language.'
+                  : 'Narration can be attached per language for children and audio-first browsing.'}
+              </p>
             </div>
           </div>
         </aside>

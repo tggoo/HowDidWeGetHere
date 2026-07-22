@@ -11,7 +11,8 @@ public sealed record EntryListItemResponse(
     long? StartYear,
     long? EndYear,
     Guid? PrimaryTimePeriodId,
-    string? PrimaryImageUrl);
+    string? PrimaryImageUrl,
+    string? PrimaryAudioUrl);
 
 public sealed record TimePeriodListItemResponse(
     Guid Id,
@@ -74,3 +75,19 @@ public sealed record AdminEntryImageRequest(
     string? LanguageCode,
     string? AltText,
     string? Caption);
+
+public sealed record AdminEntryAudioTrackRequest(
+    AudioKind Kind,
+    StorageProvider StorageProvider,
+    string? StorageKey,
+    string? PublicUrl,
+    string? MediaType,
+    int? DurationSeconds,
+    int SortOrder,
+    bool IsPrimary,
+    string? LanguageCode,
+    string? Title,
+    string? Transcript,
+    string? Attribution,
+    string? License,
+    string? SourceUrl);

@@ -13,6 +13,16 @@ public enum ActorType
     Other
 }
 
+public enum AudioKind
+{
+    Narration,
+    Summary,
+    Pronunciation,
+    Ambience,
+    Interview,
+    Other
+}
+
 public enum ContentStatus
 {
     Draft,
@@ -173,6 +183,7 @@ public enum SourceSupportKind
     Location,
     Relationship,
     Image,
+    Audio,
     Translation
 }
 
@@ -219,4 +230,3 @@ public enum TimePrecision
     Approximate,
     Unknown
 }
-

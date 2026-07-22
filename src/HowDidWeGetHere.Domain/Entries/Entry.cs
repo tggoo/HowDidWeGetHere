@@ -40,4 +40,5 @@ public sealed class Entry : AuditableEntity
     public ICollection<EntryRelationship> IncomingRelationships { get; set; } = [];
     public ICollection<EntrySource> Sources { get; set; } = [];
     public ICollection<EntryImage> Images { get; set; } = [];
+    public ICollection<EntryAudioTrack> AudioTracks { get; set; } = [];
 }
