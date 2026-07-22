@@ -7,8 +7,7 @@ public sealed class HistoryDbContextFactory : IDesignTimeDbContextFactory<Histor
 {
     public HistoryDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("HWDWGH_CONNECTION_STRING")
-            ?? "Host=localhost;Port=5432;Database=howdidwegethere;Username=postgres;Password=postgres";
+        var connectionString = DatabaseConnectionString.Resolve(null);
 
         var optionsBuilder = new DbContextOptionsBuilder<HistoryDbContext>();
         optionsBuilder.UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite());
@@ -16,4 +15,3 @@ public sealed class HistoryDbContextFactory : IDesignTimeDbContextFactory<Histor
         return new HistoryDbContext(optionsBuilder.Options);
     }
 }
-

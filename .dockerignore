@@ -1,0 +1,11 @@
+.aspnet/
+.git/
+.vs/
+**/bin/
+**/obj/
+web/dist/
+web/node_modules/
+publish/
+*.user
+*.suo
+

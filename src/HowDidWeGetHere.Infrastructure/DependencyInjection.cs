@@ -13,8 +13,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("HistoryDb")
-            ?? "Host=localhost;Port=5432;Database=howdidwegethere;Username=postgres;Password=postgres";
+        var connectionString = DatabaseConnectionString.Resolve(configuration.GetConnectionString("HistoryDb"));
 
         services.AddDbContext<HistoryDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite()));
@@ -28,4 +27,3 @@ public static class DependencyInjection
         return services;
     }
 }
-

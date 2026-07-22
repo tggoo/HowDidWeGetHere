@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using HowDidWeGetHere.Api.Endpoints;
 using HowDidWeGetHere.Infrastructure;
 using HowDidWeGetHere.Infrastructure.Identity;
+using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
 
@@ -58,5 +59,6 @@ app.UseAuthorization();
 
 app.MapApiEndpoints();
 
+await app.ApplyDatabaseMigrationsAsync(app.Configuration);
 await app.Services.SeedAdminUserAsync(app.Configuration);
 await app.RunAsync();
