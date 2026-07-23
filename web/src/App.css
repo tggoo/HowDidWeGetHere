@@ -173,6 +173,12 @@
   gap: 8px;
 }
 
+.panel-header-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
 .panel-close {
   align-items: center;
   background: #eef2f5;
@@ -184,6 +190,19 @@
   height: 34px;
   justify-content: center;
   width: 34px;
+}
+
+.panel-text-button {
+  background: #eef2f5;
+  border: 0;
+  border-radius: 6px;
+  color: #344054;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
 .detail-panel .panel-close {

@@ -29,6 +29,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Fixed mobile admin and entry detail panels to open as full-screen closeable overlays.
 - 2026-07-23: Added local admin image/audio file upload workflow and static media serving.
 - 2026-07-23: Reworked admin panel so content tools are visible only after sign-in and grouped into single-page admin sections with table views.
+- 2026-07-23: Added frontend admin session persistence, automatic refresh token renewal and sign-out.
 
 ## Goal
 
@@ -152,6 +153,9 @@ Build a mobile-first historical world map app with:
 - Leaflet map sends visible bounds to the API so map data follows the viewport
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
+- admin session persistence in local browser storage
+- automatic admin access-token refresh using the Identity refresh endpoint
+- admin sign-out clears local session and editor state
 - admin content tools are hidden until sign-in succeeds
 - admin tools are grouped into separate pages for import, periods, tags, entry editing, places, routes, relationships, sources and media
 - admin entity pages include table views for periods, tags, places, routes, relationships, sources and media
@@ -238,8 +242,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 ### Authentication/admin
 
 - production admin UX hardening
-- token refresh handling in frontend
-- logout
 - role management
 - audit trail display
 

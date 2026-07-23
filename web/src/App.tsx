@@ -37,6 +37,7 @@ type AdminEntrySourceRequest = components['schemas']['AdminEntrySourceRequest']
 type AdminTimePeriodUpsertRequest = components['schemas']['AdminTimePeriodUpsertRequest']
 type AdminTagUpsertRequest = components['schemas']['AdminTagUpsertRequest']
 type AdminEntryTagRequest = components['schemas']['AdminEntryTagRequest']
+type AccessTokenResponse = components['schemas']['AccessTokenResponse']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
 type EntryRelationshipType = components['schemas']['EntryRelationshipType']
@@ -537,6 +538,14 @@ function periodYearLabel(period: TimePeriodListItem) {
 
 type AdminPage = 'import' | 'periods' | 'tags' | 'entry' | 'places' | 'routes' | 'relationships' | 'sources' | 'media'
 
+type AdminAuthSession = {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+}
+
+const adminSessionStorageKey = 'howdidwegethere.adminSession'
+
 const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'import', label: 'Import' },
   { id: 'periods', label: 'Periods' },
@@ -548,6 +557,57 @@ const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'sources', label: 'Sources' },
   { id: 'media', label: 'Media' },
 ]
+
+function createAdminSession(tokenResponse: AccessTokenResponse): AdminAuthSession {
+  const expiresInSeconds = Number(tokenResponse.expiresIn)
+  const normalizedExpiresIn = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 3600
+
+  return {
+    accessToken: tokenResponse.accessToken,
+    refreshToken: tokenResponse.refreshToken,
+    expiresAt: Date.now() + normalizedExpiresIn * 1000,
+  }
+}
+
+function readStoredAdminSession() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const rawSession = window.localStorage.getItem(adminSessionStorageKey)
+    if (!rawSession) {
+      return null
+    }
+
+    const session = JSON.parse(rawSession) as Partial<AdminAuthSession>
+    return session.accessToken && session.refreshToken && typeof session.expiresAt === 'number'
+      ? {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          expiresAt: session.expiresAt,
+        }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function persistAdminSession(session: AdminAuthSession | null) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    if (session) {
+      window.localStorage.setItem(adminSessionStorageKey, JSON.stringify(session))
+    } else {
+      window.localStorage.removeItem(adminSessionStorageKey)
+    }
+  } catch {
+    // Ignore unavailable storage; the in-memory session still works.
+  }
+}
 
 function App() {
   const [language, setLanguage] = useState('en')
@@ -570,8 +630,11 @@ function App() {
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
-  const [adminToken, setAdminToken] = useState<string | null>(null)
-  const [adminStatus, setAdminStatus] = useState('Sign in with the Render admin account.')
+  const [adminSession, setAdminSession] = useState<AdminAuthSession | null>(() => readStoredAdminSession())
+  const adminToken = adminSession?.accessToken ?? null
+  const [adminStatus, setAdminStatus] = useState(() =>
+    adminSession ? 'Signed in from saved session.' : 'Sign in with the Render admin account.',
+  )
   const [importFile, setImportFile] = useState<File | null>(null)
   const [isImporting, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<WorkbookImportResult | null>(null)
@@ -801,6 +864,10 @@ function App() {
 
   useEffect(() => {
     if (adminToken) {
+      if (adminSession?.refreshToken && adminSession.expiresAt <= Date.now() + 5_000) {
+        return
+      }
+
       let isActive = true
 
       async function loadSignedInAdminEntries() {
@@ -836,7 +903,50 @@ function App() {
         isActive = false
       }
     }
-  }, [adminToken, language, reloadKey])
+  }, [adminSession, adminToken, language, reloadKey])
+
+  useEffect(() => {
+    persistAdminSession(adminSession)
+  }, [adminSession])
+
+  useEffect(() => {
+    if (!adminSession?.refreshToken) {
+      return
+    }
+
+    let isActive = true
+    const refreshInMs = Math.max(adminSession.expiresAt - Date.now() - 60_000, 0)
+
+    const refreshTimer = window.setTimeout(() => {
+      async function refreshAdminSession() {
+        const result = await apiClient.POST('/api/auth/refresh', {
+          body: {
+            refreshToken: adminSession.refreshToken,
+          },
+        })
+
+        if (!isActive) {
+          return
+        }
+
+        if (result.error || !result.data?.accessToken) {
+          setAdminSession(null)
+          setAdminPassword('')
+          setAdminStatus('Admin session expired. Sign in again.')
+          return
+        }
+
+        setAdminSession(createAdminSession(result.data))
+      }
+
+      void refreshAdminSession()
+    }, refreshInMs)
+
+    return () => {
+      isActive = false
+      window.clearTimeout(refreshTimer)
+    }
+  }, [adminSession])
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0],
@@ -1384,8 +1494,18 @@ function App() {
       return
     }
 
-    setAdminToken(result.data.accessToken)
-    setAdminStatus('Signed in. Select the workbook and import it.')
+    setAdminSession(createAdminSession(result.data))
+    setAdminPassword('')
+    setAdminStatus('Signed in. Select an admin section.')
+  }
+
+  function signOutAdmin() {
+    setAdminSession(null)
+    setAdminPassword('')
+    setAdminEntries([])
+    resetEntryForm()
+    setImportResult(null)
+    setAdminStatus('Signed out.')
   }
 
   async function importWorkbook() {
@@ -2562,15 +2682,22 @@ function App() {
                 <Lock aria-hidden="true" />
                 Admin
               </span>
-              <button
-                className="panel-close"
-                type="button"
-                aria-label="Close admin panel"
-                title="Close admin panel"
-                onClick={() => setAdminOpen(false)}
-              >
-                <X aria-hidden="true" />
-              </button>
+              <div className="panel-header-actions">
+                {adminToken && (
+                  <button className="panel-text-button" type="button" onClick={signOutAdmin}>
+                    Sign out
+                  </button>
+                )}
+                <button
+                  className="panel-close"
+                  type="button"
+                  aria-label="Close admin panel"
+                  title="Close admin panel"
+                  onClick={() => setAdminOpen(false)}
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
             </div>
             <div className="admin-status">
               {adminToken ? <CheckCircle2 aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}
