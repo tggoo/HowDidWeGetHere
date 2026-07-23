@@ -231,6 +231,28 @@
   overflow: auto;
 }
 
+.year-filter-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr auto;
+  margin-top: 10px;
+}
+
+.year-filter-row button,
+.year-filter-row input {
+  background: #ffffff;
+  border: 1px solid #cfd8df;
+  border-radius: 6px;
+  color: #344054;
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.year-filter-row button {
+  cursor: pointer;
+}
+
 .map-canvas {
   background: #dfe8ec;
   min-height: 420px;

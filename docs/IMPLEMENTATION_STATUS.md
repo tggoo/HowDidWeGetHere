@@ -13,6 +13,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin source attachment endpoint and source form with support-field metadata.
 - 2026-07-23: Added admin time period create/update endpoints, period form and primary-period selector for entries.
 - 2026-07-23: Added admin tag create/update endpoints and tag attachment form for entries.
+- 2026-07-23: Connected period buttons and manual year range inputs to public entry/map filtering.
 
 ## Goal
 
@@ -75,6 +76,7 @@ Build a mobile-first historical world map app with:
 - entry detail payload includes tags, time periods, places, routes, related entries, sources, images and audio tracks
 - public tag list is filtered to tags used by published entries
 - public map payload includes entries with stored coordinates and route geometry/route-point geometry
+- public entry and map queries can be filtered by year range
 
 ### Admin API
 
@@ -106,6 +108,7 @@ Build a mobile-first historical world map app with:
 - language selector
 - tag filter buttons loaded from backend tag API
 - time period side panel
+- period buttons and manual year range filters update entry and map queries
 - selected entry detail panel loaded from public entry detail API
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
 - Leaflet map renders stored public coordinates/routes when entries have places/routes
@@ -179,7 +182,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 - richer era/period side panel
 - period hierarchy UI
 - time period delete
-- timeline/time slider
+- richer timeline/time slider
 
 ### Sources
 

@@ -485,6 +485,9 @@ function App() {
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
+  const [fromYear, setFromYear] = useState('')
+  const [toYear, setToYear] = useState('')
   const [isAdminOpen, setAdminOpen] = useState(false)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
@@ -559,6 +562,8 @@ function App() {
               query: {
                 language,
                 tag: selectedTags,
+                fromYear: numberOrNull(fromYear),
+                toYear: numberOrNull(toYear),
               },
             },
           }),
@@ -581,6 +586,8 @@ function App() {
               query: {
                 language,
                 tag: selectedTags,
+                fromYear: numberOrNull(fromYear),
+                toYear: numberOrNull(toYear),
               },
             },
           }),
@@ -601,10 +608,11 @@ function App() {
         if (entriesResult.data && entriesResult.data.length > 0) {
           setEntries(entriesResult.data as EntryListItem[])
           setSelectedEntryId(entriesResult.data[0].id)
+          const yearRangeLabel = fromYear || toYear ? ` in ${fromYear || '?'}-${toYear || '?'}` : ''
           setMapStatus(
             mapPointCount > 0
-              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points.`
-              : `Loaded ${entriesResult.data.length} published entries. Add places to show them on the map.`,
+              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points${yearRangeLabel}.`
+              : `Loaded ${entriesResult.data.length} published entries${yearRangeLabel}. Add places to show them on the map.`,
           )
         } else {
           setMapStatus('API is reachable, but no published entries matched the current filters.')
@@ -635,7 +643,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [language, selectedTags, reloadKey])
+  }, [fromYear, language, selectedTags, reloadKey, toYear])
 
   useEffect(() => {
     let isActive = true
@@ -722,6 +730,18 @@ function App() {
         ? current.filter((selectedTag) => selectedTag !== tag)
         : [...current, tag],
     )
+  }
+
+  function selectPeriodFilter(period: TimePeriodListItem) {
+    setSelectedPeriodId(period.id)
+    setFromYear(period.startYear?.toString() ?? '')
+    setToYear(period.endYear?.toString() ?? '')
+  }
+
+  function clearTimeFilter() {
+    setSelectedPeriodId(null)
+    setFromYear('')
+    setToYear('')
   }
 
   function authHeaders() {
@@ -1576,13 +1596,41 @@ function App() {
             </div>
             <div className="period-list">
               {periods.slice(0, 4).map((period) => (
-                <button className="period-item" key={period.id} type="button">
+                <button
+                  className={selectedPeriodId === period.id ? 'period-item active' : 'period-item'}
+                  key={period.id}
+                  type="button"
+                  onClick={() => selectPeriodFilter(period)}
+                >
                   <span>{period.name}</span>
                   <small>
                     {period.startYear ?? '?'}-{period.endYear ?? '?'}
                   </small>
                 </button>
               ))}
+            </div>
+            <div className="year-filter-row">
+              <input
+                inputMode="numeric"
+                placeholder="From"
+                value={fromYear}
+                onChange={(event) => {
+                  setSelectedPeriodId(null)
+                  setFromYear(event.target.value)
+                }}
+              />
+              <input
+                inputMode="numeric"
+                placeholder="To"
+                value={toYear}
+                onChange={(event) => {
+                  setSelectedPeriodId(null)
+                  setToYear(event.target.value)
+                }}
+              />
+              <button type="button" onClick={clearTimeFilter}>
+                Clear
+              </button>
             </div>
           </div>
         </aside>
