@@ -30,6 +30,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added local admin image/audio file upload workflow and static media serving.
 - 2026-07-23: Reworked admin panel so content tools are visible only after sign-in and grouped into single-page admin sections with table views.
 - 2026-07-23: Added frontend admin session persistence, automatic refresh token renewal and sign-out.
+- 2026-07-23: Added workbook import preview endpoint and admin preview table before saving imports.
 
 ## Goal
 
@@ -129,6 +130,7 @@ Build a mobile-first historical world map app with:
 - detach tag from entry
 - delete unused tags
 - import workbook from `.xlsx`
+- preview workbook import without saving rows
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
 - imported workbook rows can update existing entries by source sheet and row instead of creating duplicates
@@ -161,6 +163,7 @@ Build a mobile-first historical world map app with:
 - admin entity pages include table views for periods, tags, places, routes, relationships, sources and media
 - mobile admin panel opens as a full-screen closeable panel
 - workbook upload/import from frontend
+- workbook preview from frontend before saving import rows
 - workbook import result displays created and updated entry counts
 - admin entry list
 - entry create/edit form
@@ -203,7 +206,7 @@ The frontend now uses Leaflet for the real map layer and renders stored public c
 
 ### Workbook import
 
-The importer reads the current workbook sheets, creates or updates entries, tags, time periods and source links. Re-import uses source sheet and source row metadata as the first idempotency key, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
+The importer reads the current workbook sheets, previews create/update counts without saving, then creates or updates entries, tags, time periods and source links when the import is confirmed. Re-import uses source sheet and source row metadata as the first idempotency key, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
 
 ### Admin UI
 
@@ -247,7 +250,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Import workflow
 
-- preview import before saving
 - duplicate detection beyond the source sheet/source row import key
 - validation report
 - mapping workbook columns to places/routes/relationships/tags

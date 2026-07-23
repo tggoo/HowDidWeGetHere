@@ -7,12 +7,39 @@ public static class AdminImportEndpoints
 {
     public static RouteGroupBuilder MapAdminImportEndpoints(this RouteGroupBuilder admin)
     {
+        admin.MapPost("/imports/workbook/preview", PreviewWorkbookAsync)
+            .Produces<WorkbookImportPreviewResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .DisableAntiforgery();
+
         admin.MapPost("/imports/workbook", ImportWorkbookAsync)
             .Produces<WorkbookImportResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .DisableAntiforgery();
 
         return admin;
+    }
+
+    private static async Task<IResult> PreviewWorkbookAsync(
+        IFormFile file,
+        bool? publishImportedEntries,
+        bool? updateExistingRows,
+        IWorkbookImportService importer,
+        CancellationToken cancellationToken)
+    {
+        if (file.Length == 0)
+        {
+            return Results.BadRequest(new { error = "Workbook file is empty." });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var result = await importer.PreviewAsync(
+            stream,
+            publishImportedEntries ?? true,
+            updateExistingRows ?? true,
+            cancellationToken);
+
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> ImportWorkbookAsync(

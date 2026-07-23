@@ -17,6 +17,101 @@ namespace HowDidWeGetHere.Infrastructure.Imports;
 
 public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : IWorkbookImportService
 {
+    public async Task<WorkbookImportPreviewResult> PreviewAsync(
+        Stream workbookStream,
+        bool publishImportedEntries,
+        bool updateExistingRows,
+        CancellationToken cancellationToken = default)
+    {
+        using var workbook = new XLWorkbook(workbookStream);
+
+        var existingEntriesBySourceRow = updateExistingRows
+            ? await dbContext.Entries
+                .AsNoTracking()
+                .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
+                .Select(entry => new
+                {
+                    entry.Id,
+                    entry.Slug,
+                    entry.SourceSheet,
+                    entry.SourceRow
+                })
+                .ToListAsync(cancellationToken)
+            : [];
+
+        var existingEntryLookup = existingEntriesBySourceRow
+            .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var previewRows = new List<WorkbookImportPreviewRow>();
+        var warnings = new List<string>();
+        var rowsRead = 0;
+        var entriesToCreate = 0;
+        var entriesToUpdate = 0;
+
+        foreach (var duplicateGroup in existingEntriesBySourceRow
+            .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
+            .Where(group => group.Count() > 1))
+        {
+            warnings.Add($"Existing duplicate import source row '{duplicateGroup.Key}' found; first entry would be updated.");
+        }
+
+        foreach (var worksheet in workbook.Worksheets)
+        {
+            if (!IsImportWorksheet(worksheet.Name))
+            {
+                continue;
+            }
+
+            var headers = ReadHeaders(worksheet);
+            var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+
+            for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+            {
+                var rowValues = ReadRow(worksheet.Row(rowNumber), headers);
+                if (rowValues.Values.All(string.IsNullOrWhiteSpace))
+                {
+                    continue;
+                }
+
+                rowsRead++;
+                var rowWarnings = new List<string>();
+                var entry = worksheet.Name.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase)
+                    ? CreateMasterTimelineEntry(rowValues, rowNumber, rowWarnings)
+                    : CreateMythologyEntry(rowValues, rowNumber);
+                entry.Status = publishImportedEntries ? ContentStatus.Published : ContentStatus.Draft;
+
+                var sourceKey = $"{entry.SourceSheet}|{entry.SourceRow}";
+                var willUpdate = existingEntryLookup.TryGetValue(sourceKey, out var existingEntry);
+                if (willUpdate)
+                {
+                    entriesToUpdate++;
+                }
+                else
+                {
+                    entriesToCreate++;
+                }
+
+                warnings.AddRange(rowWarnings);
+                previewRows.Add(new WorkbookImportPreviewRow(
+                    worksheet.Name,
+                    rowNumber,
+                    entry.DefaultTitle,
+                    entry.DateLabel,
+                    entry.Kind.ToString(),
+                    entry.Status.ToString(),
+                    willUpdate,
+                    existingEntry?.Id,
+                    existingEntry?.Slug,
+                    ResolveSourceUrl(rowValues),
+                    ResolvePreviewTags(rowValues, worksheet.Name),
+                    rowWarnings));
+            }
+        }
+
+        return new WorkbookImportPreviewResult(rowsRead, entriesToCreate, entriesToUpdate, previewRows, warnings);
+    }
+
     public async Task<WorkbookImportResult> ImportAsync(
         Stream workbookStream,
         string fileName,
@@ -73,8 +168,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
         foreach (var worksheet in workbook.Worksheets)
         {
-            if (!worksheet.Name.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase) &&
-                !worksheet.Name.Equals("Mythology Index", StringComparison.OrdinalIgnoreCase))
+            if (!IsImportWorksheet(worksheet.Name))
             {
                 continue;
             }
@@ -294,12 +388,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         IReadOnlyDictionary<string, string?> row,
         IDictionary<string, Source> sourceCache)
     {
-        var sourceUrl = Value(row, "Source URL");
-        var shiftedUrl = Value(row, "Dating confidence");
-        if (string.IsNullOrWhiteSpace(sourceUrl) && LooksLikeUrl(shiftedUrl))
-        {
-            sourceUrl = shiftedUrl;
-        }
+        var sourceUrl = ResolveSourceUrl(row);
 
         if (string.IsNullOrWhiteSpace(sourceUrl))
         {
@@ -325,6 +414,48 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 Source = source,
                 SupportsField = SourceSupportKind.General
             });
+        }
+    }
+
+    private static bool IsImportWorksheet(string sheetName) =>
+        sheetName.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase) ||
+        sheetName.Equals("Mythology Index", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveSourceUrl(IReadOnlyDictionary<string, string?> row)
+    {
+        var sourceUrl = Value(row, "Source URL");
+        var shiftedUrl = Value(row, "Dating confidence");
+        return string.IsNullOrWhiteSpace(sourceUrl) && LooksLikeUrl(shiftedUrl) ? shiftedUrl : sourceUrl;
+    }
+
+    private static IReadOnlyList<string> ResolvePreviewTags(IReadOnlyDictionary<string, string?> row, string sheetName)
+    {
+        var tags = new List<string>();
+        if (sheetName.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase))
+        {
+            AddPreviewTags(tags, Value(row, "Category"));
+            AddPreviewTags(tags, Value(row, "Region"));
+        }
+        else if (sheetName.Equals("Mythology Index", StringComparison.OrdinalIgnoreCase))
+        {
+            tags.Add("Mythology");
+            AddPreviewTags(tags, Value(row, "Tradition"));
+            AddPreviewTags(tags, Value(row, "Type"));
+        }
+
+        return tags;
+    }
+
+    private static void AddPreviewTags(ICollection<string> tags, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        foreach (var part in value.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            tags.Add(part.Trim());
         }
     }
 

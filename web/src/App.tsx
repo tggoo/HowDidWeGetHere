@@ -206,6 +206,27 @@ type WorkbookImportResult = {
   warnings: string[]
 }
 
+type WorkbookImportPreviewResult = {
+  rowsRead: number | string
+  entriesToCreate: number | string
+  entriesToUpdate: number | string
+  rows: Array<{
+    sheetName: string
+    rowNumber: number | string
+    title: string
+    dateLabel?: string | null
+    kind: string
+    status: string
+    willUpdateExistingEntry: boolean
+    existingEntryId?: string | null
+    existingEntrySlug?: string | null
+    sourceUrl?: string | null
+    tags: string[]
+    warnings: string[]
+  }>
+  warnings: string[]
+}
+
 type AdminEntryListItem = {
   id: string
   slug: string
@@ -637,6 +658,8 @@ function App() {
   )
   const [importFile, setImportFile] = useState<File | null>(null)
   const [isImporting, setImporting] = useState(false)
+  const [isPreviewingImport, setPreviewingImport] = useState(false)
+  const [importPreview, setImportPreview] = useState<WorkbookImportPreviewResult | null>(null)
   const [importResult, setImportResult] = useState<WorkbookImportResult | null>(null)
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
   const [isLoadingAdminEntries, setLoadingAdminEntries] = useState(false)
@@ -1504,8 +1527,56 @@ function App() {
     setAdminPassword('')
     setAdminEntries([])
     resetEntryForm()
+    setImportPreview(null)
     setImportResult(null)
     setAdminStatus('Signed out.')
+  }
+
+  async function previewWorkbook() {
+    if (!adminToken) {
+      setAdminStatus('Sign in before previewing an import.')
+      return
+    }
+
+    if (!importFile) {
+      setAdminStatus('Choose an .xlsx workbook first.')
+      return
+    }
+
+    setPreviewingImport(true)
+    setAdminStatus('Reading workbook preview...')
+
+    const formData = new FormData()
+    formData.append('file', importFile)
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/admin/imports/workbook/preview?publishImportedEntries=true&updateExistingRows=true`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+          },
+          body: formData,
+        },
+      )
+
+      if (!response.ok) {
+        setAdminStatus(`Preview failed with HTTP ${response.status}.`)
+        return
+      }
+
+      const result = (await response.json()) as WorkbookImportPreviewResult
+      setImportPreview(result)
+      setImportResult(null)
+      setAdminStatus(
+        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new and ${result.entriesToUpdate} updates.`,
+      )
+    } catch {
+      setAdminStatus('Preview failed. Check API availability and CORS settings.')
+    } finally {
+      setPreviewingImport(false)
+    }
   }
 
   async function importWorkbook() {
@@ -1541,6 +1612,7 @@ function App() {
 
       const result = (await response.json()) as WorkbookImportResult
       setImportResult(result)
+      setImportPreview(null)
       setAdminStatus(`Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows.`)
       setReloadKey((value) => value + 1)
     } catch {
@@ -2749,14 +2821,66 @@ function App() {
                 <input
                   accept=".xlsx,.xlsm"
                   type="file"
-                  onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] ?? null)
+                    setImportPreview(null)
+                    setImportResult(null)
+                  }}
                 />
               </label>
-              <button className="admin-action" disabled={isImporting} type="button" onClick={importWorkbook}>
-                <Upload aria-hidden="true" />
-                {isImporting ? 'Importing...' : 'Import workbook'}
-              </button>
+                    <div className="admin-field-row">
+                      <button
+                        className="admin-action secondary"
+                        disabled={isPreviewingImport || isImporting}
+                        type="button"
+                        onClick={previewWorkbook}
+                      >
+                        <Search aria-hidden="true" />
+                        {isPreviewingImport ? 'Previewing...' : 'Preview workbook'}
+                      </button>
+                      <button className="admin-action" disabled={isImporting || isPreviewingImport} type="button" onClick={importWorkbook}>
+                        <Upload aria-hidden="true" />
+                        {isImporting ? 'Importing...' : 'Import workbook'}
+                      </button>
+                    </div>
                   </div>
+                )}
+                {adminPage === 'import' && importPreview && (
+                  <>
+                    <div className="import-result">
+                      <strong>{importPreview.rowsRead} rows in preview</strong>
+                      <span>{importPreview.entriesToCreate} entries would be created</span>
+                      <span>{importPreview.entriesToUpdate} entries would be updated</span>
+                      {importPreview.warnings.length > 0 && <span>{importPreview.warnings.length} warnings</span>}
+                    </div>
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Row</th>
+                            <th>Title</th>
+                            <th>Action</th>
+                            <th>Tags</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.rows.slice(0, 60).map((row) => (
+                            <tr key={`${row.sheetName}-${row.rowNumber}`}>
+                              <td>
+                                {row.sheetName} #{row.rowNumber}
+                              </td>
+                              <td>
+                                {row.title}
+                                <small>{row.dateLabel || row.kind}</small>
+                              </td>
+                              <td>{row.willUpdateExistingEntry ? `Update ${row.existingEntrySlug ?? ''}` : 'Create'}</td>
+                              <td>{row.tags.slice(0, 4).join(', ') || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
                 {adminPage === 'import' && importResult && (
                   <div className="import-result">

@@ -880,6 +880,13 @@
   vertical-align: top;
 }
 
+.admin-table td small {
+  color: #667085;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
 .admin-table th {
   background: #f8fafb;
   color: #667085;

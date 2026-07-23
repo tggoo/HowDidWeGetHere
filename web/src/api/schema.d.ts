@@ -1957,6 +1957,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/imports/workbook/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: {
+                    publishImportedEntries?: boolean;
+                    updateExistingRows?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        file: components["schemas"]["IFormFile"];
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkbookImportPreviewResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -2568,6 +2619,32 @@ export interface components {
             recoveryCodes?: null | string[];
             isTwoFactorEnabled: boolean;
             isMachineRemembered: boolean;
+        };
+        WorkbookImportPreviewResult: {
+            /** Format: int32 */
+            rowsRead: number | string;
+            /** Format: int32 */
+            entriesToCreate: number | string;
+            /** Format: int32 */
+            entriesToUpdate: number | string;
+            rows: components["schemas"]["WorkbookImportPreviewRow"][];
+            warnings: string[];
+        };
+        WorkbookImportPreviewRow: {
+            sheetName: string;
+            /** Format: int32 */
+            rowNumber: number | string;
+            title: string;
+            dateLabel: null | string;
+            kind: string;
+            status: string;
+            willUpdateExistingEntry: boolean;
+            /** Format: uuid */
+            existingEntryId: null | string;
+            existingEntrySlug: null | string;
+            sourceUrl: null | string;
+            tags: string[];
+            warnings: string[];
         };
         WorkbookImportResult: {
             /** Format: uuid */
