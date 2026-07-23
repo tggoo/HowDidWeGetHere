@@ -605,7 +605,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                };
+                header?: never;
+                path: {
+                    entryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminEntryDetailResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put: {
             parameters: {
                 query?: never;
@@ -772,7 +802,9 @@ export interface paths {
         put?: never;
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    publishImportedEntries?: boolean;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -837,6 +869,40 @@ export interface components {
             attribution: null | string;
             license: null | string;
             sourceUrl: null | string;
+        };
+        AdminEntryDetailResponse: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            status: string;
+            kind: string;
+            realityStatus: string;
+            title: string;
+            languageCode: null | string;
+            summary: null | string;
+            description: null | string;
+            whyItMatters: null | string;
+            datingNote: null | string;
+            dateLabel: null | string;
+            /** Format: int64 */
+            startYear: null | number | string;
+            /** Format: uint8 */
+            startMonth: null | number | string;
+            /** Format: uint8 */
+            startDay: null | number | string;
+            /** Format: int64 */
+            endYear: null | number | string;
+            /** Format: uint8 */
+            endMonth: null | number | string;
+            /** Format: uint8 */
+            endDay: null | number | string;
+            timePrecision: null | string;
+            timeConfidence: null | string;
+            /** Format: uuid */
+            primaryTimePeriodId: null | string;
+            sourceSheet: null | string;
+            /** Format: int32 */
+            sourceRow: null | number | string;
         };
         AdminEntryImageRequest: {
             kind: components["schemas"]["ImageKind"];

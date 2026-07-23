@@ -6,6 +6,6 @@ public interface IWorkbookImportService
         Stream workbookStream,
         string fileName,
         string? importedByUserId,
+        bool publishImportedEntries,
         CancellationToken cancellationToken = default);
 }
-

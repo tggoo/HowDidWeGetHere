@@ -21,6 +21,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         Stream workbookStream,
         string fileName,
         string? importedByUserId,
+        bool publishImportedEntries,
         CancellationToken cancellationToken = default)
     {
         using var workbook = new XLWorkbook(workbookStream);
@@ -84,6 +85,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     : CreateMythologyEntry(rowValues, rowNumber);
 
                 entry.Slug = MakeUniqueSlug(entry.Slug, entrySlugs);
+                entry.Status = publishImportedEntries ? ContentStatus.Published : ContentStatus.Draft;
                 if (warnings.Count > warningCountBeforeRow)
                 {
                     importedRow.Warning = warnings[^1];

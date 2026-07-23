@@ -33,6 +33,31 @@ public sealed record AdminEntryListItemResponse(
     string? SourceSheet,
     int? SourceRow);
 
+public sealed record AdminEntryDetailResponse(
+    Guid Id,
+    string Slug,
+    string Status,
+    string Kind,
+    string RealityStatus,
+    string Title,
+    string? LanguageCode,
+    string? Summary,
+    string? Description,
+    string? WhyItMatters,
+    string? DatingNote,
+    string? DateLabel,
+    long? StartYear,
+    byte? StartMonth,
+    byte? StartDay,
+    long? EndYear,
+    byte? EndMonth,
+    byte? EndDay,
+    string? TimePrecision,
+    string? TimeConfidence,
+    Guid? PrimaryTimePeriodId,
+    string? SourceSheet,
+    int? SourceRow);
+
 public sealed record ResourceCreatedResponse(
     Guid Id,
     string? Slug);

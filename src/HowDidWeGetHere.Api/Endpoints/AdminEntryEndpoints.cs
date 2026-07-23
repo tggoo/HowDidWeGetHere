@@ -14,6 +14,10 @@ public static class AdminEntryEndpoints
         admin.MapGet("/entries", GetEntriesAsync)
             .Produces<List<AdminEntryListItemResponse>>(StatusCodes.Status200OK);
 
+        admin.MapGet("/entries/{entryId:guid}", GetEntryAsync)
+            .Produces<AdminEntryDetailResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         admin.MapPost("/entries", CreateEntryAsync)
             .Produces<ResourceCreatedResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest);
@@ -50,6 +54,52 @@ public static class AdminEntryEndpoints
             .ToListAsync(cancellationToken);
 
         return Results.Ok(entries);
+    }
+
+    private static async Task<IResult> GetEntryAsync(
+        Guid entryId,
+        HistoryDbContext dbContext,
+        string? language,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var entry = await dbContext.Entries
+            .AsNoTracking()
+            .Include(item => item.Translations)
+            .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
+
+        if (entry is null)
+        {
+            return Results.NotFound();
+        }
+
+        var translation = entry.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+            ?? entry.Translations.FirstOrDefault();
+
+        return Results.Ok(new AdminEntryDetailResponse(
+            entry.Id,
+            entry.Slug,
+            entry.Status.ToString(),
+            entry.Kind.ToString(),
+            entry.RealityStatus.ToString(),
+            translation?.Title ?? entry.DefaultTitle,
+            translation?.LanguageCode ?? lang,
+            translation?.Summary,
+            translation?.Description,
+            translation?.WhyItMatters,
+            translation?.DatingNote,
+            entry.DateLabel,
+            entry.StartYear,
+            entry.StartMonth,
+            entry.StartDay,
+            entry.EndYear,
+            entry.EndMonth,
+            entry.EndDay,
+            entry.TimePrecision.ToString(),
+            entry.TimeConfidence,
+            entry.PrimaryTimePeriodId,
+            entry.SourceSheet,
+            entry.SourceRow));
     }
 
     private static async Task<IResult> CreateEntryAsync(
@@ -128,6 +178,13 @@ public static class AdminEntryEndpoints
         }
 
         var parsedDate = HistoricalDateParser.Parse(request.DateLabel);
+        var requestedSlug = EndpointHelpers.Slugify(request.Slug ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(requestedSlug) &&
+            !requestedSlug.Equals(entry.Slug, StringComparison.OrdinalIgnoreCase))
+        {
+            entry.Slug = MakeUniqueEntrySlugForUpdate(requestedSlug, dbContext, entry.Id);
+        }
+
         entry.Kind = request.Kind;
         entry.Status = request.Status;
         entry.RealityStatus = request.RealityStatus;
@@ -171,5 +228,19 @@ public static class AdminEntryEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
         return Results.NoContent();
     }
-}
 
+    private static string MakeUniqueEntrySlugForUpdate(string baseSlug, HistoryDbContext dbContext, Guid currentEntryId)
+    {
+        var slug = string.IsNullOrWhiteSpace(baseSlug) ? Guid.NewGuid().ToString("n") : baseSlug;
+        var uniqueSlug = slug;
+        var suffix = 2;
+
+        while (dbContext.Entries.Any(entry => entry.Id != currentEntryId && entry.Slug == uniqueSlug))
+        {
+            uniqueSlug = $"{slug}-{suffix}";
+            suffix++;
+        }
+
+        return uniqueSlug;
+    }
+}
