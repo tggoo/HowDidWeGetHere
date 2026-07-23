@@ -19,6 +19,7 @@ import {
   Tags,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
@@ -541,6 +542,7 @@ function App() {
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
+  const [isEntryDetailOpen, setEntryDetailOpen] = useState(false)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [searchText, setSearchText] = useState('')
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
@@ -852,6 +854,11 @@ function App() {
         children: periods.filter((child) => child.parentPeriodId === period.id),
       }))
   }, [periods])
+
+  const selectEntry = useCallback((entryId: string) => {
+    setSelectedEntryId(entryId)
+    setEntryDetailOpen(true)
+  }, [])
 
   function toggleTag(tag: string) {
     setSelectedTags((current) =>
@@ -2206,7 +2213,10 @@ function App() {
             type="button"
             aria-label="Open admin panel"
             title="Open admin panel"
-            onClick={() => setAdminOpen((value) => !value)}
+            onClick={() => {
+              setEntryDetailOpen(false)
+              setAdminOpen((value) => !value)
+            }}
           >
             <Lock aria-hidden="true" />
           </button>
@@ -2316,13 +2326,24 @@ function App() {
           showFallback={!mapViewport}
           selectedEntryId={selectedEntryId}
           onViewportChange={handleMapViewportChange}
-          onSelectEntry={setSelectedEntryId}
+          onSelectEntry={selectEntry}
         />
 
-        <aside className="detail-panel">
+        <aside className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}>
           <div className="panel-header">
-            <PanelRight aria-hidden="true" />
-            <span>Selected entry</span>
+            <span>
+              <PanelRight aria-hidden="true" />
+              Selected entry
+            </span>
+            <button
+              className="panel-close"
+              type="button"
+              aria-label="Close entry detail"
+              title="Close entry detail"
+              onClick={() => setEntryDetailOpen(false)}
+            >
+              <X aria-hidden="true" />
+            </button>
           </div>
           <h1>{selectedEntry?.title}</h1>
           <div className="entry-meta">
@@ -2405,7 +2426,7 @@ function App() {
                     <button
                       key={`${entry.direction}-${entry.entryId}-${entry.relationshipType}`}
                       type="button"
-                      onClick={() => setSelectedEntryId(entries.find((item) => item.id === entry.entryId)?.id ?? selectedEntryId)}
+                      onClick={() => selectEntry(entries.find((item) => item.id === entry.entryId)?.id ?? selectedEntryId)}
                     >
                       <small>{relationshipLabel(entry.relationshipType, language)}</small>
                       {entry.title}
@@ -2430,8 +2451,19 @@ function App() {
         {isAdminOpen && (
           <aside className="admin-panel" aria-label="Admin tools">
             <div className="panel-header">
-              <Lock aria-hidden="true" />
-              <span>Admin</span>
+              <span>
+                <Lock aria-hidden="true" />
+                Admin
+              </span>
+              <button
+                className="panel-close"
+                type="button"
+                aria-label="Close admin panel"
+                title="Close admin panel"
+                onClick={() => setAdminOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
             </div>
             <div className="admin-status">
               {adminToken ? <CheckCircle2 aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}

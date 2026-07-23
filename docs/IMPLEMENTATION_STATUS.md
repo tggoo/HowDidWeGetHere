@@ -26,6 +26,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added localized and grouped public related-topic display.
 - 2026-07-23: Added hierarchical time period filter panel using parent/child periods.
 - 2026-07-23: Added admin image/audio update/delete endpoints and media edit/delete controls for URL-based media.
+- 2026-07-23: Fixed mobile admin and entry detail panels to open as full-screen closeable overlays.
 
 ## Goal
 
@@ -140,12 +141,14 @@ Build a mobile-first historical world map app with:
 - period buttons and manual year range filters update entry and map queries
 - search input updates entry and map queries
 - selected entry detail panel loaded from public entry detail API
+- mobile selected entry detail replaces the map as a full-screen closeable panel
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
 - Leaflet map renders stored public coordinates/routes when entries have places/routes
 - Leaflet map clusters dense marker sets at low zoom
 - Leaflet map sends visible bounds to the API so map data follows the viewport
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
+- mobile admin panel opens as a full-screen closeable panel
 - workbook upload/import from frontend
 - workbook import result displays created and updated entry counts
 - admin entry list
