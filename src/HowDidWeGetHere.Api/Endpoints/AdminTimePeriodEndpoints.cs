@@ -21,6 +21,11 @@ public static class AdminTimePeriodEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
+        admin.MapDelete("/time-periods/{timePeriodId:guid}", DeleteTimePeriodAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
         return admin;
     }
 
@@ -176,6 +181,44 @@ public static class AdminTimePeriodEndpoints
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DeleteTimePeriodAsync(
+        Guid timePeriodId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var period = await dbContext.TimePeriods
+            .Include(item => item.Children)
+            .Include(item => item.Entries)
+            .FirstOrDefaultAsync(item => item.Id == timePeriodId, cancellationToken);
+        if (period is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (period.Children.Count > 0)
+        {
+            return Results.Conflict(new { error = "Time period cannot be deleted while it has child periods." });
+        }
+
+        if (period.Entries.Count > 0)
+        {
+            return Results.Conflict(new { error = "Time period cannot be deleted while it is attached to entries." });
+        }
+
+        var isPrimaryPeriod = await dbContext.Entries.AnyAsync(
+            entry => entry.PrimaryTimePeriodId == timePeriodId,
+            cancellationToken);
+        if (isPrimaryPeriod)
+        {
+            return Results.Conflict(new { error = "Time period cannot be deleted while it is a primary period for entries." });
+        }
+
+        dbContext.TimePeriods.Remove(period);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         return Results.NoContent();
     }
 

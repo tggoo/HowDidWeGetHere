@@ -1766,6 +1766,32 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
+  async function deleteTimePeriod() {
+    if (!timePeriodForm.id || !adminToken) {
+      setAdminStatus('Select a time period before deleting it.')
+      return
+    }
+
+    setAdminStatus('Deleting time period...')
+    const result = await apiClient.DELETE('/api/admin/time-periods/{timePeriodId}', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          timePeriodId: timePeriodForm.id,
+        },
+      },
+    })
+
+    if (result.error) {
+      setAdminStatus('Time period was not deleted. Remove child periods and entry links first.')
+      return
+    }
+
+    setTimePeriodForm({ ...defaultTimePeriodForm, languageCode: language })
+    setAdminStatus('Time period deleted.')
+    setReloadKey((value) => value + 1)
+  }
+
   async function saveTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!adminToken) {
@@ -2288,6 +2314,12 @@ function App() {
                 <Save aria-hidden="true" />
                 {timePeriodForm.id ? 'Save period' : 'Create period'}
               </button>
+              {timePeriodForm.id && (
+                <button className="admin-action secondary danger" type="button" onClick={deleteTimePeriod}>
+                  <Trash2 aria-hidden="true" />
+                  Delete period
+                </button>
+              )}
             </form>
             <div className="admin-section-title">
               <span>Tags</span>

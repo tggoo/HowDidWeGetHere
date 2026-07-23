@@ -20,6 +20,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin relationship update/delete endpoints and relationship edit/delete controls in the admin UI.
 - 2026-07-23: Added admin source update/delete endpoints and source edit/delete controls in the admin UI.
 - 2026-07-23: Added admin tag detach/delete endpoints and controls for attached entry tags.
+- 2026-07-23: Added admin time period delete endpoint and guarded delete control in the admin UI.
 
 ## Goal
 
@@ -107,6 +108,7 @@ Build a mobile-first historical world map app with:
 - update source URL/metadata/support-field links
 - delete source links from entries
 - list, create and update time periods
+- delete unused time periods
 - list, create and update tags
 - attach tag to entry by slug
 - detach tag from entry
@@ -144,6 +146,7 @@ Build a mobile-first historical world map app with:
 - source attachment form
 - source edit/delete controls for existing entry source links
 - time period create/update form
+- unused time period delete control
 - primary time period selector in the entry editor
 - tag create/update form
 - tag attachment selector in the entry editor
@@ -175,7 +178,7 @@ The importer reads the current workbook sheets, creates or updates entries, tags
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include time period delete and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include richer validation and media upload/storage.
 
 ### Multilingual support
 
@@ -202,7 +205,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 - richer era/period side panel
 - period hierarchy UI
-- time period delete
 - richer timeline/time slider
 
 ### Sources
@@ -245,11 +247,10 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 1. Add marker clustering and viewport-aware filtering.
 2. Add richer relationship display.
 3. Improve the era side panel and period hierarchy UI.
-4. Add time period delete.
-5. Add real media upload/storage.
-6. Add importer preview, conflict review and route/place mapping.
-7. Add CS/ES translation workflow.
-8. Add backend/frontend tests.
+4. Add real media upload/storage.
+5. Add importer preview, conflict review and route/place mapping.
+6. Add CS/ES translation workflow.
+7. Add backend/frontend tests.
 
 ## Current answer
 
