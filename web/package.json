@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.21",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.25.0",
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.7",

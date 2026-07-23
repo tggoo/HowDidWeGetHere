@@ -222,14 +222,30 @@
 }
 
 .map-canvas {
+  background: #dfe8ec;
+  min-height: 420px;
+  overflow: hidden;
+  position: relative;
+}
+
+.leaflet-map {
+  height: 100%;
+  inset: 0;
+  min-height: 420px;
+  position: absolute;
+  width: 100%;
+  z-index: 0;
+}
+
+.map-fallback-layer {
   background:
     radial-gradient(circle at 22% 42%, rgba(19, 94, 150, 0.16) 0 8%, transparent 8.4%),
     radial-gradient(circle at 52% 38%, rgba(37, 99, 77, 0.18) 0 11%, transparent 11.4%),
     radial-gradient(circle at 74% 50%, rgba(95, 111, 82, 0.16) 0 10%, transparent 10.4%),
-    #dfe8ec;
-  min-height: 420px;
-  overflow: hidden;
-  position: relative;
+    rgba(223, 232, 236, 0.86);
+  inset: 0;
+  position: absolute;
+  z-index: 2;
 }
 
 .map-grid {
@@ -266,23 +282,12 @@
   width: 19px;
 }
 
-.map-routes {
-  height: 100%;
-  inset: 0;
-  overflow: visible;
-  pointer-events: none;
-  position: absolute;
-  width: 100%;
-  z-index: 1;
-}
-
-.map-routes polyline {
-  fill: none;
-  stroke: rgba(19, 94, 150, 0.72);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 0.7;
-  vector-effect: non-scaling-stroke;
+.map-point span {
+  background: currentColor;
+  border-radius: 50%;
+  display: block;
+  height: 10px;
+  width: 10px;
 }
 
 .map-point.atlantic {
@@ -319,6 +324,44 @@
   top: 44%;
   transform: rotate(-56deg);
   width: 72px;
+}
+
+.history-marker {
+  align-items: center;
+  background: #ffffff;
+  border: 2px solid #135e96;
+  border-radius: 50%;
+  box-shadow: 0 5px 14px rgba(17, 24, 39, 0.18);
+  display: flex;
+  justify-content: center;
+}
+
+.history-marker span {
+  background: #135e96;
+  border-radius: 50%;
+  display: block;
+  height: 10px;
+  width: 10px;
+}
+
+.history-marker.selected {
+  background: #135e96;
+  border-color: #ffffff;
+}
+
+.history-marker.selected span {
+  background: #ffffff;
+}
+
+.history-popup .leaflet-popup-content {
+  display: grid;
+  gap: 4px;
+  margin: 10px 12px;
+}
+
+.history-popup small,
+.history-popup span {
+  color: #667085;
 }
 
 .detail-panel h1 {

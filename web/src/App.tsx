@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
+import { HistoryMap, type MapEntry } from './components/HistoryMap'
 import './App.css'
 
 type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
@@ -167,33 +168,6 @@ type EntryDetail = EntryListItem & {
     attribution?: string | null
     license?: string | null
     sourceUrl?: string | null
-  }>
-}
-
-type MapEntry = {
-  entryId: string
-  slug: string
-  kind: string
-  title: string
-  dateLabel?: string | null
-  startYear?: number | string | null
-  endYear?: number | string | null
-  primaryImageUrl?: string | null
-  points: Array<{
-    placeId: string
-    placeSlug: string
-    placeName: string
-    role: string
-    spatialConfidence: string
-    longitude: number
-    latitude: number
-  }>
-  routes: Array<{
-    routeId: string
-    name: string
-    routeType: string
-    spatialConfidence: string
-    geometry: Array<{ longitude: number; latitude: number }>
   }>
 }
 
@@ -487,6 +461,9 @@ function App() {
           return
         }
 
+        const mapPayload = (mapResult.data as MapEntry[] | undefined) ?? []
+        const mapPointCount = mapPayload.reduce((count, entry) => count + entry.points.length, 0)
+
         if (entriesResult.error || periodsResult.error || tagsResult.error || mapResult.error) {
           setMapStatus('API responded, but one of the map queries failed.')
           return
@@ -495,7 +472,11 @@ function App() {
         if (entriesResult.data && entriesResult.data.length > 0) {
           setEntries(entriesResult.data as EntryListItem[])
           setSelectedEntryId(entriesResult.data[0].id)
-          setMapStatus(`Loaded ${entriesResult.data.length} published entries from the API.`)
+          setMapStatus(
+            mapPointCount > 0
+              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points.`
+              : `Loaded ${entriesResult.data.length} published entries. Add places to show them on the map.`,
+          )
         } else {
           setMapStatus('API is reachable, but no published entries matched the current filters.')
         }
@@ -508,7 +489,7 @@ function App() {
           setTags(tagsResult.data as TagListItem[])
         }
 
-        setMapEntries((mapResult.data as MapEntry[] | undefined) ?? [])
+        setMapEntries(mapPayload)
       } catch {
         if (isActive) {
           setMapStatus('Unable to reach the API. Check Render API URL and CORS settings.')
@@ -634,17 +615,6 @@ function App() {
 
   function patchPlaceForm(patch: Partial<typeof placeForm>) {
     setPlaceForm((current) => ({ ...current, ...patch }))
-  }
-
-  function projectedPoint(longitude: number, latitude: number) {
-    return {
-      left: `${((longitude + 180) / 360) * 100}%`,
-      top: `${((90 - latitude) / 180) * 100}%`,
-    }
-  }
-
-  function projectedCoordinateString(point: { longitude: number; latitude: number }) {
-    return `${((point.longitude + 180) / 360) * 100},${((90 - point.latitude) / 180) * 100}`
   }
 
   function resetEntryForm() {
@@ -1100,64 +1070,12 @@ function App() {
           </div>
         </aside>
 
-        <section className="map-canvas" aria-label="World history map">
-          <div className="map-grid" />
-          {mapEntries.length > 0 ? (
-            <>
-              <svg className="map-routes" preserveAspectRatio="none" viewBox="0 0 100 100">
-                {mapEntries.flatMap((entry) =>
-                  entry.routes.map((route) => (
-                    <polyline
-                      key={`${entry.entryId}-${route.routeId}`}
-                      points={route.geometry.map(projectedCoordinateString).join(' ')}
-                    />
-                  )),
-                )}
-              </svg>
-              {mapEntries.flatMap((entry) =>
-                entry.points.map((point) => (
-                  <button
-                    aria-label={`${entry.title}: ${point.placeName}`}
-                    className={selectedEntryId === entry.entryId ? 'map-point active' : 'map-point'}
-                    key={`${entry.entryId}-${point.placeId}-${point.role}`}
-                    style={projectedPoint(point.longitude, point.latitude)}
-                    title={`${entry.title} / ${point.role}: ${point.placeName}`}
-                    type="button"
-                    onClick={() => setSelectedEntryId(entry.entryId)}
-                  >
-                    <MapPin aria-hidden="true" />
-                  </button>
-                )),
-              )}
-            </>
-          ) : (
-            <>
-              <button
-                className="map-point atlantic"
-                type="button"
-                onClick={() => setSelectedEntryId(entries[0]?.id)}
-              >
-                <MapPin aria-hidden="true" />
-              </button>
-              <button
-                className="map-point himalaya"
-                type="button"
-                onClick={() => setSelectedEntryId(entries[1]?.id ?? entries[0]?.id)}
-              >
-                <MapPin aria-hidden="true" />
-              </button>
-              <button
-                className="map-point nile"
-                type="button"
-                onClick={() => setSelectedEntryId(entries[2]?.id ?? entries[0]?.id)}
-              >
-                <MapPin aria-hidden="true" />
-              </button>
-              <div className="route-line atlantic-route" />
-              <div className="route-line everest-route" />
-            </>
-          )}
-        </section>
+        <HistoryMap
+          entries={mapEntries}
+          fallbackEntryIds={entries.map((entry) => entry.id)}
+          selectedEntryId={selectedEntryId}
+          onSelectEntry={setSelectedEntryId}
+        />
 
         <aside className="detail-panel">
           <div className="panel-header">
