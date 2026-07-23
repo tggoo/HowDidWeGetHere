@@ -39,6 +39,7 @@ public static class PublicEndpoints
     private static async Task<IResult> GetEntriesAsync(
         HistoryDbContext dbContext,
         string? language,
+        string? search,
         long? fromYear,
         long? toYear,
         string[]? tag,
@@ -48,6 +49,8 @@ public static class PublicEndpoints
         var query = dbContext.Entries
             .AsNoTracking()
             .Where(entry => entry.Status == ContentStatus.Published);
+
+        query = ApplySearch(query, search);
 
         if (fromYear.HasValue)
         {
@@ -99,13 +102,14 @@ public static class PublicEndpoints
     private static async Task<IResult> GetMapEntriesAsync(
         HistoryDbContext dbContext,
         string? language,
+        string? search,
         long? fromYear,
         long? toYear,
         string[]? tag,
         CancellationToken cancellationToken)
     {
         var lang = EndpointHelpers.NormalizeLanguage(language);
-        var query = PublishedEntriesQuery(dbContext, fromYear, toYear, tag);
+        var query = PublishedEntriesQuery(dbContext, search, fromYear, toYear, tag);
 
         var entries = await query
             .Include(entry => entry.Translations)
@@ -395,6 +399,7 @@ public static class PublicEndpoints
 
     private static IQueryable<Domain.Entries.Entry> PublishedEntriesQuery(
         HistoryDbContext dbContext,
+        string? search,
         long? fromYear,
         long? toYear,
         string[]? tag)
@@ -402,6 +407,8 @@ public static class PublicEndpoints
         var query = dbContext.Entries
             .AsNoTracking()
             .Where(entry => entry.Status == ContentStatus.Published);
+
+        query = ApplySearch(query, search);
 
         if (fromYear.HasValue)
         {
@@ -419,6 +426,26 @@ public static class PublicEndpoints
         }
 
         return query;
+    }
+
+    private static IQueryable<Domain.Entries.Entry> ApplySearch(
+        IQueryable<Domain.Entries.Entry> query,
+        string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return query;
+        }
+
+        var term = search.Trim().ToLower();
+        return query.Where(entry =>
+            entry.DefaultTitle.ToLower().Contains(term) ||
+            entry.Slug.ToLower().Contains(term) ||
+            entry.Translations.Any(translation =>
+                translation.Title.ToLower().Contains(term) ||
+                (translation.Summary != null && translation.Summary.ToLower().Contains(term)) ||
+                (translation.Description != null && translation.Description.ToLower().Contains(term)) ||
+                (translation.WhyItMatters != null && translation.WhyItMatters.ToLower().Contains(term))));
     }
 
     private static async Task<IResult> GetTimePeriodsAsync(

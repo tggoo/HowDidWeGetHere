@@ -485,6 +485,7 @@ function App() {
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
+  const [searchText, setSearchText] = useState('')
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
   const [fromYear, setFromYear] = useState('')
   const [toYear, setToYear] = useState('')
@@ -561,6 +562,7 @@ function App() {
             params: {
               query: {
                 language,
+                search: searchText.trim() || undefined,
                 tag: selectedTags,
                 fromYear: numberOrNull(fromYear),
                 toYear: numberOrNull(toYear),
@@ -585,6 +587,7 @@ function App() {
             params: {
               query: {
                 language,
+                search: searchText.trim() || undefined,
                 tag: selectedTags,
                 fromYear: numberOrNull(fromYear),
                 toYear: numberOrNull(toYear),
@@ -643,7 +646,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, selectedTags, reloadKey, toYear])
+  }, [fromYear, language, searchText, selectedTags, reloadKey, toYear])
 
   useEffect(() => {
     let isActive = true
@@ -1566,7 +1569,11 @@ function App() {
 
           <div className="search-box">
             <Search aria-hidden="true" />
-            <input placeholder="Search entries" />
+            <input
+              placeholder="Search entries"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+            />
           </div>
 
           <div className="filter-block">

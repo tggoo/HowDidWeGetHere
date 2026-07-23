@@ -465,6 +465,7 @@ export interface paths {
             parameters: {
                 query?: {
                     language?: string;
+                    search?: string;
                     fromYear?: number | string;
                     toYear?: number | string;
                     tag?: string[];
@@ -589,6 +590,7 @@ export interface paths {
             parameters: {
                 query?: {
                     language?: string;
+                    search?: string;
                     fromYear?: number | string;
                     toYear?: number | string;
                     tag?: string[];
