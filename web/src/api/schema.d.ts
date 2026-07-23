@@ -1080,6 +1080,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/entries/{entryId}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminEntrySourceRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ResourceCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -1276,6 +1331,14 @@ export interface components {
             sourceNote: null | string;
             languageCode: null | string;
             points: components["schemas"]["AdminEntryRoutePointRequest"][];
+        };
+        AdminEntrySourceRequest: {
+            url: string;
+            title: null | string;
+            publisher: null | string;
+            languageCode: null | string;
+            supportsField: components["schemas"]["SourceSupportKind"];
+            note: null | string;
         };
         AdminEntryUpsertRequest: {
             title: string;
@@ -1584,6 +1647,8 @@ export interface components {
         RoutePointRole: "Start" | "Stop" | "End" | "Summit" | "BaseCamp" | "Approximate" | "Other";
         /** @enum {unknown} */
         RouteType: "Voyage" | "Expedition" | "Migration" | "Conquest" | "Climb" | "TradeRoute" | "Mission" | "Journey" | "Other";
+        /** @enum {unknown} */
+        SourceSupportKind: "General" | "Date" | "Summary" | "Route" | "Location" | "Relationship" | "Image" | "Audio" | "Translation";
         /** @enum {unknown} */
         SpatialConfidence: "Exact" | "Approximate" | "Regional" | "Disputed" | "Mythic" | "Unknown";
         /** @enum {unknown} */

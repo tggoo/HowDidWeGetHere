@@ -321,3 +321,11 @@ public sealed record AdminEntryRelationshipRequest(
     EntryRelationshipType RelationshipType,
     decimal? Confidence,
     string? Note);
+
+public sealed record AdminEntrySourceRequest(
+    string Url,
+    string? Title,
+    string? Publisher,
+    string? LanguageCode,
+    SourceSupportKind SupportsField,
+    string? Note);

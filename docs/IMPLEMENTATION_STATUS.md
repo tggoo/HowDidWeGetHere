@@ -10,6 +10,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Replaced the custom map canvas with a Leaflet map layer that renders stored markers and routes.
 - 2026-07-23: Added admin route creation endpoint and route form that creates ordered route points with coordinates.
 - 2026-07-23: Added admin relationship creation endpoint and related-topic form by target entry slug.
+- 2026-07-23: Added admin source attachment endpoint and source form with support-field metadata.
 
 ## Goal
 
@@ -86,6 +87,7 @@ Build a mobile-first historical world map app with:
 - add place/coordinate to entry
 - add route with ordered coordinate points to entry
 - add relationship to another entry by target slug
+- add source to entry by URL with support-field metadata
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -110,6 +112,7 @@ Build a mobile-first historical world map app with:
 - place/coordinate attachment form
 - route attachment form with ordered points
 - related-entry attachment form
+- source attachment form
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -136,7 +139,7 @@ The importer reads the current workbook sheets, creates entries, tags, time peri
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes and add relationships by target slug. It is not yet a complete CMS. Missing pieces include tag editing, relationship update/delete, route update/delete, source editing, time period editing and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes, add relationships by target slug and attach sources by URL. It is not yet a complete CMS. Missing pieces include tag editing, relationship update/delete, route update/delete, source update/delete, time period editing and richer validation.
 
 ### Multilingual support
 
@@ -170,7 +173,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Sources
 
-- admin source CRUD
+- source update/delete
 - richer source display in public entry detail
 
 ### Media storage

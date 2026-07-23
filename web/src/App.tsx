@@ -31,6 +31,7 @@ type AdminEntryAudioTrackRequest = components['schemas']['AdminEntryAudioTrackRe
 type AdminEntryPlaceRequest = components['schemas']['AdminEntryPlaceRequest']
 type AdminEntryRouteRequest = components['schemas']['AdminEntryRouteRequest']
 type AdminEntryRelationshipRequest = components['schemas']['AdminEntryRelationshipRequest']
+type AdminEntrySourceRequest = components['schemas']['AdminEntrySourceRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
 type EntryRelationshipType = components['schemas']['EntryRelationshipType']
@@ -40,6 +41,7 @@ type RealityStatus = components['schemas']['RealityStatus']
 type RoutePointRole = components['schemas']['RoutePointRole']
 type RouteType = components['schemas']['RouteType']
 type SpatialConfidence = components['schemas']['SpatialConfidence']
+type SourceSupportKind = components['schemas']['SourceSupportKind']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
 
 type EntryListItem = {
@@ -414,6 +416,17 @@ const spatialConfidences: SpatialConfidence[] = [
   'Mythic',
   'Unknown',
 ]
+const sourceSupportKinds: SourceSupportKind[] = [
+  'General',
+  'Date',
+  'Summary',
+  'Route',
+  'Location',
+  'Relationship',
+  'Image',
+  'Audio',
+  'Translation',
+]
 
 function App() {
   const [language, setLanguage] = useState('en')
@@ -466,6 +479,13 @@ function App() {
     targetEntrySlug: '',
     relationshipType: 'RelatedTo' as EntryRelationshipType,
     confidence: '',
+    note: '',
+  })
+  const [sourceForm, setSourceForm] = useState({
+    url: '',
+    title: '',
+    publisher: '',
+    supportsField: 'General' as SourceSupportKind,
     note: '',
   })
   const [reloadKey, setReloadKey] = useState(0)
@@ -677,6 +697,10 @@ function App() {
     setRelationshipForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchSourceForm(patch: Partial<typeof sourceForm>) {
+    setSourceForm((current) => ({ ...current, ...patch }))
+  }
+
   function parseRoutePoints(pointsText: string) {
     return pointsText
       .split('\n')
@@ -733,6 +757,13 @@ function App() {
       targetEntrySlug: '',
       relationshipType: 'RelatedTo',
       confidence: '',
+      note: '',
+    })
+    setSourceForm({
+      url: '',
+      title: '',
+      publisher: '',
+      supportsField: 'General',
       note: '',
     })
   }
@@ -1189,6 +1220,52 @@ function App() {
       note: '',
     }))
     setAdminStatus('Relationship added.')
+    setReloadKey((value) => value + 1)
+  }
+
+  async function addEntrySource() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before adding a source.')
+      return
+    }
+
+    if (!sourceForm.url.trim()) {
+      setAdminStatus('Source URL is required.')
+      return
+    }
+
+    const body: AdminEntrySourceRequest = {
+      url: sourceForm.url.trim(),
+      title: sourceForm.title.trim() || null,
+      publisher: sourceForm.publisher.trim() || null,
+      languageCode: entryForm.languageCode,
+      supportsField: sourceForm.supportsField,
+      note: sourceForm.note.trim() || null,
+    }
+
+    const result = await apiClient.POST('/api/admin/entries/{entryId}/sources', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+        },
+      },
+      body,
+    })
+
+    if (result.error) {
+      setAdminStatus('Source was not added. Check URL format.')
+      return
+    }
+
+    setSourceForm((current) => ({
+      ...current,
+      url: '',
+      title: '',
+      publisher: '',
+      note: '',
+    }))
+    setAdminStatus('Source added.')
     setReloadKey((value) => value + 1)
   }
 
@@ -1770,6 +1847,55 @@ function App() {
               <button className="admin-action secondary" type="button" onClick={addEntryRelationship}>
                 <Tags aria-hidden="true" />
                 Add relationship
+              </button>
+              <label>
+                Source URL
+                <input
+                  value={sourceForm.url}
+                  onChange={(event) => patchSourceForm({ url: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Source title
+                  <input
+                    value={sourceForm.title}
+                    onChange={(event) => patchSourceForm({ title: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Publisher
+                  <input
+                    value={sourceForm.publisher}
+                    onChange={(event) => patchSourceForm({ publisher: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="admin-field-row">
+                <label>
+                  Supports
+                  <select
+                    value={sourceForm.supportsField}
+                    onChange={(event) => patchSourceForm({ supportsField: event.target.value as SourceSupportKind })}
+                  >
+                    {sourceSupportKinds.map((supportKind) => (
+                      <option key={supportKind} value={supportKind}>
+                        {supportKind}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Source note
+                  <input
+                    value={sourceForm.note}
+                    onChange={(event) => patchSourceForm({ note: event.target.value })}
+                  />
+                </label>
+              </div>
+              <button className="admin-action secondary" type="button" onClick={addEntrySource}>
+                <Search aria-hidden="true" />
+                Add source
               </button>
               <label>
                 Primary image URL
