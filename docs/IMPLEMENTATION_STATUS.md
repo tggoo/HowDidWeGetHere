@@ -139,6 +139,7 @@ Build a mobile-first historical world map app with:
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
 - imported workbook rows can update existing entries by source sheet and row instead of creating duplicates
+- imported workbook rows can also update existing entries by slug when source row metadata is missing or changed
 
 ### Frontend
 
@@ -215,7 +216,7 @@ The frontend now uses Leaflet for the real map layer and renders stored public c
 
 ### Workbook import
 
-The importer reads the current workbook sheets, previews create/update counts and validation issues without saving, then creates or updates entries, tags, time periods and source links when the import is confirmed. Re-import uses source sheet and source row metadata as the first idempotency key, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
+The importer reads the current workbook sheets, previews create/update counts and validation issues without saving, then creates or updates entries, tags, time periods and source links when the import is confirmed. Re-import uses source sheet and source row metadata as the first idempotency key, then falls back to matching by slug, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
 
 ### Admin UI
 
@@ -259,7 +260,6 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 
 ### Import workflow
 
-- duplicate detection beyond the source sheet/source row import key
 - mapping workbook columns to places/routes/relationships/tags
 - import CS/ES translations
 

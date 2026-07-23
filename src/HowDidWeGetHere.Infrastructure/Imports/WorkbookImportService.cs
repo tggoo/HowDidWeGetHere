@@ -38,6 +38,9 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         var existingEntryLookup = existingEntriesBySourceRow
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
             .ToDictionary(group => group.Key, group => group.First());
+        var existingEntryLookupBySlug = existingEntrySlugs
+            .GroupBy(entry => entry.Slug, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
         var previewRows = new List<WorkbookImportPreviewRow>();
         var warnings = new List<string>();
@@ -89,6 +92,20 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
                 var sourceKey = $"{entry.SourceSheet}|{entry.SourceRow}";
                 var willUpdate = existingEntryLookup.TryGetValue(sourceKey, out var existingEntry);
+                if (!willUpdate && updateExistingRows && existingEntryLookupBySlug.TryGetValue(entry.Slug, out existingEntry))
+                {
+                    willUpdate = true;
+                    AddIssue(
+                        validationIssues,
+                        warnings,
+                        "Info",
+                        "MatchedBySlug",
+                        $"Existing entry slug '{entry.Slug}' would be updated even though the source row did not match.",
+                        worksheet.Name,
+                        rowNumber,
+                        rowIssues);
+                }
+
                 if (willUpdate)
                 {
                     entriesToUpdate++;
@@ -191,14 +208,18 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 .Include(entry => entry.Tags)
                 .Include(entry => entry.Sources)
                 .Include(entry => entry.TimePeriods)
-                .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
                 .OrderBy(entry => entry.CreatedAt)
                 .ToListAsync(cancellationToken)
             : [];
         Dictionary<string, Entry> existingEntriesBySourceRow = existingEntries
+            .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
             .ToDictionary(group => group.Key, group => group.First());
+        Dictionary<string, Entry> existingEntriesBySlug = existingEntries
+            .GroupBy(entry => entry.Slug, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         foreach (var duplicateGroup in existingEntries
+            .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
             .Where(group => group.Count() > 1))
         {
@@ -256,13 +277,31 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     importedRow.Warning = warnings[^1];
                 }
 
-                if (existingEntriesBySourceRow.TryGetValue($"{entry.SourceSheet}|{entry.SourceRow}", out var existingEntry))
+                var matchedBySlug = false;
+                Entry? matchedEntry = null;
+                if (existingEntriesBySourceRow.TryGetValue($"{entry.SourceSheet}|{entry.SourceRow}", out var sourceRowMatch))
                 {
-                    UpdateExistingEntry(existingEntry, entry);
-                    existingEntry.UpdatedAt = DateTimeOffset.UtcNow;
-                    existingEntry.UpdatedByUserId = importedByUserId;
-                    importedRow.Entry = existingEntry;
-                    entry = existingEntry;
+                    matchedEntry = sourceRowMatch;
+                }
+                else if (existingEntriesBySlug.TryGetValue(entry.Slug, out var slugMatch))
+                {
+                    matchedEntry = slugMatch;
+                    matchedBySlug = true;
+                }
+
+                if (matchedEntry is not null)
+                {
+                    if (matchedBySlug)
+                    {
+                        warnings.Add(
+                            $"{entry.SourceSheet} row {entry.SourceRow}: existing entry '{matchedEntry.Slug}' matched by slug and was updated.");
+                    }
+
+                    UpdateExistingEntry(matchedEntry, entry);
+                    matchedEntry.UpdatedAt = DateTimeOffset.UtcNow;
+                    matchedEntry.UpdatedByUserId = importedByUserId;
+                    importedRow.Entry = matchedEntry;
+                    entry = matchedEntry;
                     entriesUpdated++;
                 }
                 else
