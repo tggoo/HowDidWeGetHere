@@ -71,6 +71,9 @@ public static class AdminEntryEndpoints
                 .ThenInclude(route => route.Points)
                     .ThenInclude(point => point.Place)
                         .ThenInclude(place => place.Translations)
+            .Include(item => item.OutgoingRelationships)
+                .ThenInclude(relationship => relationship.ToEntry)
+                    .ThenInclude(relatedEntry => relatedEntry.Translations)
             .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
 
         if (entry is null)
@@ -130,6 +133,21 @@ public static class AdminEntryEndpoints
                             point.Place.Geometry?.Coordinate.X,
                             point.Place.Geometry?.Coordinate.Y))
                         .ToList()))
+                .ToList(),
+            entry.OutgoingRelationships
+                .OrderBy(relationship => relationship.ToEntry.DefaultTitle)
+                .Select(relationship => new AdminEntryRelationshipResponse(
+                    relationship.Id,
+                    relationship.ToEntryId,
+                    relationship.ToEntry.Slug,
+                    relationship.ToEntry.Translations
+                        .Where(translation => translation.LanguageCode == lang)
+                        .Select(translation => translation.Title)
+                        .FirstOrDefault() ?? relationship.ToEntry.DefaultTitle,
+                    relationship.ToEntry.Kind.ToString(),
+                    relationship.RelationshipType.ToString(),
+                    relationship.Confidence,
+                    relationship.Note))
                 .ToList()));
     }
 

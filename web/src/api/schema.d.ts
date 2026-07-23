@@ -1163,6 +1163,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/entries/{entryId}/relationships/{relationshipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                    relationshipId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminEntryRelationshipRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                    relationshipId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/entries/{entryId}/sources": {
         parameters: {
             query?: never;
@@ -1625,6 +1706,7 @@ export interface components {
             /** Format: int32 */
             sourceRow: null | number | string;
             routes: components["schemas"]["EntryRouteResponse"][];
+            relationships: components["schemas"]["AdminEntryRelationshipResponse"][];
         };
         AdminEntryImageRequest: {
             kind: components["schemas"]["ImageKind"];
@@ -1679,6 +1761,19 @@ export interface components {
         AdminEntryRelationshipRequest: {
             targetEntrySlug: string;
             relationshipType: components["schemas"]["EntryRelationshipType"];
+            /** Format: double */
+            confidence: null | number | string;
+            note: null | string;
+        };
+        AdminEntryRelationshipResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            targetEntryId: string;
+            targetEntrySlug: string;
+            targetEntryTitle: string;
+            targetEntryKind: string;
+            relationshipType: string;
             /** Format: double */
             confidence: null | number | string;
             note: null | string;

@@ -218,7 +218,18 @@ public sealed record AdminEntryDetailResponse(
     Guid? PrimaryTimePeriodId,
     string? SourceSheet,
     int? SourceRow,
-    IReadOnlyList<EntryRouteResponse> Routes);
+    IReadOnlyList<EntryRouteResponse> Routes,
+    IReadOnlyList<AdminEntryRelationshipResponse> Relationships);
+
+public sealed record AdminEntryRelationshipResponse(
+    Guid Id,
+    Guid TargetEntryId,
+    string TargetEntrySlug,
+    string TargetEntryTitle,
+    string TargetEntryKind,
+    string RelationshipType,
+    decimal? Confidence,
+    string? Note);
 
 public sealed record ResourceCreatedResponse(
     Guid Id,

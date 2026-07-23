@@ -185,6 +185,17 @@ type EntryDetail = EntryListItem & {
 
 type EntryRouteDetail = EntryDetail['routes'][number]
 
+type AdminEntryRelationshipDetail = {
+  id: string
+  targetEntryId: string
+  targetEntrySlug: string
+  targetEntryTitle: string
+  targetEntryKind: string
+  relationshipType: string
+  confidence?: number | string | null
+  note?: string | null
+}
+
 type WorkbookImportResult = {
   importBatchId: string
   rowsRead: number | string
@@ -217,6 +228,7 @@ type AdminEntryDetail = AdminEntryListItem & {
   timeConfidence?: string | null
   primaryTimePeriodId?: string | null
   routes: EntryRouteDetail[]
+  relationships: AdminEntryRelationshipDetail[]
 }
 
 type EntryFormState = {
@@ -536,11 +548,13 @@ function App() {
   })
   const [adminEntryRoutes, setAdminEntryRoutes] = useState<EntryRouteDetail[]>([])
   const [relationshipForm, setRelationshipForm] = useState({
+    id: null as string | null,
     targetEntrySlug: '',
     relationshipType: 'RelatedTo' as EntryRelationshipType,
     confidence: '',
     note: '',
   })
+  const [adminEntryRelationships, setAdminEntryRelationships] = useState<AdminEntryRelationshipDetail[]>([])
   const [sourceForm, setSourceForm] = useState({
     url: '',
     title: '',
@@ -795,6 +809,26 @@ function App() {
     setRelationshipForm((current) => ({ ...current, ...patch }))
   }
 
+  function resetRelationshipForm() {
+    setRelationshipForm({
+      id: null,
+      targetEntrySlug: '',
+      relationshipType: 'RelatedTo',
+      confidence: '',
+      note: '',
+    })
+  }
+
+  function loadRelationshipForm(relationship: AdminEntryRelationshipDetail) {
+    setRelationshipForm({
+      id: relationship.id,
+      targetEntrySlug: relationship.targetEntrySlug,
+      relationshipType: relationship.relationshipType as EntryRelationshipType,
+      confidence: relationship.confidence?.toString() ?? '',
+      note: relationship.note ?? '',
+    })
+  }
+
   function patchSourceForm(patch: Partial<typeof sourceForm>) {
     setSourceForm((current) => ({ ...current, ...patch }))
   }
@@ -891,6 +925,7 @@ function App() {
       pointsText: '',
     })
     setRelationshipForm({
+      id: null,
       targetEntrySlug: '',
       relationshipType: 'RelatedTo',
       confidence: '',
@@ -912,6 +947,7 @@ function App() {
       attachSlug: '',
     })
     setAdminEntryRoutes([])
+    setAdminEntryRelationships([])
   }
 
   function loadTagForm(tag: TagListItem) {
@@ -993,6 +1029,7 @@ function App() {
 
     const detail = result.data as AdminEntryDetail
     const detailRoutes = detail.routes ?? []
+    const detailRelationships = detail.relationships ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1013,6 +1050,7 @@ function App() {
       primaryTimePeriodId: detail.primaryTimePeriodId ?? '',
     })
     setAdminEntryRoutes(detailRoutes)
+    setAdminEntryRelationships(detailRelationships)
     setRouteForm((current) => {
       if (!current.id) {
         return current
@@ -1035,6 +1073,28 @@ function App() {
             spatialConfidence: 'Approximate',
             sourceNote: '',
             pointsText: '',
+          }
+    })
+    setRelationshipForm((current) => {
+      if (!current.id) {
+        return current
+      }
+
+      const relationship = detailRelationships.find((item) => item.id === current.id)
+      return relationship
+        ? {
+            id: relationship.id,
+            targetEntrySlug: relationship.targetEntrySlug,
+            relationshipType: relationship.relationshipType as EntryRelationshipType,
+            confidence: relationship.confidence?.toString() ?? '',
+            note: relationship.note ?? '',
+          }
+        : {
+            id: null,
+            targetEntrySlug: '',
+            relationshipType: 'RelatedTo',
+            confidence: '',
+            note: '',
           }
     })
     setAdminStatus('Entry loaded.')
@@ -1412,9 +1472,9 @@ function App() {
     await loadAdminEntryDetail(entryForm.id)
   }
 
-  async function addEntryRelationship() {
+  async function saveEntryRelationship() {
     if (!entryForm.id || !adminToken) {
-      setAdminStatus('Select or create an entry before adding a relationship.')
+      setAdminStatus('Select or create an entry before saving a relationship.')
       return
     }
 
@@ -1438,29 +1498,68 @@ function App() {
       note: relationshipForm.note.trim() || null,
     }
 
-    const result = await apiClient.POST('/api/admin/entries/{entryId}/relationships', {
+    setAdminStatus(relationshipForm.id ? 'Saving relationship...' : 'Adding relationship...')
+    const result = relationshipForm.id
+      ? await apiClient.PUT('/api/admin/entries/{entryId}/relationships/{relationshipId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+              relationshipId: relationshipForm.id,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/entries/{entryId}/relationships', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+            },
+          },
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Relationship was not saved. Check target slug.')
+      return
+    }
+
+    resetRelationshipForm()
+    setAdminStatus(relationshipForm.id ? 'Relationship saved.' : 'Relationship added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteEntryRelationship(relationshipId: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before deleting a relationship.')
+      return
+    }
+
+    setAdminStatus('Deleting relationship...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/relationships/{relationshipId}', {
       headers: authHeaders(),
       params: {
         path: {
           entryId: entryForm.id,
+          relationshipId,
         },
       },
-      body,
     })
 
     if (result.error) {
-      setAdminStatus('Relationship was not added. Check target slug.')
+      setAdminStatus('Relationship was not deleted.')
       return
     }
 
-    setRelationshipForm((current) => ({
-      ...current,
-      targetEntrySlug: '',
-      confidence: '',
-      note: '',
-    }))
-    setAdminStatus('Relationship added.')
+    if (relationshipForm.id === relationshipId) {
+      resetRelationshipForm()
+    }
+
+    setAdminStatus('Relationship deleted.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
   }
 
   async function addEntrySource() {
@@ -2453,8 +2552,39 @@ function App() {
                   New route
                 </button>
               </div>
+              {adminEntryRelationships.length > 0 && (
+                <div className="route-manager">
+                  <strong>Relationships</strong>
+                  {adminEntryRelationships.map((relationship) => (
+                    <div className="route-manager-item" key={relationship.id}>
+                      <span>
+                        {relationship.relationshipType}: {relationship.targetEntryTitle}
+                        <small>{relationship.targetEntryKind} · {relationship.targetEntrySlug}</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button
+                          className="admin-action secondary"
+                          type="button"
+                          onClick={() => loadRelationshipForm(relationship)}
+                        >
+                          <Tags aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button
+                          className="admin-action secondary danger"
+                          type="button"
+                          onClick={() => deleteEntryRelationship(relationship.id)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
-                Related entry slug
+                {relationshipForm.id ? 'Editing relationship target slug' : 'Related entry slug'}
                 <input
                   value={relationshipForm.targetEntrySlug}
                   onChange={(event) => patchRelationshipForm({ targetEntrySlug: event.target.value })}
@@ -2493,10 +2623,16 @@ function App() {
                   onChange={(event) => patchRelationshipForm({ note: event.target.value })}
                 />
               </label>
-              <button className="admin-action secondary" type="button" onClick={addEntryRelationship}>
-                <Tags aria-hidden="true" />
-                Add relationship
-              </button>
+              <div className="admin-field-row">
+                <button className="admin-action secondary" type="button" onClick={saveEntryRelationship}>
+                  <Tags aria-hidden="true" />
+                  {relationshipForm.id ? 'Save relationship' : 'Add relationship'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={resetRelationshipForm}>
+                  <Plus aria-hidden="true" />
+                  New relationship
+                </button>
+              </div>
               <label>
                 Source URL
                 <input
