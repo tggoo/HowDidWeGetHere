@@ -56,6 +56,116 @@ type TimePeriodListItem = {
   endYear?: number | null
 }
 
+type TagListItem = {
+  id: string
+  slug: string
+  tagGroup: string
+  name: string
+  parentTagId?: string | null
+  entryCount: number | string
+}
+
+type EntryDetail = EntryListItem & {
+  realityStatus: string
+  summary?: string | null
+  description?: string | null
+  whyItMatters?: string | null
+  datingNote?: string | null
+  timePrecision: string
+  timeConfidence?: string | null
+  tags: Array<{
+    id: string
+    slug: string
+    tagGroup: string
+    name: string
+  }>
+  timePeriods: Array<{
+    id: string
+    slug: string
+    name: string
+    relationType: string
+    periodType: string
+    startYear?: number | string | null
+    endYear?: number | string | null
+  }>
+  places: Array<{
+    placeId: string
+    slug: string
+    name: string
+    role: string
+    sortOrder: number | string
+    note?: string | null
+    placeType: string
+    spatialConfidence: string
+    longitude?: number | null
+    latitude?: number | null
+  }>
+  routes: Array<{
+    id: string
+    name: string
+    routeType: string
+    spatialConfidence: string
+    sourceNote?: string | null
+    geometry: Array<{ longitude: number; latitude: number }>
+    points: Array<{
+      placeId: string
+      slug: string
+      name: string
+      role: string
+      sortOrder: number | string
+      dateLabel?: string | null
+      note?: string | null
+      longitude?: number | null
+      latitude?: number | null
+    }>
+  }>
+  relatedEntries: Array<{
+    entryId: string
+    slug: string
+    title: string
+    kind: string
+    relationshipType: string
+    direction: string
+    confidence?: number | string | null
+    note?: string | null
+  }>
+  sources: Array<{
+    sourceId: string
+    url: string
+    title?: string | null
+    publisher?: string | null
+    languageCode?: string | null
+    supportsField: string
+    note?: string | null
+  }>
+  images: Array<{
+    id: string
+    url: string
+    kind: string
+    isPrimary: boolean
+    sortOrder: number | string
+    altText?: string | null
+    caption?: string | null
+    attribution?: string | null
+    license?: string | null
+    sourceUrl?: string | null
+  }>
+  audioTracks: Array<{
+    id: string
+    url: string
+    kind: string
+    languageCode: string
+    isPrimary: boolean
+    sortOrder: number | string
+    title?: string | null
+    transcript?: string | null
+    durationSeconds?: number | string | null
+    attribution?: string | null
+    license?: string | null
+    sourceUrl?: string | null
+  }>
+}
+
 type WorkbookImportResult = {
   importBatchId: string
   rowsRead: number | string
@@ -177,13 +287,19 @@ const fallbackPeriods: TimePeriodListItem[] = [
   },
 ]
 
-const tagOptions = [
+const fallbackTags: TagListItem[] = [
   { label: 'exploration', value: 'category-exploration' },
   { label: 'mythology', value: 'category-mythology' },
   { label: 'invention', value: 'category-inventions' },
   { label: 'science', value: 'category-science' },
   { label: 'war', value: 'category-war' },
-]
+].map((tag, index) => ({
+  id: `fallback-${index}`,
+  slug: tag.value,
+  tagGroup: 'category',
+  name: tag.label,
+  entryCount: 0,
+}))
 
 const entryKinds: EntryKind[] = [
   'Event',
@@ -226,7 +342,9 @@ function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
+  const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
+  const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [isAdminOpen, setAdminOpen] = useState(false)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
@@ -254,7 +372,7 @@ function App() {
     async function loadMapData() {
       setLoadingMap(true)
       try {
-        const [entriesResult, periodsResult] = await Promise.all([
+        const [entriesResult, periodsResult, tagsResult] = await Promise.all([
           apiClient.GET('/api/entries', {
             params: {
               query: {
@@ -270,13 +388,20 @@ function App() {
               },
             },
           }),
+          apiClient.GET('/api/tags', {
+            params: {
+              query: {
+                language,
+              },
+            },
+          }),
         ])
 
         if (!isActive) {
           return
         }
 
-        if (entriesResult.error || periodsResult.error) {
+        if (entriesResult.error || periodsResult.error || tagsResult.error) {
           setMapStatus('API responded, but one of the map queries failed.')
           return
         }
@@ -291,6 +416,10 @@ function App() {
 
         if (periodsResult.data && periodsResult.data.length > 0) {
           setPeriods(periodsResult.data as TimePeriodListItem[])
+        }
+
+        if (tagsResult.data && tagsResult.data.length > 0) {
+          setTags(tagsResult.data as TagListItem[])
         }
       } catch {
         if (isActive) {
@@ -309,6 +438,41 @@ function App() {
       isActive = false
     }
   }, [language, selectedTags, reloadKey])
+
+  useEffect(() => {
+    let isActive = true
+    const selectedEntry = entries.find((entry) => entry.id === selectedEntryId)
+
+    async function loadSelectedEntryDetail() {
+      if (!selectedEntry || selectedEntry.id.startsWith('draft-')) {
+        setSelectedEntryDetail(null)
+        return
+      }
+
+      const result = await apiClient.GET('/api/entries/{slug}', {
+        params: {
+          path: {
+            slug: selectedEntry.slug,
+          },
+          query: {
+            language,
+          },
+        },
+      })
+
+      if (!isActive) {
+        return
+      }
+
+      setSelectedEntryDetail(result.error || !result.data ? null : (result.data as EntryDetail))
+    }
+
+    void loadSelectedEntryDetail()
+
+    return () => {
+      isActive = false
+    }
+  }, [entries, language, selectedEntryId])
 
   useEffect(() => {
     if (adminToken) {
@@ -732,14 +896,15 @@ function App() {
               <span>Tags</span>
             </div>
             <div className="tag-grid">
-              {tagOptions.map((tag) => (
+              {tags.slice(0, 16).map((tag) => (
                 <button
-                  className={selectedTags.includes(tag.value) ? 'tag active' : 'tag'}
-                  key={tag.value}
+                  className={selectedTags.includes(tag.slug) ? 'tag active' : 'tag'}
+                  key={tag.id}
                   type="button"
-                  onClick={() => toggleTag(tag.value)}
+                  onClick={() => toggleTag(tag.slug)}
                 >
-                  {tag.label}
+                  {tag.name}
+                  {Number(tag.entryCount) > 0 && <small>{tag.entryCount}</small>}
                 </button>
               ))}
             </div>
@@ -799,25 +964,97 @@ function App() {
           <div className="entry-meta">
             <span>{selectedEntry?.kind}</span>
             <span>{selectedEntry?.dateLabel ?? 'Date unknown'}</span>
+            {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
+          {selectedEntryDetail?.images[0]?.url && (
+            <img
+              alt={selectedEntryDetail.images[0].altText ?? selectedEntryDetail.title}
+              className="entry-image"
+              src={selectedEntryDetail.images[0].url}
+            />
+          )}
+          {selectedEntryDetail?.summary && <p className="entry-summary">{selectedEntryDetail.summary}</p>}
+          {selectedEntryDetail?.whyItMatters && (
+            <div className="route-card">
+              <CheckCircle2 aria-hidden="true" />
+              <div>
+                <strong>Why it matters</strong>
+                <p>{selectedEntryDetail.whyItMatters}</p>
+              </div>
+            </div>
+          )}
           <div className="route-card">
             <Route aria-hidden="true" />
             <div>
-              <strong>Route-ready record</strong>
-              <p>Origins, stops, destinations and route geometry come from the backend model.</p>
+              <strong>
+                {selectedEntryDetail?.routes.length
+                  ? `${selectedEntryDetail.routes.length} route records`
+                  : 'Route-ready record'}
+              </strong>
+              <p>
+                {selectedEntryDetail?.routes[0]
+                  ? `${selectedEntryDetail.routes[0].name || selectedEntryDetail.routes[0].routeType}: ${selectedEntryDetail.routes[0].points.length} known points.`
+                  : 'Origins, stops, destinations and route geometry come from the backend model.'}
+              </p>
             </div>
           </div>
+          {selectedEntryDetail?.places.length ? (
+            <div className="detail-list">
+              <strong>Places</strong>
+              {selectedEntryDetail.places.map((place) => (
+                <span key={`${place.placeId}-${place.role}`}>
+                  {place.role}: {place.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {selectedEntryDetail?.tags.length ? (
+            <div className="detail-chip-list">
+              {selectedEntryDetail.tags.map((tag) => (
+                <span key={tag.id}>{tag.name}</span>
+              ))}
+            </div>
+          ) : null}
           <div className="route-card">
             <PlayCircle aria-hidden="true" />
             <div>
               <strong>Audio-ready text</strong>
               <p>
-                {selectedEntry?.primaryAudioUrl
+                {selectedEntryDetail?.audioTracks[0]?.url || selectedEntry?.primaryAudioUrl
                   ? 'A narrated track is attached for this language.'
                   : 'Narration can be attached per language for children and audio-first browsing.'}
               </p>
+              {selectedEntryDetail?.audioTracks[0]?.url && (
+                <audio controls src={selectedEntryDetail.audioTracks[0].url}>
+                  <track kind="captions" />
+                </audio>
+              )}
             </div>
           </div>
+          {selectedEntryDetail?.relatedEntries.length ? (
+            <div className="detail-list">
+              <strong>Related topics</strong>
+              {selectedEntryDetail.relatedEntries.map((entry) => (
+                <button
+                  key={`${entry.direction}-${entry.entryId}`}
+                  type="button"
+                  onClick={() => setSelectedEntryId(entries.find((item) => item.id === entry.entryId)?.id ?? selectedEntryId)}
+                >
+                  {entry.relationshipType}: {entry.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {selectedEntryDetail?.sources.length ? (
+            <div className="detail-list">
+              <strong>Sources</strong>
+              {selectedEntryDetail.sources.slice(0, 4).map((source) => (
+                <a href={source.url} key={`${source.sourceId}-${source.supportsField}`} rel="noreferrer" target="_blank">
+                  {source.title ?? source.publisher ?? source.url}
+                </a>
+              ))}
+            </div>
+          ) : null}
         </aside>
 
         {isAdminOpen && (

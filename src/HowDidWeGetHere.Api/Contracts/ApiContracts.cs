@@ -14,6 +14,49 @@ public sealed record EntryListItemResponse(
     string? PrimaryImageUrl,
     string? PrimaryAudioUrl);
 
+public sealed record EntryDetailResponse(
+    Guid Id,
+    string Slug,
+    string Kind,
+    string RealityStatus,
+    string Title,
+    string? Summary,
+    string? Description,
+    string? WhyItMatters,
+    string? DatingNote,
+    string? DateLabel,
+    long? StartYear,
+    byte? StartMonth,
+    byte? StartDay,
+    long? EndYear,
+    byte? EndMonth,
+    byte? EndDay,
+    string TimePrecision,
+    string? TimeConfidence,
+    Guid? PrimaryTimePeriodId,
+    IReadOnlyList<EntryTagResponse> Tags,
+    IReadOnlyList<EntryTimePeriodResponse> TimePeriods,
+    IReadOnlyList<EntryPlaceResponse> Places,
+    IReadOnlyList<EntryRouteResponse> Routes,
+    IReadOnlyList<EntryRelationshipResponse> RelatedEntries,
+    IReadOnlyList<EntrySourceResponse> Sources,
+    IReadOnlyList<EntryImageResponse> Images,
+    IReadOnlyList<EntryAudioTrackResponse> AudioTracks);
+
+public sealed record TagListItemResponse(
+    Guid Id,
+    string Slug,
+    string TagGroup,
+    string Name,
+    Guid? ParentTagId,
+    int EntryCount);
+
+public sealed record EntryTagResponse(
+    Guid Id,
+    string Slug,
+    string TagGroup,
+    string Name);
+
 public sealed record TimePeriodListItemResponse(
     Guid Id,
     string Slug,
@@ -23,6 +66,96 @@ public sealed record TimePeriodListItemResponse(
     string? ShortDescription,
     long? StartYear,
     long? EndYear);
+
+public sealed record EntryTimePeriodResponse(
+    Guid Id,
+    string Slug,
+    string Name,
+    string RelationType,
+    string PeriodType,
+    long? StartYear,
+    long? EndYear);
+
+public sealed record GeoCoordinateResponse(
+    double Longitude,
+    double Latitude);
+
+public sealed record EntryPlaceResponse(
+    Guid PlaceId,
+    string Slug,
+    string Name,
+    string Role,
+    int SortOrder,
+    string? Note,
+    string PlaceType,
+    string SpatialConfidence,
+    double? Longitude,
+    double? Latitude);
+
+public sealed record EntryRouteResponse(
+    Guid Id,
+    string Name,
+    string RouteType,
+    string SpatialConfidence,
+    string? SourceNote,
+    IReadOnlyList<GeoCoordinateResponse> Geometry,
+    IReadOnlyList<RoutePointResponse> Points);
+
+public sealed record RoutePointResponse(
+    Guid PlaceId,
+    string Slug,
+    string Name,
+    string Role,
+    int SortOrder,
+    string? DateLabel,
+    string? Note,
+    double? Longitude,
+    double? Latitude);
+
+public sealed record EntryRelationshipResponse(
+    Guid EntryId,
+    string Slug,
+    string Title,
+    string Kind,
+    string RelationshipType,
+    string Direction,
+    decimal? Confidence,
+    string? Note);
+
+public sealed record EntrySourceResponse(
+    Guid SourceId,
+    string Url,
+    string? Title,
+    string? Publisher,
+    string? LanguageCode,
+    string SupportsField,
+    string? Note);
+
+public sealed record EntryImageResponse(
+    Guid Id,
+    string Url,
+    string Kind,
+    bool IsPrimary,
+    int SortOrder,
+    string? AltText,
+    string? Caption,
+    string? Attribution,
+    string? License,
+    string? SourceUrl);
+
+public sealed record EntryAudioTrackResponse(
+    Guid Id,
+    string Url,
+    string Kind,
+    string LanguageCode,
+    bool IsPrimary,
+    int SortOrder,
+    string? Title,
+    string? Transcript,
+    int? DurationSeconds,
+    string? Attribution,
+    string? License,
+    string? SourceUrl);
 
 public sealed record AdminEntryListItemResponse(
     Guid Id,

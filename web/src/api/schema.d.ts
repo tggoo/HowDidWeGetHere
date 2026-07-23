@@ -494,6 +494,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entries/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                };
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDetailResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                    group?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TagListItemResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-periods": {
         parameters: {
             query?: never;
@@ -968,6 +1052,74 @@ export interface components {
         AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other";
         /** @enum {unknown} */
         ContentStatus: "Draft" | "Published" | "Archived";
+        EntryAudioTrackResponse: {
+            /** Format: uuid */
+            id: string;
+            url: string;
+            kind: string;
+            languageCode: string;
+            isPrimary: boolean;
+            /** Format: int32 */
+            sortOrder: number | string;
+            title: null | string;
+            transcript: null | string;
+            /** Format: int32 */
+            durationSeconds: null | number | string;
+            attribution: null | string;
+            license: null | string;
+            sourceUrl: null | string;
+        };
+        EntryDetailResponse: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            kind: string;
+            realityStatus: string;
+            title: string;
+            summary: null | string;
+            description: null | string;
+            whyItMatters: null | string;
+            datingNote: null | string;
+            dateLabel: null | string;
+            /** Format: int64 */
+            startYear: null | number | string;
+            /** Format: uint8 */
+            startMonth: null | number | string;
+            /** Format: uint8 */
+            startDay: null | number | string;
+            /** Format: int64 */
+            endYear: null | number | string;
+            /** Format: uint8 */
+            endMonth: null | number | string;
+            /** Format: uint8 */
+            endDay: null | number | string;
+            timePrecision: string;
+            timeConfidence: null | string;
+            /** Format: uuid */
+            primaryTimePeriodId: null | string;
+            tags: components["schemas"]["EntryTagResponse"][];
+            timePeriods: components["schemas"]["EntryTimePeriodResponse"][];
+            places: components["schemas"]["EntryPlaceResponse"][];
+            routes: components["schemas"]["EntryRouteResponse"][];
+            relatedEntries: components["schemas"]["EntryRelationshipResponse"][];
+            sources: components["schemas"]["EntrySourceResponse"][];
+            images: components["schemas"]["EntryImageResponse"][];
+            audioTracks: components["schemas"]["EntryAudioTrackResponse"][];
+        };
+        EntryImageResponse: {
+            /** Format: uuid */
+            id: string;
+            url: string;
+            kind: string;
+            isPrimary: boolean;
+            /** Format: int32 */
+            sortOrder: number | string;
+            altText: null | string;
+            caption: null | string;
+            attribution: null | string;
+            license: null | string;
+            sourceUrl: null | string;
+        };
         /** @enum {unknown} */
         EntryKind: "Event" | "Invention" | "MythologyEntity" | "MythologyStory" | "Period" | "Discovery" | "Exploration" | "War" | "Civilization" | "Person" | "Place" | "Text" | "Technology" | "ScientificConcept" | "Other";
         EntryListItemResponse: {
@@ -986,8 +1138,81 @@ export interface components {
             primaryImageUrl: null | string;
             primaryAudioUrl: null | string;
         };
+        EntryPlaceResponse: {
+            /** Format: uuid */
+            placeId: string;
+            slug: string;
+            name: string;
+            role: string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            note: null | string;
+            placeType: string;
+            spatialConfidence: string;
+            /** Format: double */
+            longitude: null | number | string;
+            /** Format: double */
+            latitude: null | number | string;
+        };
+        EntryRelationshipResponse: {
+            /** Format: uuid */
+            entryId: string;
+            slug: string;
+            title: string;
+            kind: string;
+            relationshipType: string;
+            direction: string;
+            /** Format: double */
+            confidence: null | number | string;
+            note: null | string;
+        };
+        EntryRouteResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            routeType: string;
+            spatialConfidence: string;
+            sourceNote: null | string;
+            geometry: components["schemas"]["GeoCoordinateResponse"][];
+            points: components["schemas"]["RoutePointResponse"][];
+        };
+        EntrySourceResponse: {
+            /** Format: uuid */
+            sourceId: string;
+            url: string;
+            title: null | string;
+            publisher: null | string;
+            languageCode: null | string;
+            supportsField: string;
+            note: null | string;
+        };
+        EntryTagResponse: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            tagGroup: string;
+            name: string;
+        };
+        EntryTimePeriodResponse: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            relationType: string;
+            periodType: string;
+            /** Format: int64 */
+            startYear: null | number | string;
+            /** Format: int64 */
+            endYear: null | number | string;
+        };
         ForgotPasswordRequest: {
             email: string;
+        };
+        GeoCoordinateResponse: {
+            /** Format: double */
+            longitude: number | string;
+            /** Format: double */
+            latitude: number | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -1041,8 +1266,34 @@ export interface components {
             id: string;
             slug: null | string;
         };
+        RoutePointResponse: {
+            /** Format: uuid */
+            placeId: string;
+            slug: string;
+            name: string;
+            role: string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            dateLabel: null | string;
+            note: null | string;
+            /** Format: double */
+            longitude: null | number | string;
+            /** Format: double */
+            latitude: null | number | string;
+        };
         /** @enum {unknown} */
         StorageProvider: "Local" | "S3" | "AzureBlob" | "ExternalUrl";
+        TagListItemResponse: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            tagGroup: string;
+            name: string;
+            /** Format: uuid */
+            parentTagId: null | string;
+            /** Format: int32 */
+            entryCount: number | string;
+        };
         TimePeriodListItemResponse: {
             /** Format: uuid */
             id: string;

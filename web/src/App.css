@@ -174,14 +174,23 @@
 }
 
 .tag {
+  align-items: center;
   background: #ffffff;
   border: 1px solid #cfd8df;
   border-radius: 6px;
   color: #344054;
   cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
   font: inherit;
   min-height: 32px;
   padding: 5px 9px;
+}
+
+.tag small {
+  color: inherit;
+  font-size: 11px;
+  opacity: 0.72;
 }
 
 .tag.active {
@@ -294,6 +303,21 @@
   margin: 18px 0 10px;
 }
 
+.entry-image {
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  display: block;
+  margin-top: 14px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.entry-summary {
+  color: #344054;
+  line-height: 1.5;
+  margin: 14px 0 0;
+}
+
 .entry-meta {
   flex-wrap: wrap;
   gap: 8px;
@@ -319,6 +343,55 @@
 .route-card p {
   color: #667085;
   margin: 4px 0 0;
+}
+
+.route-card audio {
+  margin-top: 8px;
+  max-width: 100%;
+  width: 100%;
+}
+
+.detail-list {
+  border-top: 1px solid #d8dee4;
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.detail-list strong {
+  color: #17191c;
+}
+
+.detail-list a,
+.detail-list button,
+.detail-list span {
+  color: #344054;
+  font: inherit;
+  line-height: 1.35;
+}
+
+.detail-list button {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.detail-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.detail-chip-list span {
+  background: #eef2f5;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 13px;
+  padding: 4px 8px;
 }
 
 .admin-panel {

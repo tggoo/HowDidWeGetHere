@@ -2,6 +2,7 @@ using HowDidWeGetHere.Api.Contracts;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 
 namespace HowDidWeGetHere.Api.Endpoints;
 
@@ -18,6 +19,13 @@ public static class PublicEndpoints
 
         api.MapGet("/entries", GetEntriesAsync)
             .Produces<List<EntryListItemResponse>>(StatusCodes.Status200OK);
+
+        api.MapGet("/entries/{slug}", GetEntryAsync)
+            .Produces<EntryDetailResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/tags", GetTagsAsync)
+            .Produces<List<TagListItemResponse>>(StatusCodes.Status200OK);
 
         api.MapGet("/time-periods", GetTimePeriodsAsync)
             .Produces<List<TimePeriodListItemResponse>>(StatusCodes.Status200OK);
@@ -85,6 +93,227 @@ public static class PublicEndpoints
         return Results.Ok(entries);
     }
 
+    private static async Task<IResult> GetEntryAsync(
+        string slug,
+        HistoryDbContext dbContext,
+        string? language,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var entry = await dbContext.Entries
+            .AsNoTracking()
+            .Include(item => item.Translations)
+            .Include(item => item.Tags)
+                .ThenInclude(entryTag => entryTag.Tag)
+                    .ThenInclude(tag => tag.Translations)
+            .Include(item => item.TimePeriods)
+                .ThenInclude(entryPeriod => entryPeriod.TimePeriod)
+                    .ThenInclude(period => period.Translations)
+            .Include(item => item.Places)
+                .ThenInclude(entryPlace => entryPlace.Place)
+                    .ThenInclude(place => place.Translations)
+            .Include(item => item.Routes)
+                .ThenInclude(route => route.Points)
+                    .ThenInclude(point => point.Place)
+                        .ThenInclude(place => place.Translations)
+            .Include(item => item.OutgoingRelationships)
+                .ThenInclude(relationship => relationship.ToEntry)
+                    .ThenInclude(relatedEntry => relatedEntry.Translations)
+            .Include(item => item.IncomingRelationships)
+                .ThenInclude(relationship => relationship.FromEntry)
+                    .ThenInclude(relatedEntry => relatedEntry.Translations)
+            .Include(item => item.Sources)
+                .ThenInclude(entrySource => entrySource.Source)
+            .Include(item => item.Images)
+                .ThenInclude(image => image.Translations)
+            .Include(item => item.AudioTracks)
+            .FirstOrDefaultAsync(
+                item => item.Status == ContentStatus.Published && item.Slug == slug,
+                cancellationToken);
+
+        if (entry is null)
+        {
+            return Results.NotFound();
+        }
+
+        var translation = entry.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+            ?? entry.Translations.FirstOrDefault();
+
+        var response = new EntryDetailResponse(
+            entry.Id,
+            entry.Slug,
+            entry.Kind.ToString(),
+            entry.RealityStatus.ToString(),
+            translation?.Title ?? entry.DefaultTitle,
+            translation?.Summary,
+            translation?.Description,
+            translation?.WhyItMatters,
+            translation?.DatingNote,
+            entry.DateLabel,
+            entry.StartYear,
+            entry.StartMonth,
+            entry.StartDay,
+            entry.EndYear,
+            entry.EndMonth,
+            entry.EndDay,
+            entry.TimePrecision.ToString(),
+            entry.TimeConfidence,
+            entry.PrimaryTimePeriodId,
+            entry.Tags
+                .OrderBy(entryTag => entryTag.Tag.TagGroup)
+                .ThenBy(entryTag => LocalizedTagName(entryTag.Tag, lang))
+                .Select(entryTag => new EntryTagResponse(
+                    entryTag.Tag.Id,
+                    entryTag.Tag.Slug,
+                    entryTag.Tag.TagGroup,
+                    LocalizedTagName(entryTag.Tag, lang)))
+                .ToList(),
+            entry.TimePeriods
+                .OrderBy(entryPeriod => entryPeriod.TimePeriod.StartYear ?? long.MaxValue)
+                .ThenBy(entryPeriod => LocalizedPeriodName(entryPeriod.TimePeriod, lang))
+                .Select(entryPeriod => new EntryTimePeriodResponse(
+                    entryPeriod.TimePeriod.Id,
+                    entryPeriod.TimePeriod.Slug,
+                    LocalizedPeriodName(entryPeriod.TimePeriod, lang),
+                    entryPeriod.RelationType.ToString(),
+                    entryPeriod.TimePeriod.PeriodType.ToString(),
+                    entryPeriod.TimePeriod.StartYear,
+                    entryPeriod.TimePeriod.EndYear))
+                .ToList(),
+            entry.Places
+                .OrderBy(entryPlace => entryPlace.SortOrder)
+                .Select(entryPlace => new EntryPlaceResponse(
+                    entryPlace.PlaceId,
+                    entryPlace.Place.Slug,
+                    LocalizedPlaceName(entryPlace.Place, lang),
+                    entryPlace.Role.ToString(),
+                    entryPlace.SortOrder,
+                    entryPlace.Note,
+                    entryPlace.Place.PlaceType.ToString(),
+                    entryPlace.Place.SpatialConfidence.ToString(),
+                    Longitude(entryPlace.Place.Geometry),
+                    Latitude(entryPlace.Place.Geometry)))
+                .ToList(),
+            entry.Routes
+                .OrderBy(route => route.Name)
+                .Select(route => new EntryRouteResponse(
+                    route.Id,
+                    route.Name,
+                    route.RouteType.ToString(),
+                    route.SpatialConfidence.ToString(),
+                    route.SourceNote,
+                    Coordinates(route.Geometry),
+                    route.Points
+                        .OrderBy(point => point.SortOrder)
+                        .Select(point => new RoutePointResponse(
+                            point.PlaceId,
+                            point.Place.Slug,
+                            LocalizedPlaceName(point.Place, lang),
+                            point.Role.ToString(),
+                            point.SortOrder,
+                            point.DateLabel,
+                            point.Note,
+                            Longitude(point.Place.Geometry),
+                            Latitude(point.Place.Geometry)))
+                        .ToList()))
+                .ToList(),
+            entry.OutgoingRelationships
+                .Where(relationship => relationship.ToEntry.Status == ContentStatus.Published)
+                .Select(relationship => RelatedEntry(relationship.ToEntry, relationship.RelationshipType.ToString(), "outgoing", relationship.Confidence, relationship.Note, lang))
+                .Concat(entry.IncomingRelationships
+                    .Where(relationship => relationship.FromEntry.Status == ContentStatus.Published)
+                    .Select(relationship => RelatedEntry(relationship.FromEntry, relationship.RelationshipType.ToString(), "incoming", relationship.Confidence, relationship.Note, lang)))
+                .OrderBy(relationship => relationship.Title)
+                .ToList(),
+            entry.Sources
+                .OrderBy(entrySource => entrySource.SupportsField)
+                .ThenBy(entrySource => entrySource.Source.Title ?? entrySource.Source.Url)
+                .Select(entrySource => new EntrySourceResponse(
+                    entrySource.SourceId,
+                    entrySource.Source.Url,
+                    entrySource.Source.Title,
+                    entrySource.Source.Publisher,
+                    entrySource.Source.LanguageCode,
+                    entrySource.SupportsField.ToString(),
+                    entrySource.Note))
+                .ToList(),
+            entry.Images
+                .OrderByDescending(image => image.IsPrimary)
+                .ThenBy(image => image.SortOrder)
+                .Select(image =>
+                {
+                    var imageTranslation = image.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+                        ?? image.Translations.FirstOrDefault();
+                    return new EntryImageResponse(
+                        image.Id,
+                        image.PublicUrl ?? image.StorageKey,
+                        image.Kind.ToString(),
+                        image.IsPrimary,
+                        image.SortOrder,
+                        imageTranslation?.AltText,
+                        imageTranslation?.Caption,
+                        image.Attribution,
+                        image.License,
+                        image.SourceUrl);
+                })
+                .ToList(),
+            entry.AudioTracks
+                .Where(audio => audio.LanguageCode == lang)
+                .OrderByDescending(audio => audio.IsPrimary)
+                .ThenBy(audio => audio.SortOrder)
+                .Select(audio => new EntryAudioTrackResponse(
+                    audio.Id,
+                    audio.PublicUrl ?? audio.StorageKey,
+                    audio.Kind.ToString(),
+                    audio.LanguageCode,
+                    audio.IsPrimary,
+                    audio.SortOrder,
+                    audio.Title,
+                    audio.Transcript,
+                    audio.DurationSeconds,
+                    audio.Attribution,
+                    audio.License,
+                    audio.SourceUrl))
+                .ToList());
+
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetTagsAsync(
+        HistoryDbContext dbContext,
+        string? language,
+        string? group,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var query = dbContext.Tags
+            .AsNoTracking()
+            .Include(tag => tag.Translations)
+            .Include(tag => tag.Entries)
+                .ThenInclude(entryTag => entryTag.Entry)
+            .Where(tag => tag.Entries.Any(entryTag => entryTag.Entry.Status == ContentStatus.Published));
+
+        if (!string.IsNullOrWhiteSpace(group))
+        {
+            query = query.Where(tag => tag.TagGroup == group);
+        }
+
+        var tags = await query.ToListAsync(cancellationToken);
+        var response = tags
+            .Select(tag => new TagListItemResponse(
+                tag.Id,
+                tag.Slug,
+                tag.TagGroup,
+                LocalizedTagName(tag, lang),
+                tag.ParentTagId,
+                tag.Entries.Count(entryTag => entryTag.Entry.Status == ContentStatus.Published)))
+            .OrderBy(tag => tag.TagGroup)
+            .ThenBy(tag => tag.Name)
+            .ToList();
+
+        return Results.Ok(response);
+    }
+
     private static async Task<IResult> GetTimePeriodsAsync(
         HistoryDbContext dbContext,
         string? language,
@@ -115,5 +344,78 @@ public static class PublicEndpoints
 
         return Results.Ok(periods);
     }
-}
 
+    private static string LocalizedTagName(Domain.Tags.Tag tag, string language) =>
+        tag.Translations
+            .Where(translation => translation.LanguageCode == language)
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        tag.Translations
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        tag.Slug;
+
+    private static string LocalizedPeriodName(Domain.Entries.TimePeriod period, string language) =>
+        period.Translations
+            .Where(translation => translation.LanguageCode == language)
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        period.Translations
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        period.Slug;
+
+    private static string LocalizedPlaceName(Domain.Places.Place place, string language) =>
+        place.Translations
+            .Where(translation => translation.LanguageCode == language)
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        place.Translations
+            .Select(translation => translation.Name)
+            .FirstOrDefault() ??
+        place.DefaultName;
+
+    private static EntryRelationshipResponse RelatedEntry(
+        Domain.Entries.Entry entry,
+        string relationshipType,
+        string direction,
+        decimal? confidence,
+        string? note,
+        string language)
+    {
+        var title = entry.Translations
+            .Where(translation => translation.LanguageCode == language)
+            .Select(translation => translation.Title)
+            .FirstOrDefault() ??
+            entry.Translations
+                .Select(translation => translation.Title)
+                .FirstOrDefault() ??
+            entry.DefaultTitle;
+
+        return new EntryRelationshipResponse(
+            entry.Id,
+            entry.Slug,
+            title,
+            entry.Kind.ToString(),
+            relationshipType,
+            direction,
+            confidence,
+            note);
+    }
+
+    private static double? Longitude(Geometry? geometry) =>
+        geometry is Point point ? point.X : null;
+
+    private static double? Latitude(Geometry? geometry) =>
+        geometry is Point point ? point.Y : null;
+
+    private static IReadOnlyList<GeoCoordinateResponse> Coordinates(Geometry? geometry) =>
+        geometry switch
+        {
+            LineString lineString => lineString.Coordinates
+                .Select(coordinate => new GeoCoordinateResponse(coordinate.X, coordinate.Y))
+                .ToList(),
+            Point point => [new GeoCoordinateResponse(point.X, point.Y)],
+            _ => []
+        };
+}
