@@ -27,6 +27,8 @@ Last updated: 2026-07-23
 - 2026-07-23: Added hierarchical time period filter panel using parent/child periods.
 - 2026-07-23: Added admin image/audio update/delete endpoints and media edit/delete controls for URL-based media.
 - 2026-07-23: Fixed mobile admin and entry detail panels to open as full-screen closeable overlays.
+- 2026-07-23: Added local admin image/audio file upload workflow and static media serving.
+- 2026-07-23: Reworked admin panel so content tools are visible only after sign-in and grouped into single-page admin sections with table views.
 
 ## Goal
 
@@ -105,6 +107,8 @@ Build a mobile-first historical world map app with:
 - update entry
 - add entry image URL
 - add entry audio URL
+- upload local entry image files
+- upload local entry audio files
 - update and delete entry images
 - update and delete entry audio tracks
 - add place/coordinate to entry
@@ -148,6 +152,9 @@ Build a mobile-first historical world map app with:
 - Leaflet map sends visible bounds to the API so map data follows the viewport
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
+- admin content tools are hidden until sign-in succeeds
+- admin tools are grouped into separate pages for import, periods, tags, entry editing, places, routes, relationships, sources and media
+- admin entity pages include table views for periods, tags, places, routes, relationships, sources and media
 - mobile admin panel opens as a full-screen closeable panel
 - workbook upload/import from frontend
 - workbook import result displays created and updated entry counts
@@ -169,6 +176,8 @@ Build a mobile-first historical world map app with:
 - unused tag delete control
 - primary image URL attachment
 - primary audio URL attachment
+- primary image file upload
+- primary audio file upload
 - image/audio URL edit and delete controls
 
 ### Deployment
@@ -194,7 +203,7 @@ The importer reads the current workbook sheets, creates or updates entries, tags
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add/edit/delete media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include richer validation and real media upload/storage.
+Admin can sign in, import, list entries, create/edit basic content, add/edit/delete media URLs, upload local image/audio files, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. Admin tools are now separated into single-page sections with table views for non-entry entities. It is not yet a complete CMS. Missing pieces include richer validation and cloud/object media storage.
 
 ### Multilingual support
 
@@ -221,7 +230,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Media storage
 
-- file upload for images/audio
 - object storage integration
 - thumbnail generation
 - image/audio moderation/validation

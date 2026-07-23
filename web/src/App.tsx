@@ -228,6 +228,7 @@ type AdminEntryDetail = AdminEntryListItem & {
   timePrecision?: string | null
   timeConfidence?: string | null
   primaryTimePeriodId?: string | null
+  places: EntryDetail['places']
   routes: EntryRouteDetail[]
   relationships: AdminEntryRelationshipDetail[]
   sources: EntryDetail['sources']
@@ -534,6 +535,20 @@ function periodYearLabel(period: TimePeriodListItem) {
   return `${period.startYear ?? '?'}-${period.endYear ?? '?'}`
 }
 
+type AdminPage = 'import' | 'periods' | 'tags' | 'entry' | 'places' | 'routes' | 'relationships' | 'sources' | 'media'
+
+const adminPages: Array<{ id: AdminPage; label: string }> = [
+  { id: 'import', label: 'Import' },
+  { id: 'periods', label: 'Periods' },
+  { id: 'tags', label: 'Tags' },
+  { id: 'entry', label: 'Entry' },
+  { id: 'places', label: 'Places' },
+  { id: 'routes', label: 'Routes' },
+  { id: 'relationships', label: 'Relations' },
+  { id: 'sources', label: 'Sources' },
+  { id: 'media', label: 'Media' },
+]
+
 function App() {
   const [language, setLanguage] = useState('en')
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
@@ -550,6 +565,7 @@ function App() {
   const [toYear, setToYear] = useState('')
   const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
   const [isAdminOpen, setAdminOpen] = useState(false)
+  const [adminPage, setAdminPage] = useState<AdminPage>('import')
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
   const [adminEmail, setAdminEmail] = useState('')
@@ -567,12 +583,16 @@ function App() {
     imageId: null as string | null,
     imageUrl: '',
     imageAlt: '',
+    imageFile: null as File | null,
     audioTrackId: null as string | null,
     audioUrl: '',
     audioTitle: '',
+    audioFile: null as File | null,
   })
+  const [mediaInputResetKey, setMediaInputResetKey] = useState(0)
   const [adminEntryImages, setAdminEntryImages] = useState<EntryDetail['images']>([])
   const [adminEntryAudioTracks, setAdminEntryAudioTracks] = useState<EntryDetail['audioTracks']>([])
+  const [adminEntryPlaces, setAdminEntryPlaces] = useState<EntryDetail['places']>([])
   const [placeForm, setPlaceForm] = useState({
     name: '',
     slug: '',
@@ -908,7 +928,9 @@ function App() {
       imageId: null,
       imageUrl: '',
       imageAlt: '',
+      imageFile: null,
     }))
+    setMediaInputResetKey((value) => value + 1)
   }
 
   function resetAudioForm() {
@@ -917,7 +939,9 @@ function App() {
       audioTrackId: null,
       audioUrl: '',
       audioTitle: '',
+      audioFile: null,
     }))
+    setMediaInputResetKey((value) => value + 1)
   }
 
   function loadImageForm(image: EntryDetail['images'][number]) {
@@ -926,7 +950,9 @@ function App() {
       imageId: image.id,
       imageUrl: image.url,
       imageAlt: image.altText ?? '',
+      imageFile: null,
     }))
+    setMediaInputResetKey((value) => value + 1)
   }
 
   function loadAudioForm(audioTrack: EntryDetail['audioTracks'][number]) {
@@ -935,7 +961,9 @@ function App() {
       audioTrackId: audioTrack.id,
       audioUrl: audioTrack.url,
       audioTitle: audioTrack.title ?? '',
+      audioFile: null,
     }))
+    setMediaInputResetKey((value) => value + 1)
   }
 
   function patchRouteForm(patch: Partial<typeof routeForm>) {
@@ -1074,10 +1102,13 @@ function App() {
       imageId: null,
       imageUrl: '',
       imageAlt: '',
+      imageFile: null,
       audioTrackId: null,
       audioUrl: '',
       audioTitle: '',
+      audioFile: null,
     })
+    setMediaInputResetKey((value) => value + 1)
     setPlaceForm({
       name: '',
       slug: '',
@@ -1128,6 +1159,7 @@ function App() {
     setAdminEntryTags([])
     setAdminEntryImages([])
     setAdminEntryAudioTracks([])
+    setAdminEntryPlaces([])
   }
 
   function loadTagForm(tag: Pick<TagListItem, 'id' | 'name' | 'slug' | 'tagGroup'> & Partial<Pick<TagListItem, 'parentTagId'>>) {
@@ -1207,13 +1239,14 @@ function App() {
       return
     }
 
-    const detail = result.data as AdminEntryDetail
+    const detail = result.data as unknown as AdminEntryDetail
     const detailRoutes = detail.routes ?? []
     const detailRelationships = detail.relationships ?? []
     const detailSources = detail.sources ?? []
     const detailTags = detail.tags ?? []
     const detailImages = detail.images ?? []
     const detailAudioTracks = detail.audioTracks ?? []
+    const detailPlaces = detail.places ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1239,6 +1272,7 @@ function App() {
     setAdminEntryTags(detailTags)
     setAdminEntryImages(detailImages)
     setAdminEntryAudioTracks(detailAudioTracks)
+    setAdminEntryPlaces(detailPlaces)
     setMediaForm((current) => {
       const image = current.imageId ? detailImages.find((item) => item.id === current.imageId) : null
       const audioTrack = current.audioTrackId
@@ -1249,11 +1283,14 @@ function App() {
         imageId: image?.id ?? null,
         imageUrl: image?.url ?? '',
         imageAlt: image?.altText ?? '',
+        imageFile: null,
         audioTrackId: audioTrack?.id ?? null,
         audioUrl: audioTrack?.url ?? '',
         audioTitle: audioTrack?.title ?? '',
+        audioFile: null,
       }
     })
+    setMediaInputResetKey((value) => value + 1)
     setRouteForm((current) => {
       if (!current.id) {
         return current
@@ -1521,6 +1558,41 @@ function App() {
     await loadAdminEntryDetail(entryForm.id)
   }
 
+  async function uploadPrimaryImageFile() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before uploading an image.')
+      return
+    }
+
+    if (!mediaForm.imageFile) {
+      setAdminStatus('Choose an image file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', mediaForm.imageFile)
+    formData.append('languageCode', entryForm.languageCode)
+    formData.append('altText', mediaForm.imageAlt.trim() || entryForm.title)
+
+    setAdminStatus('Uploading image...')
+    const response = await fetch(`${apiBaseUrl}/api/admin/entries/${entryForm.id}/images/upload`, {
+      method: 'POST',
+      headers: authHeaders(),
+      credentials: 'include',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      setAdminStatus('Image upload failed.')
+      return
+    }
+
+    resetImageForm()
+    setAdminStatus('Image uploaded.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
   async function deleteEntryImage(imageId: string) {
     if (!entryForm.id || !adminToken) {
       setAdminStatus('Select an entry before deleting an image.')
@@ -1609,6 +1681,41 @@ function App() {
 
     resetAudioForm()
     setAdminStatus(mediaForm.audioTrackId ? 'Audio saved.' : 'Audio added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function uploadPrimaryAudioFile() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before uploading audio.')
+      return
+    }
+
+    if (!mediaForm.audioFile) {
+      setAdminStatus('Choose an audio file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', mediaForm.audioFile)
+    formData.append('languageCode', entryForm.languageCode)
+    formData.append('title', mediaForm.audioTitle.trim() || entryForm.title)
+
+    setAdminStatus('Uploading audio...')
+    const response = await fetch(`${apiBaseUrl}/api/admin/entries/${entryForm.id}/audio-tracks/upload`, {
+      method: 'POST',
+      headers: authHeaders(),
+      credentials: 'include',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      setAdminStatus('Audio upload failed.')
+      return
+    }
+
+    resetAudioForm()
+    setAdminStatus('Audio uploaded.')
     setReloadKey((value) => value + 1)
     await loadAdminEntryDetail(entryForm.id)
   }
@@ -2469,31 +2576,47 @@ function App() {
               {adminToken ? <CheckCircle2 aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}
               <span>{adminStatus}</span>
             </div>
-            <form className="admin-form" onSubmit={signInAdmin}>
-              <label>
-                Email
-                <input
-                  autoComplete="email"
-                  type="email"
-                  value={adminEmail}
-                  onChange={(event) => setAdminEmail(event.target.value)}
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  autoComplete="current-password"
-                  type="password"
-                  value={adminPassword}
-                  onChange={(event) => setAdminPassword(event.target.value)}
-                />
-              </label>
-              <button className="admin-action" type="submit">
-                <Lock aria-hidden="true" />
-                Sign in
-              </button>
-            </form>
-            <div className="admin-form">
+            {!adminToken ? (
+              <form className="admin-form" onSubmit={signInAdmin}>
+                <label>
+                  Email
+                  <input
+                    autoComplete="email"
+                    type="email"
+                    value={adminEmail}
+                    onChange={(event) => setAdminEmail(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    autoComplete="current-password"
+                    type="password"
+                    value={adminPassword}
+                    onChange={(event) => setAdminPassword(event.target.value)}
+                  />
+                </label>
+                <button className="admin-action" type="submit">
+                  <Lock aria-hidden="true" />
+                  Sign in
+                </button>
+              </form>
+            ) : (
+              <>
+                <nav className="admin-page-tabs" aria-label="Admin sections">
+                  {adminPages.map((page) => (
+                    <button
+                      className={adminPage === page.id ? 'active' : ''}
+                      key={page.id}
+                      type="button"
+                      onClick={() => setAdminPage(page.id)}
+                    >
+                      {page.label}
+                    </button>
+                  ))}
+                </nav>
+                {adminPage === 'import' && (
+                  <div className="admin-form">
               <label>
                 Workbook
                 <input
@@ -2506,15 +2629,18 @@ function App() {
                 <Upload aria-hidden="true" />
                 {isImporting ? 'Importing...' : 'Import workbook'}
               </button>
-            </div>
-            {importResult && (
-              <div className="import-result">
-                <strong>{importResult.entriesCreated} entries imported</strong>
-                <span>{importResult.entriesUpdated} entries updated</span>
-                <span>{importResult.rowsRead} rows read</span>
-                {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
-              </div>
-            )}
+                  </div>
+                )}
+                {adminPage === 'import' && importResult && (
+                  <div className="import-result">
+                    <strong>{importResult.entriesCreated} entries imported</strong>
+                    <span>{importResult.entriesUpdated} entries updated</span>
+                    <span>{importResult.rowsRead} rows read</span>
+                    {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
+                  </div>
+                )}
+                {adminPage === 'periods' && (
+                  <>
             <div className="admin-section-title">
               <span>Time periods</span>
               <button
@@ -2525,20 +2651,29 @@ function App() {
                 <Plus aria-hidden="true" />
               </button>
             </div>
-            <div className="period-list compact">
-              {periods.slice(0, 6).map((period) => (
-                <button
-                  className={timePeriodForm.id === period.id ? 'period-item active' : 'period-item'}
-                  key={period.id}
-                  type="button"
-                  onClick={() => loadTimePeriodForm(period)}
-                >
-                  <span>{period.name}</span>
-                  <small>
-                    {period.startYear ?? '?'}-{period.endYear ?? '?'}
-                  </small>
-                </button>
-              ))}
+            <div className="admin-table-scroll">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Years</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {periods.map((period) => (
+                    <tr
+                      className={timePeriodForm.id === period.id ? 'active' : ''}
+                      key={period.id}
+                      onClick={() => loadTimePeriodForm(period)}
+                    >
+                      <td>{period.name}</td>
+                      <td>{period.periodType}</td>
+                      <td>{periodYearLabel(period)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             <form className="entry-editor" onSubmit={saveTimePeriod}>
               <label>
@@ -2622,6 +2757,10 @@ function App() {
                 </button>
               )}
             </form>
+                  </>
+                )}
+                {adminPage === 'tags' && (
+                  <>
             <div className="admin-section-title">
               <span>Tags</span>
               <button
@@ -2641,17 +2780,29 @@ function App() {
                 <Plus aria-hidden="true" />
               </button>
             </div>
-            <div className="tag-grid">
-              {tags.slice(0, 12).map((tag) => (
-                <button
-                  className={tagForm.id === tag.id ? 'tag active' : 'tag'}
-                  key={tag.id}
-                  type="button"
-                  onClick={() => loadTagForm(tag)}
-                >
-                  {tag.name}
-                </button>
-              ))}
+            <div className="admin-table-scroll">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Group</th>
+                    <th>Entries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tags.map((tag) => (
+                    <tr
+                      className={tagForm.id === tag.id ? 'active' : ''}
+                      key={tag.id}
+                      onClick={() => loadTagForm(tag)}
+                    >
+                      <td>{tag.name}</td>
+                      <td>{tag.tagGroup}</td>
+                      <td>{tag.entryCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             <form className="entry-editor" onSubmit={saveTag}>
               <label>
@@ -2745,6 +2896,10 @@ function App() {
                 </div>
               )}
             </form>
+                  </>
+                )}
+                {adminPage === 'entry' && (
+                  <>
             <div className="admin-section-title">
               <span>Content</span>
               <button className="icon-button subtle" type="button" onClick={resetEntryForm}>
@@ -2909,7 +3064,37 @@ function App() {
                 {entryForm.id ? 'Save entry' : 'Create entry'}
               </button>
             </form>
+                  </>
+                )}
+                {(['places', 'routes', 'relationships', 'sources', 'media'] as AdminPage[]).includes(adminPage) && (
             <div className="media-editor">
+              {adminPage === 'places' && (
+                <>
+                  <div className="admin-section-title">
+                    <span>Places</span>
+                  </div>
+                  <div className="admin-table-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Role</th>
+                          <th>Coordinates</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminEntryPlaces.map((place) => (
+                          <tr key={`${place.placeId}-${place.role}`}>
+                            <td>{place.name}</td>
+                            <td>{place.role}</td>
+                            <td>
+                              {place.longitude ?? '?'} / {place.latitude ?? '?'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
               <label>
                 Place name
                 <input
@@ -2997,6 +3182,33 @@ function App() {
                 <MapPin aria-hidden="true" />
                 Add place
               </button>
+                </>
+              )}
+              {adminPage === 'routes' && (
+                <>
+                  <div className="admin-section-title">
+                    <span>Routes</span>
+                  </div>
+                  <div className="admin-table-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Type</th>
+                          <th>Points</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminEntryRoutes.map((route) => (
+                          <tr key={route.id} onClick={() => loadRouteForm(route)}>
+                            <td>{route.name || route.routeType}</td>
+                            <td>{route.routeType}</td>
+                            <td>{route.points.length}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
               {adminEntryRoutes.length > 0 && (
                 <div className="route-manager">
                   <strong>Routes</strong>
@@ -3081,6 +3293,33 @@ function App() {
                   New route
                 </button>
               </div>
+                </>
+              )}
+              {adminPage === 'relationships' && (
+                <>
+                  <div className="admin-section-title">
+                    <span>Relationships</span>
+                  </div>
+                  <div className="admin-table-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Target</th>
+                          <th>Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminEntryRelationships.map((relationship) => (
+                          <tr key={relationship.id} onClick={() => loadRelationshipForm(relationship)}>
+                            <td>{relationship.relationshipType}</td>
+                            <td>{relationship.targetEntryTitle}</td>
+                            <td>{relationship.confidence ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
               {adminEntryRelationships.length > 0 && (
                 <div className="route-manager">
                   <strong>Relationships</strong>
@@ -3162,6 +3401,33 @@ function App() {
                   New relationship
                 </button>
               </div>
+                </>
+              )}
+              {adminPage === 'sources' && (
+                <>
+                  <div className="admin-section-title">
+                    <span>Sources</span>
+                  </div>
+                  <div className="admin-table-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Title</th>
+                          <th>Field</th>
+                          <th>Publisher</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminEntrySources.map((source) => (
+                          <tr key={`${source.sourceId}-${source.supportsField}`} onClick={() => loadSourceForm(source)}>
+                            <td>{source.title || source.url}</td>
+                            <td>{source.supportsField}</td>
+                            <td>{source.publisher || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
               {adminEntrySources.length > 0 && (
                 <div className="route-manager">
                   <strong>Sources</strong>
@@ -3244,6 +3510,40 @@ function App() {
                   New source
                 </button>
               </div>
+                </>
+              )}
+              {adminPage === 'media' && (
+                <>
+                  <div className="admin-section-title">
+                    <span>Media</span>
+                  </div>
+                  <div className="admin-table-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Kind</th>
+                          <th>Title / alt</th>
+                          <th>Primary</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminEntryImages.map((image) => (
+                          <tr key={image.id} onClick={() => loadImageForm(image)}>
+                            <td>Image</td>
+                            <td>{image.altText || image.caption || image.url}</td>
+                            <td>{image.isPrimary ? 'Yes' : 'No'}</td>
+                          </tr>
+                        ))}
+                        {adminEntryAudioTracks.map((audioTrack) => (
+                          <tr key={audioTrack.id} onClick={() => loadAudioForm(audioTrack)}>
+                            <td>Audio</td>
+                            <td>{audioTrack.title || audioTrack.url}</td>
+                            <td>{audioTrack.isPrimary ? 'Yes' : 'No'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
               {adminEntryImages.length > 0 && (
                 <div className="route-manager">
                   <strong>Images</strong>
@@ -3281,10 +3581,28 @@ function App() {
                   onChange={(event) => setMediaForm((current) => ({ ...current, imageAlt: event.target.value }))}
                 />
               </label>
+              <label>
+                Image file
+                <input
+                  key={`image-file-${mediaInputResetKey}`}
+                  accept="image/avif,image/gif,image/jpeg,image/png,image/webp"
+                  type="file"
+                  onChange={(event) =>
+                    setMediaForm((current) => ({
+                      ...current,
+                      imageFile: event.currentTarget.files?.[0] ?? null,
+                    }))
+                  }
+                />
+              </label>
               <div className="admin-field-row">
                 <button className="admin-action secondary" type="button" onClick={savePrimaryImage}>
                   <ImageIcon aria-hidden="true" />
                   {mediaForm.imageId ? 'Save image' : 'Add image'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={uploadPrimaryImageFile}>
+                  <Upload aria-hidden="true" />
+                  Upload image file
                 </button>
                 <button className="admin-action secondary" type="button" onClick={resetImageForm}>
                   <Plus aria-hidden="true" />
@@ -3332,17 +3650,40 @@ function App() {
                   onChange={(event) => setMediaForm((current) => ({ ...current, audioTitle: event.target.value }))}
                 />
               </label>
+              <label>
+                Audio file
+                <input
+                  key={`audio-file-${mediaInputResetKey}`}
+                  accept="audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/webm"
+                  type="file"
+                  onChange={(event) =>
+                    setMediaForm((current) => ({
+                      ...current,
+                      audioFile: event.currentTarget.files?.[0] ?? null,
+                    }))
+                  }
+                />
+              </label>
               <div className="admin-field-row">
                 <button className="admin-action secondary" type="button" onClick={savePrimaryAudio}>
                   <Music aria-hidden="true" />
                   {mediaForm.audioTrackId ? 'Save audio' : 'Add audio'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={uploadPrimaryAudioFile}>
+                  <Upload aria-hidden="true" />
+                  Upload audio file
                 </button>
                 <button className="admin-action secondary" type="button" onClick={resetAudioForm}>
                   <Plus aria-hidden="true" />
                   New audio
                 </button>
               </div>
+                </>
+              )}
             </div>
+                )}
+              </>
+            )}
           </aside>
         )}
       </section>

@@ -605,8 +605,36 @@
   position: absolute;
   right: 0;
   top: 0;
-  width: 360px;
+  width: min(560px, 100%);
   z-index: 4;
+}
+
+.admin-page-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.admin-page-tabs button {
+  background: #eef2f5;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #344054;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.admin-page-tabs button.active {
+  background: #ffffff;
+  border-color: #135e96;
+  color: #135e96;
 }
 
 .admin-action {
@@ -806,6 +834,51 @@
 .import-result span {
   color: #667085;
   font-size: 13px;
+}
+
+.admin-table-scroll {
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.admin-table {
+  background: #ffffff;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 460px;
+  width: 100%;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #e5e7eb;
+  color: #344054;
+  padding: 8px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table th {
+  background: #f8fafb;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.admin-table tbody tr {
+  cursor: pointer;
+}
+
+.admin-table tbody tr:hover,
+.admin-table tbody tr.active {
+  background: #eef6fc;
 }
 
 @media (max-width: 900px) {

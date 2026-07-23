@@ -218,6 +218,7 @@ public sealed record AdminEntryDetailResponse(
     Guid? PrimaryTimePeriodId,
     string? SourceSheet,
     int? SourceRow,
+    IReadOnlyList<EntryPlaceResponse> Places,
     IReadOnlyList<EntryRouteResponse> Routes,
     IReadOnlyList<AdminEntryRelationshipResponse> Relationships,
     IReadOnlyList<EntrySourceResponse> Sources,

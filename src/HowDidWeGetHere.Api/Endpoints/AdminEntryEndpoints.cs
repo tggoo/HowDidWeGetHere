@@ -67,6 +67,9 @@ public static class AdminEntryEndpoints
         var entry = await dbContext.Entries
             .AsNoTracking()
             .Include(item => item.Translations)
+            .Include(item => item.Places)
+                .ThenInclude(entryPlace => entryPlace.Place)
+                    .ThenInclude(place => place.Translations)
             .Include(item => item.Routes)
                 .ThenInclude(route => route.Points)
                     .ThenInclude(point => point.Place)
@@ -116,6 +119,23 @@ public static class AdminEntryEndpoints
             entry.PrimaryTimePeriodId,
             entry.SourceSheet,
             entry.SourceRow,
+            entry.Places
+                .OrderBy(entryPlace => entryPlace.SortOrder)
+                .Select(entryPlace => new EntryPlaceResponse(
+                    entryPlace.PlaceId,
+                    entryPlace.Place.Slug,
+                    entryPlace.Place.Translations
+                        .Where(placeTranslation => placeTranslation.LanguageCode == lang)
+                        .Select(placeTranslation => placeTranslation.Name)
+                        .FirstOrDefault() ?? entryPlace.Place.DefaultName,
+                    entryPlace.Role.ToString(),
+                    entryPlace.SortOrder,
+                    entryPlace.Note,
+                    entryPlace.Place.PlaceType.ToString(),
+                    entryPlace.Place.SpatialConfidence.ToString(),
+                    entryPlace.Place.Geometry?.Coordinate.X,
+                    entryPlace.Place.Geometry?.Coordinate.Y))
+                .ToList(),
             entry.Routes
                 .OrderBy(route => route.Name)
                 .Select(route => new EntryRouteResponse(

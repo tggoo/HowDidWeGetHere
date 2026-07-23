@@ -2070,6 +2070,7 @@ export interface components {
             sourceSheet: null | string;
             /** Format: int32 */
             sourceRow: null | number | string;
+            places: components["schemas"]["EntryPlaceResponse"][];
             routes: components["schemas"]["EntryRouteResponse"][];
             relationships: components["schemas"]["AdminEntryRelationshipResponse"][];
             sources: components["schemas"]["EntrySourceResponse"][];
