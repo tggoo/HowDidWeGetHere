@@ -22,6 +22,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         string fileName,
         string? importedByUserId,
         bool publishImportedEntries,
+        bool updateExistingRows,
         CancellationToken cancellationToken = default)
     {
         using var workbook = new XLWorkbook(workbookStream);
@@ -34,12 +35,32 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             .ToDictionaryAsync(period => period.Slug, cancellationToken);
         var sourceCache = await dbContext.Sources
             .ToDictionaryAsync(source => source.Url, cancellationToken);
+        var warnings = new List<string>();
         var entrySlugs = await dbContext.Entries
             .Select(entry => entry.Slug)
             .ToHashSetAsync(cancellationToken);
+        var existingEntries = updateExistingRows
+            ? await dbContext.Entries
+                .Include(entry => entry.Translations)
+                .Include(entry => entry.Tags)
+                .Include(entry => entry.Sources)
+                .Include(entry => entry.TimePeriods)
+                .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
+                .OrderBy(entry => entry.CreatedAt)
+                .ToListAsync(cancellationToken)
+            : [];
+        Dictionary<string, Entry> existingEntriesBySourceRow = existingEntries
+            .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
+            .ToDictionary(group => group.Key, group => group.First());
+        foreach (var duplicateGroup in existingEntries
+            .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
+            .Where(group => group.Count() > 1))
+        {
+            warnings.Add($"Existing duplicate import source row '{duplicateGroup.Key}' found; first entry will be updated.");
+        }
 
-        var warnings = new List<string>();
         var entriesCreated = 0;
+        var entriesUpdated = 0;
         var rowsRead = 0;
 
         var batch = new ImportBatch
@@ -84,16 +105,29 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     ? CreateMasterTimelineEntry(rowValues, rowNumber, warnings)
                     : CreateMythologyEntry(rowValues, rowNumber);
 
-                entry.Slug = MakeUniqueSlug(entry.Slug, entrySlugs);
                 entry.Status = publishImportedEntries ? ContentStatus.Published : ContentStatus.Draft;
                 if (warnings.Count > warningCountBeforeRow)
                 {
                     importedRow.Warning = warnings[^1];
                 }
 
-                importedRow.Entry = entry;
-                dbContext.Entries.Add(entry);
-                entriesCreated++;
+                if (existingEntriesBySourceRow.TryGetValue($"{entry.SourceSheet}|{entry.SourceRow}", out var existingEntry))
+                {
+                    UpdateExistingEntry(existingEntry, entry);
+                    existingEntry.UpdatedAt = DateTimeOffset.UtcNow;
+                    existingEntry.UpdatedByUserId = importedByUserId;
+                    importedRow.Entry = existingEntry;
+                    entry = existingEntry;
+                    entriesUpdated++;
+                }
+                else
+                {
+                    entry.Slug = MakeUniqueSlug(entry.Slug, entrySlugs);
+                    entry.CreatedByUserId = importedByUserId;
+                    importedRow.Entry = entry;
+                    dbContext.Entries.Add(entry);
+                    entriesCreated++;
+                }
 
                 AttachSource(entry, rowValues, sourceCache);
                 AttachImportedTags(entry, rowValues, worksheet.Name, tagCache);
@@ -107,12 +141,57 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         {
             rowsRead,
             entriesCreated,
+            entriesUpdated,
             warnings
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new WorkbookImportResult(batch.Id, rowsRead, entriesCreated, warnings);
+        return new WorkbookImportResult(batch.Id, rowsRead, entriesCreated, entriesUpdated, warnings);
+    }
+
+    private static void UpdateExistingEntry(Entry target, Entry imported)
+    {
+        target.Kind = imported.Kind;
+        target.Status = imported.Status;
+        target.RealityStatus = imported.RealityStatus;
+        target.DefaultTitle = imported.DefaultTitle;
+        target.DateLabel = imported.DateLabel;
+        target.StartYear = imported.StartYear;
+        target.StartMonth = imported.StartMonth;
+        target.StartDay = imported.StartDay;
+        target.EndYear = imported.EndYear;
+        target.EndMonth = imported.EndMonth;
+        target.EndDay = imported.EndDay;
+        target.TimePrecision = imported.TimePrecision;
+        target.TimeConfidence = imported.TimeConfidence;
+        target.SourceSheet = imported.SourceSheet;
+        target.SourceRow = imported.SourceRow;
+
+        foreach (var importedTranslation in imported.Translations)
+        {
+            var translation = target.Translations.FirstOrDefault(item => item.LanguageCode == importedTranslation.LanguageCode);
+            if (translation is null)
+            {
+                target.Translations.Add(new EntryTranslation
+                {
+                    LanguageCode = importedTranslation.LanguageCode,
+                    Title = importedTranslation.Title,
+                    Summary = importedTranslation.Summary,
+                    Description = importedTranslation.Description,
+                    WhyItMatters = importedTranslation.WhyItMatters,
+                    DatingNote = importedTranslation.DatingNote
+                });
+            }
+            else
+            {
+                translation.Title = importedTranslation.Title;
+                translation.Summary = importedTranslation.Summary;
+                translation.Description = importedTranslation.Description;
+                translation.WhyItMatters = importedTranslation.WhyItMatters;
+                translation.DatingNote = importedTranslation.DatingNote;
+            }
+        }
     }
 
     private static Entry CreateMasterTimelineEntry(
@@ -238,12 +317,15 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             dbContext.Sources.Add(source);
         }
 
-        entry.Sources.Add(new EntrySource
+        if (entry.Sources.All(entrySource => entrySource.Source != source && entrySource.SourceId != source.Id))
         {
-            Entry = entry,
-            Source = source,
-            SupportsField = SourceSupportKind.General
-        });
+            entry.Sources.Add(new EntrySource
+            {
+                Entry = entry,
+                Source = source,
+                SupportsField = SourceSupportKind.General
+            });
+        }
     }
 
     private void AttachImportedTags(
@@ -297,12 +379,15 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         }
 
         entry.PrimaryTimePeriod = period;
-        entry.TimePeriods.Add(new EntryTimePeriod
+        if (entry.TimePeriods.All(entryPeriod => entryPeriod.TimePeriod != period && entryPeriod.TimePeriodId != period.Id))
         {
-            Entry = entry,
-            TimePeriod = period,
-            RelationType = PeriodMembershipType.Primary
-        });
+            entry.TimePeriods.Add(new EntryTimePeriod
+            {
+                Entry = entry,
+                TimePeriod = period,
+                RelationType = PeriodMembershipType.Primary
+            });
+        }
     }
 
     private void AddTag(Entry entry, string? value, string group, IDictionary<string, Tag> tagCache)

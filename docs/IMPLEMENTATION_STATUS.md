@@ -15,6 +15,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin tag create/update endpoints and tag attachment form for entries.
 - 2026-07-23: Connected period buttons and manual year range inputs to public entry/map filtering.
 - 2026-07-23: Connected search input to public entry/map filtering.
+- 2026-07-23: Made workbook re-import idempotent by updating existing source rows and reporting created vs updated entries.
 
 ## Goal
 
@@ -101,6 +102,7 @@ Build a mobile-first historical world map app with:
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
+- imported workbook rows can update existing entries by source sheet and row instead of creating duplicates
 
 ### Frontend
 
@@ -119,6 +121,7 @@ Build a mobile-first historical world map app with:
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
 - workbook upload/import from frontend
+- workbook import result displays created and updated entry counts
 - admin entry list
 - entry create/edit form
 - place/coordinate attachment form
@@ -151,7 +154,7 @@ The frontend now uses Leaflet for the real map layer and renders stored public c
 
 ### Workbook import
 
-The importer reads the current workbook sheets, creates entries, tags, time periods and source links. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
+The importer reads the current workbook sheets, creates or updates entries, tags, time periods and source links. Re-import uses source sheet and source row metadata as the first idempotency key, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
 
 ### Admin UI
 
@@ -212,8 +215,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 ### Import workflow
 
 - preview import before saving
-- duplicate detection
-- idempotent re-import/update mode
+- duplicate detection beyond the source sheet/source row import key
 - validation report
 - mapping workbook columns to places/routes/relationships/tags
 - import CS/ES translations
@@ -234,10 +236,10 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 5. Add source update/delete.
 6. Add tag detach/delete and route/source/relationship delete endpoints.
 7. Add real media upload/storage.
-8. Add importer preview, duplicate detection and route/place mapping.
+8. Add importer preview, conflict review and route/place mapping.
 9. Add CS/ES translation workflow.
 10. Add backend/frontend tests.
 
 ## Current answer
 
-No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, but it still needs route update/delete, importer mapping and production-quality map UX.
+No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, and workbook re-import now updates existing source rows, but it still needs route update/delete, importer mapping and production-quality map UX.

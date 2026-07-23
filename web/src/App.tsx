@@ -186,6 +186,7 @@ type WorkbookImportResult = {
   importBatchId: string
   rowsRead: number | string
   entriesCreated: number | string
+  entriesUpdated: number | string
   warnings: string[]
 }
 
@@ -1002,7 +1003,7 @@ function App() {
     formData.append('file', importFile)
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/admin/imports/workbook?publishImportedEntries=true`, {
+      const response = await fetch(`${apiBaseUrl}/api/admin/imports/workbook?publishImportedEntries=true&updateExistingRows=true`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${adminToken}`,
@@ -1017,7 +1018,7 @@ function App() {
 
       const result = (await response.json()) as WorkbookImportResult
       setImportResult(result)
-      setAdminStatus(`Imported ${result.entriesCreated} entries from ${result.rowsRead} rows.`)
+      setAdminStatus(`Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows.`)
       setReloadKey((value) => value + 1)
     } catch {
       setAdminStatus('Import failed. Check API availability and CORS settings.')
@@ -1802,6 +1803,7 @@ function App() {
             {importResult && (
               <div className="import-result">
                 <strong>{importResult.entriesCreated} entries imported</strong>
+                <span>{importResult.entriesUpdated} entries updated</span>
                 <span>{importResult.rowsRead} rows read</span>
                 {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
               </div>

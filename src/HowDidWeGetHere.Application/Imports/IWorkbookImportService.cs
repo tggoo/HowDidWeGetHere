@@ -7,5 +7,6 @@ public interface IWorkbookImportService
         string fileName,
         string? importedByUserId,
         bool publishImportedEntries,
+        bool updateExistingRows,
         CancellationToken cancellationToken = default);
 }

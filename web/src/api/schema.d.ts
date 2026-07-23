@@ -1443,6 +1443,7 @@ export interface paths {
             parameters: {
                 query?: {
                     publishImportedEntries?: boolean;
+                    updateExistingRows?: boolean;
                 };
                 header?: never;
                 path?: never;
@@ -2028,6 +2029,8 @@ export interface components {
             rowsRead: number | string;
             /** Format: int32 */
             entriesCreated: number | string;
+            /** Format: int32 */
+            entriesUpdated: number | string;
             warnings: string[];
         };
     };

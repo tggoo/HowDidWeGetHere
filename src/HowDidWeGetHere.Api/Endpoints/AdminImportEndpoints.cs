@@ -18,6 +18,7 @@ public static class AdminImportEndpoints
     private static async Task<IResult> ImportWorkbookAsync(
         IFormFile file,
         bool? publishImportedEntries,
+        bool? updateExistingRows,
         IWorkbookImportService importer,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
@@ -33,6 +34,7 @@ public static class AdminImportEndpoints
             file.FileName,
             user.FindFirstValue(ClaimTypes.NameIdentifier),
             publishImportedEntries ?? true,
+            updateExistingRows ?? true,
             cancellationToken);
 
         return Results.Ok(result);
