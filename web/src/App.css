@@ -541,6 +541,24 @@
   resize: vertical;
 }
 
+.media-editor textarea {
+  background: #f8fafb;
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  color: #17191c;
+  font: inherit;
+  min-height: 112px;
+  min-width: 0;
+  padding: 7px 9px;
+  resize: vertical;
+}
+
+.route-points-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .admin-section-title {
   align-items: center;
   border-top: 1px solid #d8dee4;

@@ -29,11 +29,14 @@ type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
 type AdminEntryImageRequest = components['schemas']['AdminEntryImageRequest']
 type AdminEntryAudioTrackRequest = components['schemas']['AdminEntryAudioTrackRequest']
 type AdminEntryPlaceRequest = components['schemas']['AdminEntryPlaceRequest']
+type AdminEntryRouteRequest = components['schemas']['AdminEntryRouteRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
 type EntryPlaceRole = components['schemas']['EntryPlaceRole']
 type PlaceType = components['schemas']['PlaceType']
 type RealityStatus = components['schemas']['RealityStatus']
+type RoutePointRole = components['schemas']['RoutePointRole']
+type RouteType = components['schemas']['RouteType']
 type SpatialConfidence = components['schemas']['SpatialConfidence']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
 
@@ -367,6 +370,26 @@ const entryPlaceRoles: EntryPlaceRole[] = [
   'PublishedIn',
   'Other',
 ]
+const routeTypes: RouteType[] = [
+  'Voyage',
+  'Expedition',
+  'Migration',
+  'Conquest',
+  'Climb',
+  'TradeRoute',
+  'Mission',
+  'Journey',
+  'Other',
+]
+const routePointRoles: RoutePointRole[] = [
+  'Start',
+  'Stop',
+  'End',
+  'Summit',
+  'BaseCamp',
+  'Approximate',
+  'Other',
+]
 const spatialConfidences: SpatialConfidence[] = [
   'Exact',
   'Approximate',
@@ -415,6 +438,13 @@ function App() {
     countryCode: '',
     note: '',
     sortOrder: '0',
+  })
+  const [routeForm, setRouteForm] = useState({
+    name: '',
+    routeType: 'Journey' as RouteType,
+    spatialConfidence: 'Approximate' as SpatialConfidence,
+    sourceNote: '',
+    pointsText: '',
   })
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -617,6 +647,35 @@ function App() {
     setPlaceForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchRouteForm(patch: Partial<typeof routeForm>) {
+    setRouteForm((current) => ({ ...current, ...patch }))
+  }
+
+  function parseRoutePoints(pointsText: string) {
+    return pointsText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const [role, name, longitude, latitude, dateLabel, note] = line.split('|').map((part) => part.trim())
+        return {
+          name,
+          slug: null,
+          placeType: 'RouteStop' as PlaceType,
+          spatialConfidence: routeForm.spatialConfidence,
+          role: routePointRoles.includes(role as RoutePointRole) ? (role as RoutePointRole) : 'Stop',
+          longitude: Number(longitude),
+          latitude: Number(latitude),
+          modernCountryCode: null,
+          wikidataId: null,
+          geoNamesId: null,
+          sortOrder: index,
+          dateLabel: dateLabel || null,
+          note: note || null,
+        }
+      })
+  }
+
   function resetEntryForm() {
     setEntryForm({ ...defaultEntryForm, languageCode: language })
     setMediaForm({
@@ -636,6 +695,13 @@ function App() {
       countryCode: '',
       note: '',
       sortOrder: '0',
+    })
+    setRouteForm({
+      name: '',
+      routeType: 'Journey',
+      spatialConfidence: 'Approximate',
+      sourceNote: '',
+      pointsText: '',
     })
   }
 
@@ -989,6 +1055,57 @@ function App() {
       note: '',
     }))
     setAdminStatus('Place added.')
+    setReloadKey((value) => value + 1)
+  }
+
+  async function addEntryRoute() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before adding a route.')
+      return
+    }
+
+    const points = parseRoutePoints(routeForm.pointsText)
+    if (!routeForm.name.trim() || points.length < 2) {
+      setAdminStatus('Route name and at least two route points are required.')
+      return
+    }
+
+    if (points.some((point) => !point.name || !Number.isFinite(point.longitude) || !Number.isFinite(point.latitude))) {
+      setAdminStatus('Every route point needs role, name, longitude and latitude.')
+      return
+    }
+
+    const body: AdminEntryRouteRequest = {
+      name: routeForm.name.trim(),
+      routeType: routeForm.routeType,
+      spatialConfidence: routeForm.spatialConfidence,
+      sourceNote: routeForm.sourceNote.trim() || null,
+      languageCode: entryForm.languageCode,
+      points,
+    }
+
+    const result = await apiClient.POST('/api/admin/entries/{entryId}/routes', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+        },
+      },
+      body,
+    })
+
+    if (result.error) {
+      setAdminStatus('Route was not added.')
+      return
+    }
+
+    setRouteForm((current) => ({
+      ...current,
+      name: '',
+      sourceNote: '',
+      pointsText: '',
+    }))
+    setAdminStatus('Route added.')
     setReloadKey((value) => value + 1)
   }
 
@@ -1471,6 +1588,61 @@ function App() {
               <button className="admin-action secondary" type="button" onClick={addEntryPlace}>
                 <MapPin aria-hidden="true" />
                 Add place
+              </button>
+              <label>
+                Route name
+                <input
+                  value={routeForm.name}
+                  onChange={(event) => patchRouteForm({ name: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Route type
+                  <select
+                    value={routeForm.routeType}
+                    onChange={(event) => patchRouteForm({ routeType: event.target.value as RouteType })}
+                  >
+                    {routeTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Route confidence
+                  <select
+                    value={routeForm.spatialConfidence}
+                    onChange={(event) => patchRouteForm({ spatialConfidence: event.target.value as SpatialConfidence })}
+                  >
+                    {spatialConfidences.map((confidence) => (
+                      <option key={confidence} value={confidence}>
+                        {confidence}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label>
+                Route points
+                <textarea
+                  className="route-points-input"
+                  placeholder="Start | Palos de la Frontera | -6.89 | 37.23 | 1492&#10;Stop | Canary Islands | -15.50 | 28.10 | 1492&#10;End | Bahamas | -77.35 | 25.03 | 1492"
+                  value={routeForm.pointsText}
+                  onChange={(event) => patchRouteForm({ pointsText: event.target.value })}
+                />
+              </label>
+              <label>
+                Route source note
+                <input
+                  value={routeForm.sourceNote}
+                  onChange={(event) => patchRouteForm({ sourceNote: event.target.value })}
+                />
+              </label>
+              <button className="admin-action secondary" type="button" onClick={addEntryRoute}>
+                <Route aria-hidden="true" />
+                Add route
               </button>
               <label>
                 Primary image URL

@@ -292,3 +292,26 @@ public sealed record AdminEntryPlaceRequest(
     int? GeoNamesId,
     int SortOrder,
     string? Note);
+
+public sealed record AdminEntryRouteRequest(
+    string Name,
+    RouteType RouteType,
+    SpatialConfidence SpatialConfidence,
+    string? SourceNote,
+    string? LanguageCode,
+    IReadOnlyList<AdminEntryRoutePointRequest> Points);
+
+public sealed record AdminEntryRoutePointRequest(
+    string Name,
+    string? Slug,
+    PlaceType PlaceType,
+    SpatialConfidence SpatialConfidence,
+    RoutePointRole Role,
+    double Longitude,
+    double Latitude,
+    string? ModernCountryCode,
+    string? WikidataId,
+    int? GeoNamesId,
+    int SortOrder,
+    string? DateLabel,
+    string? Note);

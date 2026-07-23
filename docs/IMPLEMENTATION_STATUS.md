@@ -8,6 +8,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added public tag list API, public entry detail API and frontend detail/tag integration.
 - 2026-07-23: Added public map entries API, admin place attachment endpoint and frontend rendering of stored coordinates on the map canvas.
 - 2026-07-23: Replaced the custom map canvas with a Leaflet map layer that renders stored markers and routes.
+- 2026-07-23: Added admin route creation endpoint and route form that creates ordered route points with coordinates.
 
 ## Goal
 
@@ -82,6 +83,7 @@ Build a mobile-first historical world map app with:
 - add entry image URL
 - add entry audio URL
 - add place/coordinate to entry
+- add route with ordered coordinate points to entry
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -104,6 +106,7 @@ Build a mobile-first historical world map app with:
 - admin entry list
 - entry create/edit form
 - place/coordinate attachment form
+- route attachment form with ordered points
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -122,7 +125,7 @@ Build a mobile-first historical world map app with:
 
 ### Map experience
 
-The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. It still needs richer map UX such as clustering, viewport-aware filtering, better route styling and mobile map controls.
+The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Admins can create simple ordered routes from coordinate rows. The map still needs richer UX such as clustering, viewport-aware filtering, better route styling and mobile controls.
 
 ### Workbook import
 
@@ -130,7 +133,7 @@ The importer reads the current workbook sheets, creates entries, tags, time peri
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs and attach point places with coordinates. It is not yet a complete CMS. Missing pieces include tag editing, relationships, route editing, source editing, time period editing and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates and create basic routes. It is not yet a complete CMS. Missing pieces include tag editing, relationships, route update/delete, source editing, time period editing and richer validation.
 
 ### Multilingual support
 
@@ -140,8 +143,8 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Real map data
 
-- route editing in admin UI
-- route drawing on a real map from stored coordinates/GeoJSON
+- route update/delete in admin UI
+- richer route drawing on a real map from stored coordinates/GeoJSON
 - marker clustering for mobile
 - place/time/tag combined filtering with map bounds
 
@@ -201,17 +204,16 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Add route editor in admin UI.
-2. Add public/admin route endpoints beyond the current map/detail payload.
-3. Add marker clustering and viewport-aware filtering.
-4. Add admin/public relationship endpoints beyond the current detail payload.
-5. Add time period CRUD and improve the era side panel.
-6. Add source editing.
-7. Add real media upload/storage.
-8. Add importer preview, duplicate detection and route/place mapping.
-9. Add CS/ES translation workflow.
-10. Add backend/frontend tests.
+1. Add route update/delete in admin UI.
+2. Add marker clustering and viewport-aware filtering.
+3. Add admin/public relationship endpoints beyond the current detail payload.
+4. Add time period CRUD and improve the era side panel.
+5. Add source editing.
+6. Add real media upload/storage.
+7. Add importer preview, duplicate detection and route/place mapping.
+8. Add CS/ES translation workflow.
+9. Add backend/frontend tests.
 
 ## Current answer
 
-No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates, but it still needs richer route/place editing, importer mapping and production-quality map UX.
+No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, but it still needs route update/delete, importer mapping and production-quality map UX.
