@@ -74,6 +74,8 @@ public static class AdminEntryEndpoints
             .Include(item => item.OutgoingRelationships)
                 .ThenInclude(relationship => relationship.ToEntry)
                     .ThenInclude(relatedEntry => relatedEntry.Translations)
+            .Include(item => item.Sources)
+                .ThenInclude(entrySource => entrySource.Source)
             .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
 
         if (entry is null)
@@ -148,6 +150,18 @@ public static class AdminEntryEndpoints
                     relationship.RelationshipType.ToString(),
                     relationship.Confidence,
                     relationship.Note))
+                .ToList(),
+            entry.Sources
+                .OrderBy(entrySource => entrySource.SupportsField)
+                .ThenBy(entrySource => entrySource.Source.Title ?? entrySource.Source.Url)
+                .Select(entrySource => new EntrySourceResponse(
+                    entrySource.SourceId,
+                    entrySource.Source.Url,
+                    entrySource.Source.Title,
+                    entrySource.Source.Publisher,
+                    entrySource.Source.LanguageCode,
+                    entrySource.SupportsField.ToString(),
+                    entrySource.Note))
                 .ToList()));
     }
 

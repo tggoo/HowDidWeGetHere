@@ -229,6 +229,7 @@ type AdminEntryDetail = AdminEntryListItem & {
   primaryTimePeriodId?: string | null
   routes: EntryRouteDetail[]
   relationships: AdminEntryRelationshipDetail[]
+  sources: EntryDetail['sources']
 }
 
 type EntryFormState = {
@@ -556,12 +557,15 @@ function App() {
   })
   const [adminEntryRelationships, setAdminEntryRelationships] = useState<AdminEntryRelationshipDetail[]>([])
   const [sourceForm, setSourceForm] = useState({
+    sourceId: null as string | null,
+    originalSupportsField: '' as SourceSupportKind | '',
     url: '',
     title: '',
     publisher: '',
     supportsField: 'General' as SourceSupportKind,
     note: '',
   })
+  const [adminEntrySources, setAdminEntrySources] = useState<EntryDetail['sources']>([])
   const [tagForm, setTagForm] = useState({
     id: null as string | null,
     name: '',
@@ -833,6 +837,30 @@ function App() {
     setSourceForm((current) => ({ ...current, ...patch }))
   }
 
+  function resetSourceForm() {
+    setSourceForm({
+      sourceId: null,
+      originalSupportsField: '',
+      url: '',
+      title: '',
+      publisher: '',
+      supportsField: 'General',
+      note: '',
+    })
+  }
+
+  function loadSourceForm(source: EntryDetail['sources'][number]) {
+    setSourceForm({
+      sourceId: source.sourceId,
+      originalSupportsField: source.supportsField as SourceSupportKind,
+      url: source.url,
+      title: source.title ?? '',
+      publisher: source.publisher ?? '',
+      supportsField: source.supportsField as SourceSupportKind,
+      note: source.note ?? '',
+    })
+  }
+
   function patchTagForm(patch: Partial<typeof tagForm>) {
     setTagForm((current) => ({ ...current, ...patch }))
   }
@@ -932,6 +960,8 @@ function App() {
       note: '',
     })
     setSourceForm({
+      sourceId: null,
+      originalSupportsField: '',
       url: '',
       title: '',
       publisher: '',
@@ -948,6 +978,7 @@ function App() {
     })
     setAdminEntryRoutes([])
     setAdminEntryRelationships([])
+    setAdminEntrySources([])
   }
 
   function loadTagForm(tag: TagListItem) {
@@ -1030,6 +1061,7 @@ function App() {
     const detail = result.data as AdminEntryDetail
     const detailRoutes = detail.routes ?? []
     const detailRelationships = detail.relationships ?? []
+    const detailSources = detail.sources ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1051,6 +1083,7 @@ function App() {
     })
     setAdminEntryRoutes(detailRoutes)
     setAdminEntryRelationships(detailRelationships)
+    setAdminEntrySources(detailSources)
     setRouteForm((current) => {
       if (!current.id) {
         return current
@@ -1094,6 +1127,34 @@ function App() {
             targetEntrySlug: '',
             relationshipType: 'RelatedTo',
             confidence: '',
+            note: '',
+          }
+    })
+    setSourceForm((current) => {
+      if (!current.sourceId || !current.originalSupportsField) {
+        return current
+      }
+
+      const source = detailSources.find(
+        (item) => item.sourceId === current.sourceId && item.supportsField === current.originalSupportsField,
+      )
+      return source
+        ? {
+            sourceId: source.sourceId,
+            originalSupportsField: source.supportsField as SourceSupportKind,
+            url: source.url,
+            title: source.title ?? '',
+            publisher: source.publisher ?? '',
+            supportsField: source.supportsField as SourceSupportKind,
+            note: source.note ?? '',
+          }
+        : {
+            sourceId: null,
+            originalSupportsField: '',
+            url: '',
+            title: '',
+            publisher: '',
+            supportsField: 'General',
             note: '',
           }
     })
@@ -1562,9 +1623,9 @@ function App() {
     await loadAdminEntryDetail(entryForm.id)
   }
 
-  async function addEntrySource() {
+  async function saveEntrySource() {
     if (!entryForm.id || !adminToken) {
-      setAdminStatus('Select or create an entry before adding a source.')
+      setAdminStatus('Select or create an entry before saving a source.')
       return
     }
 
@@ -1582,30 +1643,70 @@ function App() {
       note: sourceForm.note.trim() || null,
     }
 
-    const result = await apiClient.POST('/api/admin/entries/{entryId}/sources', {
+    setAdminStatus(sourceForm.sourceId ? 'Saving source...' : 'Adding source...')
+    const result = sourceForm.sourceId && sourceForm.originalSupportsField
+      ? await apiClient.PUT('/api/admin/entries/{entryId}/sources/{sourceId}/{supportsField}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+              sourceId: sourceForm.sourceId,
+              supportsField: sourceForm.originalSupportsField,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/entries/{entryId}/sources', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+            },
+          },
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Source was not saved. Check URL format.')
+      return
+    }
+
+    resetSourceForm()
+    setAdminStatus(sourceForm.sourceId ? 'Source saved.' : 'Source added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteEntrySource(sourceId: string, supportsField: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before deleting a source.')
+      return
+    }
+
+    setAdminStatus('Deleting source...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/sources/{sourceId}/{supportsField}', {
       headers: authHeaders(),
       params: {
         path: {
           entryId: entryForm.id,
+          sourceId,
+          supportsField,
         },
       },
-      body,
     })
 
     if (result.error) {
-      setAdminStatus('Source was not added. Check URL format.')
+      setAdminStatus('Source was not deleted.')
       return
     }
 
-    setSourceForm((current) => ({
-      ...current,
-      url: '',
-      title: '',
-      publisher: '',
-      note: '',
-    }))
-    setAdminStatus('Source added.')
+    if (sourceForm.sourceId === sourceId && sourceForm.originalSupportsField === supportsField) {
+      resetSourceForm()
+    }
+
+    setAdminStatus('Source deleted.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
   }
 
   async function saveTimePeriod(event: FormEvent<HTMLFormElement>) {
@@ -2475,7 +2576,7 @@ function App() {
                     <div className="route-manager-item" key={route.id}>
                       <span>
                         {route.name || route.routeType}
-                        <small>{route.routeType} · {route.points.length} points</small>
+                        <small>{route.routeType} - {route.points.length} points</small>
                       </span>
                       <div className="route-manager-actions">
                         <button className="admin-action secondary" type="button" onClick={() => loadRouteForm(route)}>
@@ -2559,7 +2660,7 @@ function App() {
                     <div className="route-manager-item" key={relationship.id}>
                       <span>
                         {relationship.relationshipType}: {relationship.targetEntryTitle}
-                        <small>{relationship.targetEntryKind} · {relationship.targetEntrySlug}</small>
+                        <small>{relationship.targetEntryKind} - {relationship.targetEntrySlug}</small>
                       </span>
                       <div className="route-manager-actions">
                         <button
@@ -2633,8 +2734,35 @@ function App() {
                   New relationship
                 </button>
               </div>
+              {adminEntrySources.length > 0 && (
+                <div className="route-manager">
+                  <strong>Sources</strong>
+                  {adminEntrySources.map((source) => (
+                    <div className="route-manager-item" key={`${source.sourceId}-${source.supportsField}`}>
+                      <span>
+                        {source.title || source.publisher || source.url}
+                        <small>{source.supportsField} - {source.publisher || source.url}</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button className="admin-action secondary" type="button" onClick={() => loadSourceForm(source)}>
+                          <Search aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button
+                          className="admin-action secondary danger"
+                          type="button"
+                          onClick={() => deleteEntrySource(source.sourceId, source.supportsField)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
-                Source URL
+                {sourceForm.sourceId ? 'Editing source URL' : 'Source URL'}
                 <input
                   value={sourceForm.url}
                   onChange={(event) => patchSourceForm({ url: event.target.value })}
@@ -2678,10 +2806,16 @@ function App() {
                   />
                 </label>
               </div>
-              <button className="admin-action secondary" type="button" onClick={addEntrySource}>
-                <Search aria-hidden="true" />
-                Add source
-              </button>
+              <div className="admin-field-row">
+                <button className="admin-action secondary" type="button" onClick={saveEntrySource}>
+                  <Search aria-hidden="true" />
+                  {sourceForm.sourceId ? 'Save source' : 'Add source'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={resetSourceForm}>
+                  <Plus aria-hidden="true" />
+                  New source
+                </button>
+              </div>
               <label>
                 Primary image URL
                 <input
