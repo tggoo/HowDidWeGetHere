@@ -32,6 +32,7 @@ type AdminEntryPlaceRequest = components['schemas']['AdminEntryPlaceRequest']
 type AdminEntryRouteRequest = components['schemas']['AdminEntryRouteRequest']
 type AdminEntryRelationshipRequest = components['schemas']['AdminEntryRelationshipRequest']
 type AdminEntrySourceRequest = components['schemas']['AdminEntrySourceRequest']
+type AdminTimePeriodUpsertRequest = components['schemas']['AdminTimePeriodUpsertRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
 type EntryRelationshipType = components['schemas']['EntryRelationshipType']
@@ -43,6 +44,7 @@ type RouteType = components['schemas']['RouteType']
 type SpatialConfidence = components['schemas']['SpatialConfidence']
 type SourceSupportKind = components['schemas']['SourceSupportKind']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
+type TimePeriodType = components['schemas']['TimePeriodType']
 
 type EntryListItem = {
   id: string
@@ -230,6 +232,22 @@ type EntryFormState = {
   primaryTimePeriodId: string
 }
 
+type TimePeriodFormState = {
+  id: string | null
+  name: string
+  slug: string
+  languageCode: string
+  shortDescription: string
+  longDescription: string
+  periodType: TimePeriodType
+  parentPeriodId: string
+  startYear: string
+  endYear: string
+  startPrecision: TimePrecision
+  endPrecision: TimePrecision
+  sortOrder: string
+}
+
 const defaultEntryForm: EntryFormState = {
   id: null,
   title: '',
@@ -248,6 +266,22 @@ const defaultEntryForm: EntryFormState = {
   timePrecision: '',
   timeConfidence: '',
   primaryTimePeriodId: '',
+}
+
+const defaultTimePeriodForm: TimePeriodFormState = {
+  id: null,
+  name: '',
+  slug: '',
+  languageCode: 'en',
+  shortDescription: '',
+  longDescription: '',
+  periodType: 'Era',
+  parentPeriodId: '',
+  startYear: '',
+  endYear: '',
+  startPrecision: 'Approximate',
+  endPrecision: 'Approximate',
+  sortOrder: '0',
 }
 
 const fallbackEntries: EntryListItem[] = [
@@ -347,6 +381,18 @@ const timePrecisions: TimePrecision[] = [
   'Range',
   'Approximate',
   'Unknown',
+]
+const timePeriodTypes: TimePeriodType[] = [
+  'Era',
+  'Age',
+  'Dynasty',
+  'Reign',
+  'Movement',
+  'WarPeriod',
+  'CivilizationPeriod',
+  'CulturalPeriod',
+  'GeologicalPeriod',
+  'Other',
 ]
 const placeTypes: PlaceType[] = [
   'City',
@@ -450,6 +496,7 @@ function App() {
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
   const [isLoadingAdminEntries, setLoadingAdminEntries] = useState(false)
   const [entryForm, setEntryForm] = useState<EntryFormState>(defaultEntryForm)
+  const [timePeriodForm, setTimePeriodForm] = useState<TimePeriodFormState>(defaultTimePeriodForm)
   const [mediaForm, setMediaForm] = useState({
     imageUrl: '',
     imageAlt: '',
@@ -701,6 +748,10 @@ function App() {
     setSourceForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchTimePeriodForm(patch: Partial<TimePeriodFormState>) {
+    setTimePeriodForm((current) => ({ ...current, ...patch }))
+  }
+
   function parseRoutePoints(pointsText: string) {
     return pointsText
       .split('\n')
@@ -765,6 +816,24 @@ function App() {
       publisher: '',
       supportsField: 'General',
       note: '',
+    })
+  }
+
+  function loadTimePeriodForm(period: TimePeriodListItem) {
+    setTimePeriodForm({
+      id: period.id,
+      name: period.name,
+      slug: period.slug,
+      languageCode: language,
+      shortDescription: period.shortDescription ?? '',
+      longDescription: '',
+      periodType: period.periodType as TimePeriodType,
+      parentPeriodId: period.parentPeriodId ?? '',
+      startYear: period.startYear?.toString() ?? '',
+      endYear: period.endYear?.toString() ?? '',
+      startPrecision: 'Approximate',
+      endPrecision: 'Approximate',
+      sortOrder: '0',
     })
   }
 
@@ -1269,6 +1338,58 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
+  async function saveTimePeriod(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!adminToken) {
+      setAdminStatus('Sign in before saving a time period.')
+      return
+    }
+
+    if (!timePeriodForm.name.trim()) {
+      setAdminStatus('Time period name is required.')
+      return
+    }
+
+    const body: AdminTimePeriodUpsertRequest = {
+      name: timePeriodForm.name.trim(),
+      slug: timePeriodForm.slug.trim() || null,
+      languageCode: timePeriodForm.languageCode || language,
+      shortDescription: timePeriodForm.shortDescription.trim() || null,
+      longDescription: timePeriodForm.longDescription.trim() || null,
+      periodType: timePeriodForm.periodType,
+      parentPeriodId: timePeriodForm.parentPeriodId || null,
+      startYear: numberOrNull(timePeriodForm.startYear),
+      endYear: numberOrNull(timePeriodForm.endYear),
+      startPrecision: timePeriodForm.startPrecision,
+      endPrecision: timePeriodForm.endPrecision,
+      sortOrder: numberOrNull(timePeriodForm.sortOrder) ?? 0,
+    }
+
+    const result = timePeriodForm.id
+      ? await apiClient.PUT('/api/admin/time-periods/{timePeriodId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              timePeriodId: timePeriodForm.id,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/time-periods', {
+          headers: authHeaders(),
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Time period save failed.')
+      return
+    }
+
+    setAdminStatus(timePeriodForm.id ? 'Time period saved.' : 'Time period created.')
+    setTimePeriodForm({ ...defaultTimePeriodForm, languageCode: language })
+    setReloadKey((value) => value + 1)
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1512,6 +1633,107 @@ function App() {
               </div>
             )}
             <div className="admin-section-title">
+              <span>Time periods</span>
+              <button
+                className="icon-button subtle"
+                type="button"
+                onClick={() => setTimePeriodForm({ ...defaultTimePeriodForm, languageCode: language })}
+              >
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
+            <div className="period-list compact">
+              {periods.slice(0, 6).map((period) => (
+                <button
+                  className={timePeriodForm.id === period.id ? 'period-item active' : 'period-item'}
+                  key={period.id}
+                  type="button"
+                  onClick={() => loadTimePeriodForm(period)}
+                >
+                  <span>{period.name}</span>
+                  <small>
+                    {period.startYear ?? '?'}-{period.endYear ?? '?'}
+                  </small>
+                </button>
+              ))}
+            </div>
+            <form className="entry-editor" onSubmit={saveTimePeriod}>
+              <label>
+                Period name
+                <input
+                  value={timePeriodForm.name}
+                  onChange={(event) => patchTimePeriodForm({ name: event.target.value })}
+                />
+              </label>
+              <label>
+                Period slug
+                <input
+                  value={timePeriodForm.slug}
+                  onChange={(event) => patchTimePeriodForm({ slug: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Type
+                  <select
+                    value={timePeriodForm.periodType}
+                    onChange={(event) => patchTimePeriodForm({ periodType: event.target.value as TimePeriodType })}
+                  >
+                    {timePeriodTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Parent
+                  <select
+                    value={timePeriodForm.parentPeriodId}
+                    onChange={(event) => patchTimePeriodForm({ parentPeriodId: event.target.value })}
+                  >
+                    <option value="">None</option>
+                    {periods
+                      .filter((period) => period.id !== timePeriodForm.id)
+                      .map((period) => (
+                        <option key={period.id} value={period.id}>
+                          {period.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              <div className="admin-field-row">
+                <label>
+                  Start year
+                  <input
+                    inputMode="numeric"
+                    value={timePeriodForm.startYear}
+                    onChange={(event) => patchTimePeriodForm({ startYear: event.target.value })}
+                  />
+                </label>
+                <label>
+                  End year
+                  <input
+                    inputMode="numeric"
+                    value={timePeriodForm.endYear}
+                    onChange={(event) => patchTimePeriodForm({ endYear: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label>
+                Short description
+                <textarea
+                  value={timePeriodForm.shortDescription}
+                  onChange={(event) => patchTimePeriodForm({ shortDescription: event.target.value })}
+                />
+              </label>
+              <button className="admin-action" type="submit">
+                <Save aria-hidden="true" />
+                {timePeriodForm.id ? 'Save period' : 'Create period'}
+              </button>
+            </form>
+            <div className="admin-section-title">
               <span>Content</span>
               <button className="icon-button subtle" type="button" onClick={resetEntryForm}>
                 <Plus aria-hidden="true" />
@@ -1642,6 +1864,20 @@ function App() {
                   />
                 </label>
               </div>
+              <label>
+                Primary time period
+                <select
+                  value={entryForm.primaryTimePeriodId}
+                  onChange={(event) => patchEntryForm({ primaryTimePeriodId: event.target.value })}
+                >
+                  <option value="">None</option>
+                  {periods.map((period) => (
+                    <option key={period.id} value={period.id}>
+                      {period.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>
                 Summary
                 <textarea

@@ -1135,6 +1135,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/time-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TimePeriodListItemResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminTimePeriodUpsertRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ResourceCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/time-periods/{timePeriodId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    timePeriodId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminTimePeriodUpsertRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -1368,6 +1488,24 @@ export interface components {
             timeConfidence: null | string;
             /** Format: uuid */
             primaryTimePeriodId: null | string;
+        };
+        AdminTimePeriodUpsertRequest: {
+            name: string;
+            slug: null | string;
+            languageCode: null | string;
+            shortDescription: null | string;
+            longDescription: null | string;
+            periodType: components["schemas"]["TimePeriodType"];
+            /** Format: uuid */
+            parentPeriodId: null | string;
+            /** Format: int64 */
+            startYear: null | number | string;
+            /** Format: int64 */
+            endYear: null | number | string;
+            startPrecision: components["schemas"]["TimePrecision"];
+            endPrecision: components["schemas"]["TimePrecision"];
+            /** Format: int32 */
+            sortOrder: number | string;
         };
         /** @enum {unknown} */
         AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other";
@@ -1678,6 +1816,8 @@ export interface components {
             /** Format: int64 */
             endYear: null | number | string;
         };
+        /** @enum {unknown} */
+        TimePeriodType: "Era" | "Age" | "Dynasty" | "Reign" | "Movement" | "WarPeriod" | "CivilizationPeriod" | "CulturalPeriod" | "GeologicalPeriod" | "Other";
         /** @enum {unknown} */
         TimePrecision: "ExactDate" | "Year" | "Decade" | "Century" | "Millennium" | "Range" | "Approximate" | "Unknown" | null;
         TwoFactorRequest: {

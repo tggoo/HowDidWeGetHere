@@ -11,6 +11,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin route creation endpoint and route form that creates ordered route points with coordinates.
 - 2026-07-23: Added admin relationship creation endpoint and related-topic form by target entry slug.
 - 2026-07-23: Added admin source attachment endpoint and source form with support-field metadata.
+- 2026-07-23: Added admin time period create/update endpoints, period form and primary-period selector for entries.
 
 ## Goal
 
@@ -88,6 +89,7 @@ Build a mobile-first historical world map app with:
 - add route with ordered coordinate points to entry
 - add relationship to another entry by target slug
 - add source to entry by URL with support-field metadata
+- list, create and update time periods
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -113,6 +115,8 @@ Build a mobile-first historical world map app with:
 - route attachment form with ordered points
 - related-entry attachment form
 - source attachment form
+- time period create/update form
+- primary time period selector in the entry editor
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -139,7 +143,7 @@ The importer reads the current workbook sheets, creates entries, tags, time peri
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes, add relationships by target slug and attach sources by URL. It is not yet a complete CMS. Missing pieces include tag editing, relationship update/delete, route update/delete, source update/delete, time period editing and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes, add relationships by target slug, attach sources by URL and create/update time periods. It is not yet a complete CMS. Missing pieces include tag editing, relationship update/delete, route update/delete, source update/delete, time period delete and richer validation.
 
 ### Multilingual support
 
@@ -166,9 +170,9 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Time periods
 
-- admin time period CRUD
 - richer era/period side panel
 - period hierarchy UI
+- time period delete
 - timeline/time slider
 
 ### Sources
@@ -213,8 +217,8 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 1. Add route update/delete in admin UI.
 2. Add marker clustering and viewport-aware filtering.
 3. Add relationship update/delete and richer relationship display.
-4. Add time period CRUD and improve the era side panel.
-5. Add source editing.
+4. Improve the era side panel and period hierarchy UI.
+5. Add source update/delete.
 6. Add real media upload/storage.
 7. Add importer preview, duplicate detection and route/place mapping.
 8. Add CS/ES translation workflow.

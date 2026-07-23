@@ -329,3 +329,17 @@ public sealed record AdminEntrySourceRequest(
     string? LanguageCode,
     SourceSupportKind SupportsField,
     string? Note);
+
+public sealed record AdminTimePeriodUpsertRequest(
+    string Name,
+    string? Slug,
+    string? LanguageCode,
+    string? ShortDescription,
+    string? LongDescription,
+    TimePeriodType PeriodType,
+    Guid? ParentPeriodId,
+    long? StartYear,
+    long? EndYear,
+    TimePrecision StartPrecision,
+    TimePrecision EndPrecision,
+    int SortOrder);

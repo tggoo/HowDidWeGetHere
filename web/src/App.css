@@ -221,6 +221,16 @@
   color: #667085;
 }
 
+.period-item.active {
+  border-color: #135e96;
+  box-shadow: inset 3px 0 0 #135e96;
+}
+
+.period-list.compact {
+  max-height: 180px;
+  overflow: auto;
+}
+
 .map-canvas {
   background: #dfe8ec;
   min-height: 420px;
