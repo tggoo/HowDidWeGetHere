@@ -27,6 +27,9 @@ public static class PublicEndpoints
         api.MapGet("/tags", GetTagsAsync)
             .Produces<List<TagListItemResponse>>(StatusCodes.Status200OK);
 
+        api.MapGet("/map/entries", GetMapEntriesAsync)
+            .Produces<List<MapEntryResponse>>(StatusCodes.Status200OK);
+
         api.MapGet("/time-periods", GetTimePeriodsAsync)
             .Produces<List<TimePeriodListItemResponse>>(StatusCodes.Status200OK);
 
@@ -91,6 +94,82 @@ public static class PublicEndpoints
             .ToListAsync(cancellationToken);
 
         return Results.Ok(entries);
+    }
+
+    private static async Task<IResult> GetMapEntriesAsync(
+        HistoryDbContext dbContext,
+        string? language,
+        long? fromYear,
+        long? toYear,
+        string[]? tag,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var query = PublishedEntriesQuery(dbContext, fromYear, toYear, tag);
+
+        var entries = await query
+            .Include(entry => entry.Translations)
+            .Include(entry => entry.Images)
+            .Include(entry => entry.Places)
+                .ThenInclude(entryPlace => entryPlace.Place)
+                    .ThenInclude(place => place.Translations)
+            .Include(entry => entry.Routes)
+                .ThenInclude(route => route.Points)
+                    .ThenInclude(point => point.Place)
+                        .ThenInclude(place => place.Translations)
+            .OrderBy(entry => entry.StartYear ?? long.MaxValue)
+            .ThenBy(entry => entry.DefaultTitle)
+            .Take(500)
+            .ToListAsync(cancellationToken);
+
+        var response = entries
+            .Select(entry => new MapEntryResponse(
+                entry.Id,
+                entry.Slug,
+                entry.Kind.ToString(),
+                LocalizedEntryTitle(entry, lang),
+                entry.DateLabel,
+                entry.StartYear,
+                entry.EndYear,
+                entry.Images
+                    .OrderByDescending(image => image.IsPrimary)
+                    .ThenBy(image => image.SortOrder)
+                    .Select(image => image.PublicUrl ?? image.StorageKey)
+                    .FirstOrDefault(),
+                entry.Places
+                    .Where(entryPlace => entryPlace.Place.Geometry is Point)
+                    .OrderBy(entryPlace => entryPlace.SortOrder)
+                    .Select(entryPlace => new MapPointResponse(
+                        entryPlace.PlaceId,
+                        entryPlace.Place.Slug,
+                        LocalizedPlaceName(entryPlace.Place, lang),
+                        entryPlace.Role.ToString(),
+                        entryPlace.Place.SpatialConfidence.ToString(),
+                        Longitude(entryPlace.Place.Geometry)!.Value,
+                        Latitude(entryPlace.Place.Geometry)!.Value))
+                    .ToList(),
+                entry.Routes
+                    .OrderBy(route => route.Name)
+                    .Select(route => new MapRouteResponse(
+                        route.Id,
+                        route.Name,
+                        route.RouteType.ToString(),
+                        route.SpatialConfidence.ToString(),
+                        Coordinates(route.Geometry).Count > 0
+                            ? Coordinates(route.Geometry)
+                            : route.Points
+                                .Where(point => point.Place.Geometry is Point)
+                                .OrderBy(point => point.SortOrder)
+                                .Select(point => new GeoCoordinateResponse(
+                                    Longitude(point.Place.Geometry)!.Value,
+                                    Latitude(point.Place.Geometry)!.Value))
+                                .ToList()))
+                    .Where(route => route.Geometry.Count > 0)
+                    .ToList()))
+            .Where(entry => entry.Points.Count > 0 || entry.Routes.Count > 0)
+            .ToList();
+
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> GetEntryAsync(
@@ -314,6 +393,34 @@ public static class PublicEndpoints
         return Results.Ok(response);
     }
 
+    private static IQueryable<Domain.Entries.Entry> PublishedEntriesQuery(
+        HistoryDbContext dbContext,
+        long? fromYear,
+        long? toYear,
+        string[]? tag)
+    {
+        var query = dbContext.Entries
+            .AsNoTracking()
+            .Where(entry => entry.Status == ContentStatus.Published);
+
+        if (fromYear.HasValue)
+        {
+            query = query.Where(entry => entry.EndYear == null || entry.EndYear >= fromYear.Value);
+        }
+
+        if (toYear.HasValue)
+        {
+            query = query.Where(entry => entry.StartYear == null || entry.StartYear <= toYear.Value);
+        }
+
+        foreach (var tagSlug in tag?.Where(value => !string.IsNullOrWhiteSpace(value)) ?? [])
+        {
+            query = query.Where(entry => entry.Tags.Any(entryTag => entryTag.Tag.Slug == tagSlug));
+        }
+
+        return query;
+    }
+
     private static async Task<IResult> GetTimePeriodsAsync(
         HistoryDbContext dbContext,
         string? language,
@@ -374,6 +481,16 @@ public static class PublicEndpoints
             .Select(translation => translation.Name)
             .FirstOrDefault() ??
         place.DefaultName;
+
+    private static string LocalizedEntryTitle(Domain.Entries.Entry entry, string language) =>
+        entry.Translations
+            .Where(translation => translation.LanguageCode == language)
+            .Select(translation => translation.Title)
+            .FirstOrDefault() ??
+        entry.Translations
+            .Select(translation => translation.Title)
+            .FirstOrDefault() ??
+        entry.DefaultTitle;
 
     private static EntryRelationshipResponse RelatedEntry(
         Domain.Entries.Entry entry,

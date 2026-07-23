@@ -578,6 +578,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/map/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                    fromYear?: number | string;
+                    toYear?: number | string;
+                    tag?: string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MapEntryResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-periods": {
         parameters: {
             query?: never;
@@ -875,6 +915,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/entries/{entryId}/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminEntryPlaceRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ResourceCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -1019,6 +1114,25 @@ export interface components {
             /** Format: int32 */
             sourceRow: null | number | string;
         };
+        AdminEntryPlaceRequest: {
+            name: string;
+            slug: null | string;
+            languageCode: null | string;
+            placeType: components["schemas"]["PlaceType"];
+            role: components["schemas"]["EntryPlaceRole"];
+            spatialConfidence: components["schemas"]["SpatialConfidence"];
+            /** Format: double */
+            longitude: number | string;
+            /** Format: double */
+            latitude: number | string;
+            modernCountryCode: null | string;
+            wikidataId: null | string;
+            /** Format: int32 */
+            geoNamesId: null | number | string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            note: null | string;
+        };
         AdminEntryUpsertRequest: {
             title: string;
             slug: null | string;
@@ -1154,6 +1268,8 @@ export interface components {
             /** Format: double */
             latitude: null | number | string;
         };
+        /** @enum {unknown} */
+        EntryPlaceRole: "MainSite" | "Origin" | "Destination" | "Stop" | "Region" | "Birthplace" | "Battlefield" | "CultSite" | "CreatedIn" | "PublishedIn" | "Other";
         EntryRelationshipResponse: {
             /** Format: uuid */
             entryId: string;
@@ -1244,6 +1360,43 @@ export interface components {
             twoFactorCode?: null | string;
             twoFactorRecoveryCode?: null | string;
         };
+        MapEntryResponse: {
+            /** Format: uuid */
+            entryId: string;
+            slug: string;
+            kind: string;
+            title: string;
+            dateLabel: null | string;
+            /** Format: int64 */
+            startYear: null | number | string;
+            /** Format: int64 */
+            endYear: null | number | string;
+            primaryImageUrl: null | string;
+            points: components["schemas"]["MapPointResponse"][];
+            routes: components["schemas"]["MapRouteResponse"][];
+        };
+        MapPointResponse: {
+            /** Format: uuid */
+            placeId: string;
+            placeSlug: string;
+            placeName: string;
+            role: string;
+            spatialConfidence: string;
+            /** Format: double */
+            longitude: number | string;
+            /** Format: double */
+            latitude: number | string;
+        };
+        MapRouteResponse: {
+            /** Format: uuid */
+            routeId: string;
+            name: string;
+            routeType: string;
+            spatialConfidence: string;
+            geometry: components["schemas"]["GeoCoordinateResponse"][];
+        };
+        /** @enum {unknown} */
+        PlaceType: "City" | "Country" | "Region" | "Site" | "Mountain" | "Ocean" | "River" | "RouteStop" | "MythicPlace" | "Space" | "Continent" | "Other";
         /** @enum {unknown} */
         RealityStatus: "Historical" | "Mythological" | "Legendary" | "Disputed" | "Interpretive" | "Fictional";
         RefreshRequest: {
@@ -1281,6 +1434,8 @@ export interface components {
             /** Format: double */
             latitude: null | number | string;
         };
+        /** @enum {unknown} */
+        SpatialConfidence: "Exact" | "Approximate" | "Regional" | "Disputed" | "Mythic" | "Unknown";
         /** @enum {unknown} */
         StorageProvider: "Local" | "S3" | "AzureBlob" | "ExternalUrl";
         TagListItemResponse: {

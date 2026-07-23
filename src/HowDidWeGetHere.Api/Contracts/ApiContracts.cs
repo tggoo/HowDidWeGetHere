@@ -157,6 +157,34 @@ public sealed record EntryAudioTrackResponse(
     string? License,
     string? SourceUrl);
 
+public sealed record MapEntryResponse(
+    Guid EntryId,
+    string Slug,
+    string Kind,
+    string Title,
+    string? DateLabel,
+    long? StartYear,
+    long? EndYear,
+    string? PrimaryImageUrl,
+    IReadOnlyList<MapPointResponse> Points,
+    IReadOnlyList<MapRouteResponse> Routes);
+
+public sealed record MapPointResponse(
+    Guid PlaceId,
+    string PlaceSlug,
+    string PlaceName,
+    string Role,
+    string SpatialConfidence,
+    double Longitude,
+    double Latitude);
+
+public sealed record MapRouteResponse(
+    Guid RouteId,
+    string Name,
+    string RouteType,
+    string SpatialConfidence,
+    IReadOnlyList<GeoCoordinateResponse> Geometry);
+
 public sealed record AdminEntryListItemResponse(
     Guid Id,
     string Slug,
@@ -249,3 +277,18 @@ public sealed record AdminEntryAudioTrackRequest(
     string? Attribution,
     string? License,
     string? SourceUrl);
+
+public sealed record AdminEntryPlaceRequest(
+    string Name,
+    string? Slug,
+    string? LanguageCode,
+    PlaceType PlaceType,
+    EntryPlaceRole Role,
+    SpatialConfidence SpatialConfidence,
+    double Longitude,
+    double Latitude,
+    string? ModernCountryCode,
+    string? WikidataId,
+    int? GeoNamesId,
+    int SortOrder,
+    string? Note);

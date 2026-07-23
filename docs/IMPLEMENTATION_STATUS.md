@@ -6,6 +6,7 @@ Last updated: 2026-07-23
 
 - 2026-07-23: Added implementation status document.
 - 2026-07-23: Added public tag list API, public entry detail API and frontend detail/tag integration.
+- 2026-07-23: Added public map entries API, admin place attachment endpoint and frontend rendering of stored coordinates on the map canvas.
 
 ## Goal
 
@@ -60,12 +61,14 @@ Build a mobile-first historical world map app with:
 - `GET /api/entries`
 - `GET /api/entries/{slug}`
 - `GET /api/tags`
+- `GET /api/map/entries`
 - `GET /api/time-periods`
 - filtering entries by language, tag and year range
 - published-only public entries
 - primary image/audio URLs included in entry list responses
 - entry detail payload includes tags, time periods, places, routes, related entries, sources, images and audio tracks
 - public tag list is filtered to tags used by published entries
+- public map payload includes entries with stored coordinates and route geometry/route-point geometry
 
 ### Admin API
 
@@ -77,6 +80,7 @@ Build a mobile-first historical world map app with:
 - update entry
 - add entry image URL
 - add entry audio URL
+- add place/coordinate to entry
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -92,10 +96,12 @@ Build a mobile-first historical world map app with:
 - time period side panel
 - selected entry detail panel loaded from public entry detail API
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
+- map canvas renders stored public coordinates/routes when entries have places/routes
 - admin sign-in panel
 - workbook upload/import from frontend
 - admin entry list
 - entry create/edit form
+- place/coordinate attachment form
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -114,15 +120,15 @@ Build a mobile-first historical world map app with:
 
 ### Map experience
 
-The frontend currently has a visual placeholder map with static sample points/route lines. The database model and public entry detail API support places and routes, but the UI does not yet render real coordinates/routes on an actual map library.
+The frontend still uses a lightweight custom map canvas, not a real map library. It now renders stored public coordinates/routes when data exists, and falls back to sample points when there is no place/route data.
 
 ### Workbook import
 
-The importer reads the current workbook sheets, creates entries, tags, time periods and source links. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio.
+The importer reads the current workbook sheets, creates entries, tags, time periods and source links. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content and add media URLs. It is not yet a complete CMS. Missing pieces include tag editing, relationships, places/routes, source editing, time period editing and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs and attach point places with coordinates. It is not yet a complete CMS. Missing pieces include tag editing, relationships, route editing, source editing, time period editing and richer validation.
 
 ### Multilingual support
 
@@ -132,10 +138,9 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Real map data
 
-- public places endpoint
-- persisted route rendering in frontend
 - actual world map library integration, likely MapLibre GL or Leaflet
-- route drawing from stored coordinates/GeoJSON
+- route editing in admin UI
+- route drawing on a real map from stored coordinates/GeoJSON
 - marker clustering for mobile
 - place/time/tag combined filtering with map bounds
 
@@ -196,8 +201,8 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 ## Recommended next implementation order
 
 1. Integrate MapLibre or Leaflet in the frontend.
-2. Add public map summary endpoint with entries and coordinates for the current viewport/filter.
-3. Add admin editors for places and routes.
+2. Add route editor in admin UI.
+3. Add public/admin route endpoints beyond the current map/detail payload.
 4. Add admin/public relationship endpoints beyond the current detail payload.
 5. Add time period CRUD and improve the era side panel.
 6. Add source editing.
@@ -208,4 +213,4 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Current answer
 
-No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag APIs now exist. The main missing feature is still the real map layer: persisted places/routes need editing/import data and frontend rendering through a map library.
+No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The main missing feature is still the real map layer: the frontend can render stored coordinates on a simple canvas, but it still needs a proper map library and richer route/place editing/import.

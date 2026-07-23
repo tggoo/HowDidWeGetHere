@@ -256,9 +256,33 @@
   z-index: 2;
 }
 
+.map-point.active {
+  background: #135e96;
+  color: #ffffff;
+}
+
 .map-point svg {
   height: 19px;
   width: 19px;
+}
+
+.map-routes {
+  height: 100%;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  z-index: 1;
+}
+
+.map-routes polyline {
+  fill: none;
+  stroke: rgba(19, 94, 150, 0.72);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .map-point.atlantic {
@@ -457,7 +481,8 @@
 .entry-editor input,
 .entry-editor select,
 .entry-editor textarea,
-.media-editor input {
+.media-editor input,
+.media-editor select {
   background: #f8fafb;
   border: 1px solid #d8dee4;
   border-radius: 6px;

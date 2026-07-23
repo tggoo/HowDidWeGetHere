@@ -27,9 +27,13 @@ import './App.css'
 type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
 type AdminEntryImageRequest = components['schemas']['AdminEntryImageRequest']
 type AdminEntryAudioTrackRequest = components['schemas']['AdminEntryAudioTrackRequest']
+type AdminEntryPlaceRequest = components['schemas']['AdminEntryPlaceRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
+type EntryPlaceRole = components['schemas']['EntryPlaceRole']
+type PlaceType = components['schemas']['PlaceType']
 type RealityStatus = components['schemas']['RealityStatus']
+type SpatialConfidence = components['schemas']['SpatialConfidence']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
 
 type EntryListItem = {
@@ -163,6 +167,33 @@ type EntryDetail = EntryListItem & {
     attribution?: string | null
     license?: string | null
     sourceUrl?: string | null
+  }>
+}
+
+type MapEntry = {
+  entryId: string
+  slug: string
+  kind: string
+  title: string
+  dateLabel?: string | null
+  startYear?: number | string | null
+  endYear?: number | string | null
+  primaryImageUrl?: string | null
+  points: Array<{
+    placeId: string
+    placeSlug: string
+    placeName: string
+    role: string
+    spatialConfidence: string
+    longitude: number
+    latitude: number
+  }>
+  routes: Array<{
+    routeId: string
+    name: string
+    routeType: string
+    spatialConfidence: string
+    geometry: Array<{ longitude: number; latitude: number }>
   }>
 }
 
@@ -336,11 +367,46 @@ const timePrecisions: TimePrecision[] = [
   'Approximate',
   'Unknown',
 ]
+const placeTypes: PlaceType[] = [
+  'City',
+  'Country',
+  'Region',
+  'Site',
+  'Mountain',
+  'Ocean',
+  'River',
+  'RouteStop',
+  'MythicPlace',
+  'Continent',
+  'Other',
+]
+const entryPlaceRoles: EntryPlaceRole[] = [
+  'MainSite',
+  'Origin',
+  'Destination',
+  'Stop',
+  'Region',
+  'Birthplace',
+  'Battlefield',
+  'CultSite',
+  'CreatedIn',
+  'PublishedIn',
+  'Other',
+]
+const spatialConfidences: SpatialConfidence[] = [
+  'Exact',
+  'Approximate',
+  'Regional',
+  'Disputed',
+  'Mythic',
+  'Unknown',
+]
 
 function App() {
   const [language, setLanguage] = useState('en')
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
+  const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
@@ -364,6 +430,18 @@ function App() {
     audioUrl: '',
     audioTitle: '',
   })
+  const [placeForm, setPlaceForm] = useState({
+    name: '',
+    slug: '',
+    role: 'MainSite' as EntryPlaceRole,
+    placeType: 'Site' as PlaceType,
+    spatialConfidence: 'Approximate' as SpatialConfidence,
+    longitude: '',
+    latitude: '',
+    countryCode: '',
+    note: '',
+    sortOrder: '0',
+  })
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -372,7 +450,7 @@ function App() {
     async function loadMapData() {
       setLoadingMap(true)
       try {
-        const [entriesResult, periodsResult, tagsResult] = await Promise.all([
+        const [entriesResult, periodsResult, tagsResult, mapResult] = await Promise.all([
           apiClient.GET('/api/entries', {
             params: {
               query: {
@@ -395,13 +473,21 @@ function App() {
               },
             },
           }),
+          apiClient.GET('/api/map/entries', {
+            params: {
+              query: {
+                language,
+                tag: selectedTags,
+              },
+            },
+          }),
         ])
 
         if (!isActive) {
           return
         }
 
-        if (entriesResult.error || periodsResult.error || tagsResult.error) {
+        if (entriesResult.error || periodsResult.error || tagsResult.error || mapResult.error) {
           setMapStatus('API responded, but one of the map queries failed.')
           return
         }
@@ -421,6 +507,8 @@ function App() {
         if (tagsResult.data && tagsResult.data.length > 0) {
           setTags(tagsResult.data as TagListItem[])
         }
+
+        setMapEntries((mapResult.data as MapEntry[] | undefined) ?? [])
       } catch {
         if (isActive) {
           setMapStatus('Unable to reach the API. Check Render API URL and CORS settings.')
@@ -544,6 +632,21 @@ function App() {
     setEntryForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchPlaceForm(patch: Partial<typeof placeForm>) {
+    setPlaceForm((current) => ({ ...current, ...patch }))
+  }
+
+  function projectedPoint(longitude: number, latitude: number) {
+    return {
+      left: `${((longitude + 180) / 360) * 100}%`,
+      top: `${((90 - latitude) / 180) * 100}%`,
+    }
+  }
+
+  function projectedCoordinateString(point: { longitude: number; latitude: number }) {
+    return `${((point.longitude + 180) / 360) * 100},${((90 - point.latitude) / 180) * 100}`
+  }
+
   function resetEntryForm() {
     setEntryForm({ ...defaultEntryForm, languageCode: language })
     setMediaForm({
@@ -551,6 +654,18 @@ function App() {
       imageAlt: '',
       audioUrl: '',
       audioTitle: '',
+    })
+    setPlaceForm({
+      name: '',
+      slug: '',
+      role: 'MainSite',
+      placeType: 'Site',
+      spatialConfidence: 'Approximate',
+      longitude: '',
+      latitude: '',
+      countryCode: '',
+      note: '',
+      sortOrder: '0',
     })
   }
 
@@ -850,6 +965,63 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
+  async function addEntryPlace() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before adding a place.')
+      return
+    }
+
+    const longitude = Number(placeForm.longitude)
+    const latitude = Number(placeForm.latitude)
+    if (!placeForm.name.trim() || !Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      setAdminStatus('Place name, longitude and latitude are required.')
+      return
+    }
+
+    const body: AdminEntryPlaceRequest = {
+      name: placeForm.name.trim(),
+      slug: placeForm.slug.trim() || null,
+      languageCode: entryForm.languageCode,
+      placeType: placeForm.placeType,
+      role: placeForm.role,
+      spatialConfidence: placeForm.spatialConfidence,
+      longitude,
+      latitude,
+      modernCountryCode: placeForm.countryCode.trim() || null,
+      wikidataId: null,
+      geoNamesId: null,
+      sortOrder: numberOrNull(placeForm.sortOrder) ?? 0,
+      note: placeForm.note.trim() || null,
+    }
+
+    const result = await apiClient.POST('/api/admin/entries/{entryId}/places', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+        },
+      },
+      body,
+    })
+
+    if (result.error) {
+      setAdminStatus('Place was not added.')
+      return
+    }
+
+    setPlaceForm((current) => ({
+      ...current,
+      name: '',
+      slug: '',
+      longitude: '',
+      latitude: '',
+      countryCode: '',
+      note: '',
+    }))
+    setAdminStatus('Place added.')
+    setReloadKey((value) => value + 1)
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -930,29 +1102,61 @@ function App() {
 
         <section className="map-canvas" aria-label="World history map">
           <div className="map-grid" />
-          <button
-            className="map-point atlantic"
-            type="button"
-            onClick={() => setSelectedEntryId(entries[0]?.id)}
-          >
-            <MapPin aria-hidden="true" />
-          </button>
-          <button
-            className="map-point himalaya"
-            type="button"
-            onClick={() => setSelectedEntryId(entries[1]?.id ?? entries[0]?.id)}
-          >
-            <MapPin aria-hidden="true" />
-          </button>
-          <button
-            className="map-point nile"
-            type="button"
-            onClick={() => setSelectedEntryId(entries[2]?.id ?? entries[0]?.id)}
-          >
-            <MapPin aria-hidden="true" />
-          </button>
-          <div className="route-line atlantic-route" />
-          <div className="route-line everest-route" />
+          {mapEntries.length > 0 ? (
+            <>
+              <svg className="map-routes" preserveAspectRatio="none" viewBox="0 0 100 100">
+                {mapEntries.flatMap((entry) =>
+                  entry.routes.map((route) => (
+                    <polyline
+                      key={`${entry.entryId}-${route.routeId}`}
+                      points={route.geometry.map(projectedCoordinateString).join(' ')}
+                    />
+                  )),
+                )}
+              </svg>
+              {mapEntries.flatMap((entry) =>
+                entry.points.map((point) => (
+                  <button
+                    aria-label={`${entry.title}: ${point.placeName}`}
+                    className={selectedEntryId === entry.entryId ? 'map-point active' : 'map-point'}
+                    key={`${entry.entryId}-${point.placeId}-${point.role}`}
+                    style={projectedPoint(point.longitude, point.latitude)}
+                    title={`${entry.title} / ${point.role}: ${point.placeName}`}
+                    type="button"
+                    onClick={() => setSelectedEntryId(entry.entryId)}
+                  >
+                    <MapPin aria-hidden="true" />
+                  </button>
+                )),
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                className="map-point atlantic"
+                type="button"
+                onClick={() => setSelectedEntryId(entries[0]?.id)}
+              >
+                <MapPin aria-hidden="true" />
+              </button>
+              <button
+                className="map-point himalaya"
+                type="button"
+                onClick={() => setSelectedEntryId(entries[1]?.id ?? entries[0]?.id)}
+              >
+                <MapPin aria-hidden="true" />
+              </button>
+              <button
+                className="map-point nile"
+                type="button"
+                onClick={() => setSelectedEntryId(entries[2]?.id ?? entries[0]?.id)}
+              >
+                <MapPin aria-hidden="true" />
+              </button>
+              <div className="route-line atlantic-route" />
+              <div className="route-line everest-route" />
+            </>
+          )}
         </section>
 
         <aside className="detail-panel">
@@ -1263,6 +1467,93 @@ function App() {
               </button>
             </form>
             <div className="media-editor">
+              <label>
+                Place name
+                <input
+                  value={placeForm.name}
+                  onChange={(event) => patchPlaceForm({ name: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Longitude
+                  <input
+                    inputMode="decimal"
+                    value={placeForm.longitude}
+                    onChange={(event) => patchPlaceForm({ longitude: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Latitude
+                  <input
+                    inputMode="decimal"
+                    value={placeForm.latitude}
+                    onChange={(event) => patchPlaceForm({ latitude: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="admin-field-row">
+                <label>
+                  Role
+                  <select
+                    value={placeForm.role}
+                    onChange={(event) => patchPlaceForm({ role: event.target.value as EntryPlaceRole })}
+                  >
+                    {entryPlaceRoles.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Type
+                  <select
+                    value={placeForm.placeType}
+                    onChange={(event) => patchPlaceForm({ placeType: event.target.value as PlaceType })}
+                  >
+                    {placeTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="admin-field-row">
+                <label>
+                  Confidence
+                  <select
+                    value={placeForm.spatialConfidence}
+                    onChange={(event) => patchPlaceForm({ spatialConfidence: event.target.value as SpatialConfidence })}
+                  >
+                    {spatialConfidences.map((confidence) => (
+                      <option key={confidence} value={confidence}>
+                        {confidence}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Country
+                  <input
+                    maxLength={3}
+                    value={placeForm.countryCode}
+                    onChange={(event) => patchPlaceForm({ countryCode: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label>
+                Place note
+                <input
+                  value={placeForm.note}
+                  onChange={(event) => patchPlaceForm({ note: event.target.value })}
+                />
+              </label>
+              <button className="admin-action secondary" type="button" onClick={addEntryPlace}>
+                <MapPin aria-hidden="true" />
+                Add place
+              </button>
               <label>
                 Primary image URL
                 <input
