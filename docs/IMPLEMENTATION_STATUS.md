@@ -22,6 +22,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin tag detach/delete endpoints and controls for attached entry tags.
 - 2026-07-23: Added admin time period delete endpoint and guarded delete control in the admin UI.
 - 2026-07-23: Added lightweight Leaflet marker clustering for dense low-zoom map views.
+- 2026-07-23: Added viewport-aware map data filtering with map bounds sent to the public map API.
 
 ## Goal
 
@@ -87,6 +88,7 @@ Build a mobile-first historical world map app with:
 - public map payload includes entries with stored coordinates and route geometry/route-point geometry
 - public entry and map queries can be filtered by year range
 - public entry and map queries can be filtered by search text
+- public map queries can be filtered by visible map bounds
 
 ### Admin API
 
@@ -134,6 +136,7 @@ Build a mobile-first historical world map app with:
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
 - Leaflet map renders stored public coordinates/routes when entries have places/routes
 - Leaflet map clusters dense marker sets at low zoom
+- Leaflet map sends visible bounds to the API so map data follows the viewport
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
 - workbook upload/import from frontend
@@ -172,7 +175,7 @@ Build a mobile-first historical world map app with:
 
 ### Map experience
 
-The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Dense low-zoom marker sets are grouped with lightweight client-side clustering. Admins can create, edit and delete simple ordered routes from coordinate rows. The map still needs richer UX such as viewport-aware filtering, better route styling and mobile controls.
+The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Dense low-zoom marker sets are grouped with lightweight client-side clustering, and the map sends visible bounds to the public map API so data follows the viewport. Admins can create, edit and delete simple ordered routes from coordinate rows. The map still needs richer UX such as better route styling and mobile controls.
 
 ### Workbook import
 
@@ -191,7 +194,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 ### Real map data
 
 - richer route drawing on a real map from stored coordinates/GeoJSON
-- place/time/tag combined filtering with map bounds
+- more advanced place/time/tag filtering with map bounds and anti-meridian handling
 
 ### Relationships
 
@@ -245,13 +248,12 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Add viewport-aware map filtering.
-2. Add richer relationship display.
-3. Improve the era side panel and period hierarchy UI.
-4. Add real media upload/storage.
-5. Add importer preview, conflict review and route/place mapping.
-6. Add CS/ES translation workflow.
-7. Add backend/frontend tests.
+1. Add richer relationship display.
+2. Improve the era side panel and period hierarchy UI.
+3. Add real media upload/storage.
+4. Add importer preview, conflict review and route/place mapping.
+5. Add CS/ES translation workflow.
+6. Add backend/frontend tests.
 
 ## Current answer
 

@@ -106,10 +106,26 @@ public static class PublicEndpoints
         long? fromYear,
         long? toYear,
         string[]? tag,
+        double? west,
+        double? south,
+        double? east,
+        double? north,
         CancellationToken cancellationToken)
     {
         var lang = EndpointHelpers.NormalizeLanguage(language);
         var query = PublishedEntriesQuery(dbContext, search, fromYear, toYear, tag);
+        var viewport = CreateViewport(west, south, east, north);
+        if (viewport is not null)
+        {
+            query = query.Where(entry =>
+                entry.Places.Any(entryPlace =>
+                    entryPlace.Place.Geometry != null && entryPlace.Place.Geometry.Intersects(viewport)) ||
+                entry.Routes.Any(route =>
+                    route.Geometry != null && route.Geometry.Intersects(viewport)) ||
+                entry.Routes.Any(route =>
+                    route.Points.Any(point =>
+                        point.Place.Geometry != null && point.Place.Geometry.Intersects(viewport))));
+        }
 
         var entries = await query
             .Include(entry => entry.Translations)
@@ -562,4 +578,38 @@ public static class PublicEndpoints
             Point point => [new GeoCoordinateResponse(point.X, point.Y)],
             _ => []
         };
+
+    private static Geometry? CreateViewport(double? west, double? south, double? east, double? north)
+    {
+        if (!west.HasValue || !south.HasValue || !east.HasValue || !north.HasValue)
+        {
+            return null;
+        }
+
+        if (west.Value < -180 ||
+            west.Value > 180 ||
+            east.Value < -180 ||
+            east.Value > 180 ||
+            south.Value < -90 ||
+            south.Value > 90 ||
+            north.Value < -90 ||
+            north.Value > 90 ||
+            west.Value >= east.Value ||
+            south.Value >= north.Value)
+        {
+            return null;
+        }
+
+        return new Polygon(new LinearRing(
+        [
+            new Coordinate(west.Value, south.Value),
+            new Coordinate(east.Value, south.Value),
+            new Coordinate(east.Value, north.Value),
+            new Coordinate(west.Value, north.Value),
+            new Coordinate(west.Value, south.Value)
+        ]))
+        {
+            SRID = 4326
+        };
+    }
 }

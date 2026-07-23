@@ -20,10 +20,10 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
-import { HistoryMap, type MapEntry } from './components/HistoryMap'
+import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
 import './App.css'
 
 type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
@@ -508,6 +508,7 @@ function App() {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
   const [fromYear, setFromYear] = useState('')
   const [toYear, setToYear] = useState('')
+  const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
   const [isAdminOpen, setAdminOpen] = useState(false)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
@@ -578,6 +579,25 @@ function App() {
   const [adminEntryTags, setAdminEntryTags] = useState<EntryDetail['tags']>([])
   const [reloadKey, setReloadKey] = useState(0)
 
+  const handleMapViewportChange = useCallback((viewport: MapViewport) => {
+    const roundedViewport: MapViewport = {
+      west: Number(viewport.west.toFixed(4)),
+      south: Number(viewport.south.toFixed(4)),
+      east: Number(viewport.east.toFixed(4)),
+      north: Number(viewport.north.toFixed(4)),
+    }
+
+    setMapViewport((current) =>
+      current &&
+      current.west === roundedViewport.west &&
+      current.south === roundedViewport.south &&
+      current.east === roundedViewport.east &&
+      current.north === roundedViewport.north
+        ? current
+        : roundedViewport,
+    )
+  }, [])
+
   useEffect(() => {
     let isActive = true
 
@@ -618,6 +638,10 @@ function App() {
                 tag: selectedTags,
                 fromYear: numberOrNull(fromYear),
                 toYear: numberOrNull(toYear),
+                west: mapViewport?.west,
+                south: mapViewport?.south,
+                east: mapViewport?.east,
+                north: mapViewport?.north,
               },
             },
           }),
@@ -639,10 +663,11 @@ function App() {
           setEntries(entriesResult.data as EntryListItem[])
           setSelectedEntryId(entriesResult.data[0].id)
           const yearRangeLabel = fromYear || toYear ? ` in ${fromYear || '?'}-${toYear || '?'}` : ''
+          const viewportLabel = mapViewport ? ' in the visible map area' : ''
           setMapStatus(
             mapPointCount > 0
-              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points${yearRangeLabel}.`
-              : `Loaded ${entriesResult.data.length} published entries${yearRangeLabel}. Add places to show them on the map.`,
+              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points${yearRangeLabel}${viewportLabel}.`
+              : `Loaded ${entriesResult.data.length} published entries${yearRangeLabel}${viewportLabel}. Add places or move the map to show points.`,
           )
         } else {
           setMapStatus('API is reachable, but no published entries matched the current filters.')
@@ -673,7 +698,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, searchText, selectedTags, reloadKey, toYear])
+  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, toYear])
 
   useEffect(() => {
     let isActive = true
@@ -752,6 +777,18 @@ function App() {
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0],
     [entries, selectedEntryId],
+  )
+
+  const mapAutoFitKey = useMemo(
+    () => JSON.stringify({
+      fromYear,
+      language,
+      reloadKey,
+      searchText,
+      selectedTags,
+      toYear,
+    }),
+    [fromYear, language, reloadKey, searchText, selectedTags, toYear],
   )
 
   function toggleTag(tag: string) {
@@ -2050,9 +2087,12 @@ function App() {
         </aside>
 
         <HistoryMap
+          autoFitKey={mapAutoFitKey}
           entries={mapEntries}
           fallbackEntryIds={entries.map((entry) => entry.id)}
+          showFallback={!mapViewport}
           selectedEntryId={selectedEntryId}
+          onViewportChange={handleMapViewportChange}
           onSelectEntry={setSelectedEntryId}
         />
 

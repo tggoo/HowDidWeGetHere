@@ -29,11 +29,21 @@ export type MapEntry = {
   }>
 }
 
+export type MapViewport = {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
 type HistoryMapProps = {
   entries: MapEntry[]
   fallbackEntryIds: string[]
   selectedEntryId?: string
+  autoFitKey: string
+  showFallback: boolean
   onSelectEntry: (entryId: string) => void
+  onViewportChange: (viewport: MapViewport) => void
 }
 
 type MapPointMarker = {
@@ -96,25 +106,37 @@ function clusterPopupContent(markers: MapPointMarker[]) {
   `
 }
 
-function mapDataSignature(entries: MapEntry[]) {
-  return entries
-    .map((entry) => {
-      const points = entry.points
-        .map((point) => `${point.placeId}:${point.longitude}:${point.latitude}`)
-        .join(',')
-      const routes = entry.routes
-        .map((route) => `${route.routeId}:${route.geometry.length}`)
-        .join(',')
-      return `${entry.entryId}:${points}:${routes}`
-    })
-    .join('|')
+function viewportFromMap(map: L.Map): MapViewport {
+  const bounds = map.getBounds()
+  return {
+    west: normalizeLongitude(bounds.getWest()),
+    south: clampLatitude(bounds.getSouth()),
+    east: normalizeLongitude(bounds.getEast()),
+    north: clampLatitude(bounds.getNorth()),
+  }
 }
 
-export function HistoryMap({ entries, fallbackEntryIds, selectedEntryId, onSelectEntry }: HistoryMapProps) {
+function normalizeLongitude(value: number) {
+  return Math.max(-180, Math.min(180, value))
+}
+
+function clampLatitude(value: number) {
+  return Math.max(-85, Math.min(85, value))
+}
+
+export function HistoryMap({
+  entries,
+  fallbackEntryIds,
+  selectedEntryId,
+  autoFitKey,
+  showFallback,
+  onSelectEntry,
+  onViewportChange,
+}: HistoryMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const overlayRef = useRef<L.LayerGroup | null>(null)
-  const lastFitSignatureRef = useRef<string>('')
+  const lastAutoFitKeyRef = useRef<string>('')
   const [mapRevision, setMapRevision] = useState(0)
 
   const hasRealMapData = entries.some((entry) => entry.points.length > 0 || entry.routes.length > 0)
@@ -151,8 +173,12 @@ export function HistoryMap({ entries, fallbackEntryIds, selectedEntryId, onSelec
     L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('&copy; OpenStreetMap').addTo(map)
     overlayRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
-    const redraw = () => setMapRevision((revision) => revision + 1)
+    const redraw = () => {
+      setMapRevision((revision) => revision + 1)
+      onViewportChange(viewportFromMap(map))
+    }
     map.on('zoomend moveend', redraw)
+    onViewportChange(viewportFromMap(map))
 
     return () => {
       map.off('zoomend moveend', redraw)
@@ -160,7 +186,7 @@ export function HistoryMap({ entries, fallbackEntryIds, selectedEntryId, onSelec
       mapRef.current = null
       overlayRef.current = null
     }
-  }, [])
+  }, [onViewportChange])
 
   useEffect(() => {
     const map = mapRef.current
@@ -237,9 +263,8 @@ export function HistoryMap({ entries, fallbackEntryIds, selectedEntryId, onSelec
       }
     }
 
-    const fitSignature = mapDataSignature(entries)
-    if (fitSignature !== lastFitSignatureRef.current) {
-      lastFitSignatureRef.current = fitSignature
+    if (autoFitKey !== lastAutoFitKeyRef.current) {
+      lastAutoFitKeyRef.current = autoFitKey
 
       if (bounds.isValid()) {
         map.fitBounds(bounds.pad(0.24), { animate: false, maxZoom: 5 })
@@ -247,12 +272,12 @@ export function HistoryMap({ entries, fallbackEntryIds, selectedEntryId, onSelec
         map.setView(defaultCenter, defaultZoom, { animate: false })
       }
     }
-  }, [entries, mapRevision, onSelectEntry, selectedEntryId])
+  }, [autoFitKey, entries, mapRevision, onSelectEntry, selectedEntryId])
 
   return (
     <section className="map-canvas" aria-label="World history map">
       <div className="leaflet-map" ref={mapContainerRef} />
-      {!hasRealMapData && (
+      {showFallback && !hasRealMapData && (
         <div className="map-fallback-layer">
           <div className="map-grid" />
           {fallbackPoints.map((point) => (

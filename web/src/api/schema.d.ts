@@ -594,6 +594,10 @@ export interface paths {
                     fromYear?: number | string;
                     toYear?: number | string;
                     tag?: string[];
+                    west?: number | string;
+                    south?: number | string;
+                    east?: number | string;
+                    north?: number | string;
                 };
                 header?: never;
                 path?: never;
