@@ -12,7 +12,9 @@ public sealed record WorkbookImportPreviewResult(
     int EntriesToCreate,
     int EntriesToUpdate,
     IReadOnlyList<WorkbookImportPreviewRow> Rows,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    WorkbookImportValidationSummary ValidationSummary,
+    IReadOnlyList<WorkbookImportValidationIssue> ValidationIssues);
 
 public sealed record WorkbookImportPreviewRow(
     string SheetName,
@@ -26,4 +28,17 @@ public sealed record WorkbookImportPreviewRow(
     string? ExistingEntrySlug,
     string? SourceUrl,
     IReadOnlyList<string> Tags,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<WorkbookImportValidationIssue> ValidationIssues);
+
+public sealed record WorkbookImportValidationSummary(
+    int Errors,
+    int Warnings,
+    int Info);
+
+public sealed record WorkbookImportValidationIssue(
+    string Severity,
+    string Code,
+    string Message,
+    string? SheetName,
+    int? RowNumber);

@@ -2629,6 +2629,8 @@ export interface components {
             entriesToUpdate: number | string;
             rows: components["schemas"]["WorkbookImportPreviewRow"][];
             warnings: string[];
+            validationSummary: components["schemas"]["WorkbookImportValidationSummary"];
+            validationIssues: components["schemas"]["WorkbookImportValidationIssue"][];
         };
         WorkbookImportPreviewRow: {
             sheetName: string;
@@ -2645,6 +2647,7 @@ export interface components {
             sourceUrl: null | string;
             tags: string[];
             warnings: string[];
+            validationIssues: components["schemas"]["WorkbookImportValidationIssue"][];
         };
         WorkbookImportResult: {
             /** Format: uuid */
@@ -2656,6 +2659,22 @@ export interface components {
             /** Format: int32 */
             entriesUpdated: number | string;
             warnings: string[];
+        };
+        WorkbookImportValidationIssue: {
+            severity: string;
+            code: string;
+            message: string;
+            sheetName: null | string;
+            /** Format: int32 */
+            rowNumber: null | number | string;
+        };
+        WorkbookImportValidationSummary: {
+            /** Format: int32 */
+            errors: number | string;
+            /** Format: int32 */
+            warnings: number | string;
+            /** Format: int32 */
+            info: number | string;
         };
     };
     responses: never;

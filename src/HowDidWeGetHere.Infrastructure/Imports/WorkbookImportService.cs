@@ -25,18 +25,14 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
     {
         using var workbook = new XLWorkbook(workbookStream);
 
+        var existingEntrySlugs = await dbContext.Entries
+            .AsNoTracking()
+            .Select(entry => new ExistingImportEntry(entry.Id, entry.Slug, entry.SourceSheet, entry.SourceRow))
+            .ToListAsync(cancellationToken);
         var existingEntriesBySourceRow = updateExistingRows
-            ? await dbContext.Entries
-                .AsNoTracking()
+            ? existingEntrySlugs
                 .Where(entry => entry.SourceSheet != null && entry.SourceRow != null)
-                .Select(entry => new
-                {
-                    entry.Id,
-                    entry.Slug,
-                    entry.SourceSheet,
-                    entry.SourceRow
-                })
-                .ToListAsync(cancellationToken)
+                .ToList()
             : [];
 
         var existingEntryLookup = existingEntriesBySourceRow
@@ -45,6 +41,8 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
         var previewRows = new List<WorkbookImportPreviewRow>();
         var warnings = new List<string>();
+        var validationIssues = new List<WorkbookImportValidationIssue>();
+        var workbookSlugCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var rowsRead = 0;
         var entriesToCreate = 0;
         var entriesToUpdate = 0;
@@ -53,7 +51,14 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
             .Where(group => group.Count() > 1))
         {
-            warnings.Add($"Existing duplicate import source row '{duplicateGroup.Key}' found; first entry would be updated.");
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "DuplicateSourceRow",
+                $"Existing duplicate import source row '{duplicateGroup.Key}' found; first entry would be updated.",
+                null,
+                null);
         }
 
         foreach (var worksheet in workbook.Worksheets)
@@ -76,6 +81,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
                 rowsRead++;
                 var rowWarnings = new List<string>();
+                var rowIssues = new List<WorkbookImportValidationIssue>();
                 var entry = worksheet.Name.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase)
                     ? CreateMasterTimelineEntry(rowValues, rowNumber, rowWarnings)
                     : CreateMythologyEntry(rowValues, rowNumber);
@@ -92,7 +98,32 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     entriesToCreate++;
                 }
 
-                warnings.AddRange(rowWarnings);
+                foreach (var rowWarning in rowWarnings)
+                {
+                    AddIssue(
+                        validationIssues,
+                        warnings,
+                        "Warning",
+                        "RowShape",
+                        rowWarning,
+                        worksheet.Name,
+                        rowNumber,
+                        rowIssues);
+                }
+
+                ValidatePreviewRow(
+                    worksheet.Name,
+                    rowNumber,
+                    rowValues,
+                    entry,
+                    willUpdate,
+                    existingEntry?.Id,
+                    existingEntrySlugs,
+                    workbookSlugCounts,
+                    validationIssues,
+                    warnings,
+                    rowIssues);
+
                 previewRows.Add(new WorkbookImportPreviewRow(
                     worksheet.Name,
                     rowNumber,
@@ -105,11 +136,31 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     existingEntry?.Slug,
                     ResolveSourceUrl(rowValues),
                     ResolvePreviewTags(rowValues, worksheet.Name),
-                    rowWarnings));
+                    rowWarnings,
+                    rowIssues));
             }
         }
 
-        return new WorkbookImportPreviewResult(rowsRead, entriesToCreate, entriesToUpdate, previewRows, warnings);
+        if (rowsRead == 0)
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Error",
+                "NoRows",
+                "Workbook contains no importable rows in supported sheets.",
+                null,
+                null);
+        }
+
+        return new WorkbookImportPreviewResult(
+            rowsRead,
+            entriesToCreate,
+            entriesToUpdate,
+            previewRows,
+            warnings,
+            CreateValidationSummary(validationIssues),
+            validationIssues);
     }
 
     public async Task<WorkbookImportResult> ImportAsync(
@@ -459,6 +510,118 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         }
     }
 
+    private static void ValidatePreviewRow(
+        string sheetName,
+        int rowNumber,
+        IReadOnlyDictionary<string, string?> row,
+        Entry entry,
+        bool willUpdate,
+        Guid? existingEntryId,
+        IReadOnlyCollection<ExistingImportEntry> existingEntries,
+        IDictionary<string, int> workbookSlugCounts,
+        ICollection<WorkbookImportValidationIssue> validationIssues,
+        ICollection<string> warnings,
+        ICollection<WorkbookImportValidationIssue> rowIssues)
+    {
+        var sourceUrl = ResolveSourceUrl(row);
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "MissingSource",
+                "Row has no source URL.",
+                sheetName,
+                rowNumber,
+                rowIssues);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.DateLabel) && entry.TimePrecision == TimePrecision.Unknown)
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "UnparsedDate",
+                $"Date label '{entry.DateLabel}' could not be parsed into a normalized year range.",
+                sheetName,
+                rowNumber,
+                rowIssues);
+        }
+
+        if (entry.DefaultTitle.Equals($"{sheetName} row {rowNumber}", StringComparison.OrdinalIgnoreCase))
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "MissingTitle",
+                "Row has no expected title value; a fallback title would be used.",
+                sheetName,
+                rowNumber,
+                rowIssues);
+        }
+
+        workbookSlugCounts.TryGetValue(entry.Slug, out var workbookSlugCount);
+        workbookSlugCounts[entry.Slug] = workbookSlugCount + 1;
+        if (workbookSlugCount > 0)
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "DuplicateWorkbookSlug",
+                $"Another imported row already proposes slug '{entry.Slug}'. Import would add a numeric suffix.",
+                sheetName,
+                rowNumber,
+                rowIssues);
+        }
+
+        var existingSlugMatch = existingEntries.FirstOrDefault(existing => existing.Slug == entry.Slug);
+        if (existingSlugMatch is not null && (!willUpdate || existingSlugMatch.Id != existingEntryId))
+        {
+            AddIssue(
+                validationIssues,
+                warnings,
+                "Warning",
+                "DuplicateExistingSlug",
+                $"Slug '{entry.Slug}' already exists outside this source row. Import would add a numeric suffix.",
+                sheetName,
+                rowNumber,
+                rowIssues);
+        }
+    }
+
+    private static void AddIssue(
+        ICollection<WorkbookImportValidationIssue> validationIssues,
+        ICollection<string> warnings,
+        string severity,
+        string code,
+        string message,
+        string? sheetName,
+        int? rowNumber,
+        ICollection<WorkbookImportValidationIssue>? rowIssues = null)
+    {
+        var issue = new WorkbookImportValidationIssue(severity, code, message, sheetName, rowNumber);
+        validationIssues.Add(issue);
+        rowIssues?.Add(issue);
+        if (!severity.Equals("Info", StringComparison.OrdinalIgnoreCase))
+        {
+            warnings.Add(rowNumber is null ? message : $"{sheetName} row {rowNumber}: {message}");
+        }
+    }
+
+    private static WorkbookImportValidationSummary CreateValidationSummary(
+        IEnumerable<WorkbookImportValidationIssue> validationIssues)
+    {
+        var issues = validationIssues.ToList();
+        return new WorkbookImportValidationSummary(
+            issues.Count(issue => issue.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase)),
+            issues.Count(issue => issue.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase)),
+            issues.Count(issue => issue.Severity.Equals("Info", StringComparison.OrdinalIgnoreCase)));
+    }
+
     private void AttachImportedTags(
         Entry entry,
         IReadOnlyDictionary<string, string?> row,
@@ -691,4 +854,6 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
     [GeneratedRegex("-+")]
     private static partial Regex CollapseDashesRegex();
+
+    private sealed record ExistingImportEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
 }

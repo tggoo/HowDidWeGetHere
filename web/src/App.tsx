@@ -210,6 +210,11 @@ type WorkbookImportPreviewResult = {
   rowsRead: number | string
   entriesToCreate: number | string
   entriesToUpdate: number | string
+  validationSummary: {
+    errors: number | string
+    warnings: number | string
+    info: number | string
+  }
   rows: Array<{
     sheetName: string
     rowNumber: number | string
@@ -223,8 +228,22 @@ type WorkbookImportPreviewResult = {
     sourceUrl?: string | null
     tags: string[]
     warnings: string[]
+    validationIssues: Array<{
+      severity: string
+      code: string
+      message: string
+      sheetName?: string | null
+      rowNumber?: number | string | null
+    }>
   }>
   warnings: string[]
+  validationIssues: Array<{
+    severity: string
+    code: string
+    message: string
+    sheetName?: string | null
+    rowNumber?: number | string | null
+  }>
 }
 
 type AdminEntryListItem = {
@@ -2851,8 +2870,22 @@ function App() {
                       <strong>{importPreview.rowsRead} rows in preview</strong>
                       <span>{importPreview.entriesToCreate} entries would be created</span>
                       <span>{importPreview.entriesToUpdate} entries would be updated</span>
-                      {importPreview.warnings.length > 0 && <span>{importPreview.warnings.length} warnings</span>}
+                      <span>
+                        {importPreview.validationSummary.errors} errors / {importPreview.validationSummary.warnings} warnings /{' '}
+                        {importPreview.validationSummary.info} info
+                      </span>
                     </div>
+                    {importPreview.validationIssues.length > 0 && (
+                      <div className="validation-report">
+                        <strong>Validation report</strong>
+                        {importPreview.validationIssues.slice(0, 8).map((issue, index) => (
+                          <span className={`validation-issue ${issue.severity.toLowerCase()}`} key={`${issue.code}-${index}`}>
+                            {issue.sheetName && issue.rowNumber ? `${issue.sheetName} #${issue.rowNumber}: ` : ''}
+                            {issue.message}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="admin-table-scroll">
                       <table className="admin-table">
                         <thead>
@@ -2861,6 +2894,7 @@ function App() {
                             <th>Title</th>
                             <th>Action</th>
                             <th>Tags</th>
+                            <th>Validation</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2875,6 +2909,11 @@ function App() {
                               </td>
                               <td>{row.willUpdateExistingEntry ? `Update ${row.existingEntrySlug ?? ''}` : 'Create'}</td>
                               <td>{row.tags.slice(0, 4).join(', ') || '-'}</td>
+                              <td>
+                                {row.validationIssues.length > 0
+                                  ? row.validationIssues.map((issue) => issue.code).join(', ')
+                                  : 'OK'}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
