@@ -17,6 +17,7 @@ import {
   Save,
   Search,
   Tags,
+  Trash2,
   Upload,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
@@ -182,6 +183,8 @@ type EntryDetail = EntryListItem & {
   }>
 }
 
+type EntryRouteDetail = EntryDetail['routes'][number]
+
 type WorkbookImportResult = {
   importBatchId: string
   rowsRead: number | string
@@ -213,6 +216,7 @@ type AdminEntryDetail = AdminEntryListItem & {
   timePrecision?: string | null
   timeConfidence?: string | null
   primaryTimePeriodId?: string | null
+  routes: EntryRouteDetail[]
 }
 
 type EntryFormState = {
@@ -523,12 +527,14 @@ function App() {
     sortOrder: '0',
   })
   const [routeForm, setRouteForm] = useState({
+    id: null as string | null,
     name: '',
     routeType: 'Journey' as RouteType,
     spatialConfidence: 'Approximate' as SpatialConfidence,
     sourceNote: '',
     pointsText: '',
   })
+  const [adminEntryRoutes, setAdminEntryRoutes] = useState<EntryRouteDetail[]>([])
   const [relationshipForm, setRelationshipForm] = useState({
     targetEntrySlug: '',
     relationshipType: 'RelatedTo' as EntryRelationshipType,
@@ -774,6 +780,17 @@ function App() {
     setRouteForm((current) => ({ ...current, ...patch }))
   }
 
+  function resetRouteForm() {
+    setRouteForm({
+      id: null,
+      name: '',
+      routeType: 'Journey',
+      spatialConfidence: 'Approximate',
+      sourceNote: '',
+      pointsText: '',
+    })
+  }
+
   function patchRelationshipForm(patch: Partial<typeof relationshipForm>) {
     setRelationshipForm((current) => ({ ...current, ...patch }))
   }
@@ -815,6 +832,36 @@ function App() {
       })
   }
 
+  function routePointsToText(route: EntryRouteDetail) {
+    return route.points
+      .slice()
+      .sort((first, second) => Number(first.sortOrder) - Number(second.sortOrder))
+      .map((point) => {
+        const longitude = typeof point.longitude === 'number' ? point.longitude.toString() : ''
+        const latitude = typeof point.latitude === 'number' ? point.latitude.toString() : ''
+        return [
+          point.role || 'Stop',
+          point.name,
+          longitude,
+          latitude,
+          point.dateLabel ?? '',
+          point.note ?? '',
+        ].join(' | ')
+      })
+      .join('\n')
+  }
+
+  function loadRouteForm(route: EntryRouteDetail) {
+    setRouteForm({
+      id: route.id,
+      name: route.name,
+      routeType: route.routeType as RouteType,
+      spatialConfidence: route.spatialConfidence as SpatialConfidence,
+      sourceNote: route.sourceNote ?? '',
+      pointsText: routePointsToText(route),
+    })
+  }
+
   function resetEntryForm() {
     setEntryForm({ ...defaultEntryForm, languageCode: language })
     setMediaForm({
@@ -836,6 +883,7 @@ function App() {
       sortOrder: '0',
     })
     setRouteForm({
+      id: null,
       name: '',
       routeType: 'Journey',
       spatialConfidence: 'Approximate',
@@ -863,6 +911,7 @@ function App() {
       parentTagId: '',
       attachSlug: '',
     })
+    setAdminEntryRoutes([])
   }
 
   function loadTagForm(tag: TagListItem) {
@@ -943,6 +992,7 @@ function App() {
     }
 
     const detail = result.data as AdminEntryDetail
+    const detailRoutes = detail.routes ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -961,6 +1011,31 @@ function App() {
       timePrecision: (detail.timePrecision as TimePrecision | null) ?? '',
       timeConfidence: detail.timeConfidence ?? '',
       primaryTimePeriodId: detail.primaryTimePeriodId ?? '',
+    })
+    setAdminEntryRoutes(detailRoutes)
+    setRouteForm((current) => {
+      if (!current.id) {
+        return current
+      }
+
+      const route = detailRoutes.find((item) => item.id === current.id)
+      return route
+        ? {
+            id: route.id,
+            name: route.name,
+            routeType: route.routeType as RouteType,
+            spatialConfidence: route.spatialConfidence as SpatialConfidence,
+            sourceNote: route.sourceNote ?? '',
+            pointsText: routePointsToText(route),
+          }
+        : {
+            id: null,
+            name: '',
+            routeType: 'Journey',
+            spatialConfidence: 'Approximate',
+            sourceNote: '',
+            pointsText: '',
+          }
     })
     setAdminStatus('Entry loaded.')
   }
@@ -1247,9 +1322,9 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
-  async function addEntryRoute() {
+  async function saveEntryRoute() {
     if (!entryForm.id || !adminToken) {
-      setAdminStatus('Select or create an entry before adding a route.')
+      setAdminStatus('Select or create an entry before saving a route.')
       return
     }
 
@@ -1273,29 +1348,68 @@ function App() {
       points,
     }
 
-    const result = await apiClient.POST('/api/admin/entries/{entryId}/routes', {
+    setAdminStatus(routeForm.id ? 'Saving route...' : 'Adding route...')
+    const result = routeForm.id
+      ? await apiClient.PUT('/api/admin/entries/{entryId}/routes/{routeId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+              routeId: routeForm.id,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/entries/{entryId}/routes', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+            },
+          },
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Route was not saved.')
+      return
+    }
+
+    resetRouteForm()
+    setAdminStatus(routeForm.id ? 'Route saved.' : 'Route added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteEntryRoute(routeId: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before deleting a route.')
+      return
+    }
+
+    setAdminStatus('Deleting route...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/routes/{routeId}', {
       headers: authHeaders(),
       params: {
         path: {
           entryId: entryForm.id,
+          routeId,
         },
       },
-      body,
     })
 
     if (result.error) {
-      setAdminStatus('Route was not added.')
+      setAdminStatus('Route was not deleted.')
       return
     }
 
-    setRouteForm((current) => ({
-      ...current,
-      name: '',
-      sourceNote: '',
-      pointsText: '',
-    }))
-    setAdminStatus('Route added.')
+    if (routeForm.id === routeId) {
+      resetRouteForm()
+    }
+
+    setAdminStatus('Route deleted.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
   }
 
   async function addEntryRelationship() {
@@ -2255,8 +2369,31 @@ function App() {
                 <MapPin aria-hidden="true" />
                 Add place
               </button>
+              {adminEntryRoutes.length > 0 && (
+                <div className="route-manager">
+                  <strong>Routes</strong>
+                  {adminEntryRoutes.map((route) => (
+                    <div className="route-manager-item" key={route.id}>
+                      <span>
+                        {route.name || route.routeType}
+                        <small>{route.routeType} · {route.points.length} points</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button className="admin-action secondary" type="button" onClick={() => loadRouteForm(route)}>
+                          <Route aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button className="admin-action secondary danger" type="button" onClick={() => deleteEntryRoute(route.id)}>
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
-                Route name
+                {routeForm.id ? 'Editing route' : 'Route name'}
                 <input
                   value={routeForm.name}
                   onChange={(event) => patchRouteForm({ name: event.target.value })}
@@ -2306,10 +2443,16 @@ function App() {
                   onChange={(event) => patchRouteForm({ sourceNote: event.target.value })}
                 />
               </label>
-              <button className="admin-action secondary" type="button" onClick={addEntryRoute}>
-                <Route aria-hidden="true" />
-                Add route
-              </button>
+              <div className="admin-field-row">
+                <button className="admin-action secondary" type="button" onClick={saveEntryRoute}>
+                  <Route aria-hidden="true" />
+                  {routeForm.id ? 'Save route' : 'Add route'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={resetRouteForm}>
+                  <Plus aria-hidden="true" />
+                  New route
+                </button>
+              </div>
               <label>
                 Related entry slug
                 <input

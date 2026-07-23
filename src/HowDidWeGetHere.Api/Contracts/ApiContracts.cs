@@ -217,7 +217,8 @@ public sealed record AdminEntryDetailResponse(
     string? TimeConfidence,
     Guid? PrimaryTimePeriodId,
     string? SourceSheet,
-    int? SourceRow);
+    int? SourceRow,
+    IReadOnlyList<EntryRouteResponse> Routes);
 
 public sealed record ResourceCreatedResponse(
     Guid Id,

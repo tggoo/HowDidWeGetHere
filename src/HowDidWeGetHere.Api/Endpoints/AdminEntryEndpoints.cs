@@ -4,6 +4,7 @@ using HowDidWeGetHere.Application.Time;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 
 namespace HowDidWeGetHere.Api.Endpoints;
 
@@ -66,6 +67,10 @@ public static class AdminEntryEndpoints
         var entry = await dbContext.Entries
             .AsNoTracking()
             .Include(item => item.Translations)
+            .Include(item => item.Routes)
+                .ThenInclude(route => route.Points)
+                    .ThenInclude(point => point.Place)
+                        .ThenInclude(place => place.Translations)
             .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
 
         if (entry is null)
@@ -99,7 +104,33 @@ public static class AdminEntryEndpoints
             entry.TimeConfidence,
             entry.PrimaryTimePeriodId,
             entry.SourceSheet,
-            entry.SourceRow));
+            entry.SourceRow,
+            entry.Routes
+                .OrderBy(route => route.Name)
+                .Select(route => new EntryRouteResponse(
+                    route.Id,
+                    route.Name,
+                    route.RouteType.ToString(),
+                    route.SpatialConfidence.ToString(),
+                    route.SourceNote,
+                    Coordinates(route.Geometry),
+                    route.Points
+                        .OrderBy(point => point.SortOrder)
+                        .Select(point => new RoutePointResponse(
+                            point.PlaceId,
+                            point.Place.Slug,
+                            point.Place.Translations
+                                .Where(placeTranslation => placeTranslation.LanguageCode == lang)
+                                .Select(placeTranslation => placeTranslation.Name)
+                                .FirstOrDefault() ?? point.Place.DefaultName,
+                            point.Role.ToString(),
+                            point.SortOrder,
+                            point.DateLabel,
+                            point.Note,
+                            point.Place.Geometry?.Coordinate.X,
+                            point.Place.Geometry?.Coordinate.Y))
+                        .ToList()))
+                .ToList()));
     }
 
     private static async Task<IResult> CreateEntryAsync(
@@ -243,4 +274,10 @@ public static class AdminEntryEndpoints
 
         return uniqueSlug;
     }
+
+    private static IReadOnlyList<GeoCoordinateResponse> Coordinates(Geometry? geometry) =>
+        geometry?.Coordinates
+            .Select(coordinate => new GeoCoordinateResponse(coordinate.X, coordinate.Y))
+            .ToList()
+        ?? [];
 }

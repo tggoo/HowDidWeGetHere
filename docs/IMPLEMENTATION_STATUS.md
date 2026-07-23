@@ -16,6 +16,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Connected period buttons and manual year range inputs to public entry/map filtering.
 - 2026-07-23: Connected search input to public entry/map filtering.
 - 2026-07-23: Made workbook re-import idempotent by updating existing source rows and reporting created vs updated entries.
+- 2026-07-23: Added admin route update/delete endpoints and route edit/delete controls in the admin UI.
 
 ## Goal
 
@@ -94,6 +95,8 @@ Build a mobile-first historical world map app with:
 - add entry audio URL
 - add place/coordinate to entry
 - add route with ordered coordinate points to entry
+- update route with a replacement set of ordered coordinate points
+- delete route records
 - add relationship to another entry by target slug
 - add source to entry by URL with support-field metadata
 - list, create and update time periods
@@ -126,6 +129,7 @@ Build a mobile-first historical world map app with:
 - entry create/edit form
 - place/coordinate attachment form
 - route attachment form with ordered points
+- route edit/delete controls for existing entry routes
 - related-entry attachment form
 - source attachment form
 - time period create/update form
@@ -150,7 +154,7 @@ Build a mobile-first historical world map app with:
 
 ### Map experience
 
-The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Admins can create simple ordered routes from coordinate rows. The map still needs richer UX such as clustering, viewport-aware filtering, better route styling and mobile controls.
+The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Admins can create, edit and delete simple ordered routes from coordinate rows. The map still needs richer UX such as clustering, viewport-aware filtering, better route styling and mobile controls.
 
 ### Workbook import
 
@@ -158,7 +162,7 @@ The importer reads the current workbook sheets, creates or updates entries, tags
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes, add relationships by target slug, attach sources by URL, create/update time periods and create/update/attach tags. It is not yet a complete CMS. Missing pieces include tag delete/detach, relationship update/delete, route update/delete, source update/delete, time period delete and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, add relationships by target slug, attach sources by URL, create/update time periods and create/update/attach tags. It is not yet a complete CMS. Missing pieces include tag delete/detach, relationship update/delete, source update/delete, time period delete and richer validation.
 
 ### Multilingual support
 
@@ -168,7 +172,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Real map data
 
-- route update/delete in admin UI
 - richer route drawing on a real map from stored coordinates/GeoJSON
 - marker clustering for mobile
 - place/time/tag combined filtering with map bounds
@@ -229,17 +232,16 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Add route update/delete in admin UI.
-2. Add marker clustering and viewport-aware filtering.
-3. Add relationship update/delete and richer relationship display.
-4. Improve the era side panel and period hierarchy UI.
-5. Add source update/delete.
-6. Add tag detach/delete and route/source/relationship delete endpoints.
-7. Add real media upload/storage.
-8. Add importer preview, conflict review and route/place mapping.
-9. Add CS/ES translation workflow.
-10. Add backend/frontend tests.
+1. Add marker clustering and viewport-aware filtering.
+2. Add relationship update/delete and richer relationship display.
+3. Improve the era side panel and period hierarchy UI.
+4. Add source update/delete.
+5. Add tag detach/delete and source/relationship delete endpoints.
+6. Add real media upload/storage.
+7. Add importer preview, conflict review and route/place mapping.
+8. Add CS/ES translation workflow.
+9. Add backend/frontend tests.
 
 ## Current answer
 
-No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, and workbook re-import now updates existing source rows, but it still needs route update/delete, importer mapping and production-quality map UX.
+No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, workbook re-import updates existing source rows, and admins can now edit/delete routes, but it still needs importer mapping and production-quality map UX.

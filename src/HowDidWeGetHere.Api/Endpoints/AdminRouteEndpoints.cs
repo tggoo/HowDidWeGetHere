@@ -23,6 +23,15 @@ public static class AdminRouteEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
+        admin.MapPut("/entries/{entryId:guid}/routes/{routeId:guid}", UpdateEntryRouteAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        admin.MapDelete("/entries/{entryId:guid}/routes/{routeId:guid}", DeleteEntryRouteAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
+
         return admin;
     }
 
@@ -33,27 +42,10 @@ public static class AdminRouteEndpoints
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
+        var validationError = ValidateRouteRequest(request);
+        if (validationError is not null)
         {
-            return Results.BadRequest(new { error = "Route name is required." });
-        }
-
-        if (request.Points.Count < 2)
-        {
-            return Results.BadRequest(new { error = "Route requires at least two points." });
-        }
-
-        foreach (var point in request.Points)
-        {
-            if (string.IsNullOrWhiteSpace(point.Name))
-            {
-                return Results.BadRequest(new { error = "Every route point requires a place name." });
-            }
-
-            if (point.Longitude is < -180 or > 180 || point.Latitude is < -90 or > 90)
-            {
-                return Results.BadRequest(new { error = "Longitude must be between -180 and 180 and latitude between -90 and 90." });
-            }
+            return Results.BadRequest(new { error = validationError });
         }
 
         var entryExists = await dbContext.Entries.AnyAsync(entry => entry.Id == entryId, cancellationToken);
@@ -70,9 +62,90 @@ public static class AdminRouteEndpoints
             Name = request.Name.Trim(),
             RouteType = request.RouteType,
             SpatialConfidence = request.SpatialConfidence,
-            SourceNote = request.SourceNote,
+            SourceNote = string.IsNullOrWhiteSpace(request.SourceNote) ? null : request.SourceNote.Trim(),
             CreatedByUserId = createdByUserId
         };
+
+        await ReplaceRoutePointsAsync(route, entryId, request, language, createdByUserId, dbContext, cancellationToken);
+        dbContext.EntryRoutes.Add(route);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Created($"/api/admin/entries/{entryId}/routes/{route.Id}", new ResourceCreatedResponse(route.Id, null));
+    }
+
+    private static async Task<IResult> UpdateEntryRouteAsync(
+        Guid entryId,
+        Guid routeId,
+        AdminEntryRouteRequest request,
+        HistoryDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var validationError = ValidateRouteRequest(request);
+        if (validationError is not null)
+        {
+            return Results.BadRequest(new { error = validationError });
+        }
+
+        var route = await dbContext.EntryRoutes
+            .FirstOrDefaultAsync(item => item.Id == routeId && item.EntryId == entryId, cancellationToken);
+
+        if (route is null)
+        {
+            return Results.NotFound();
+        }
+
+        var language = EndpointHelpers.NormalizeLanguage(request.LanguageCode);
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        route.Name = request.Name.Trim();
+        route.RouteType = request.RouteType;
+        route.SpatialConfidence = request.SpatialConfidence;
+        route.SourceNote = string.IsNullOrWhiteSpace(request.SourceNote) ? null : request.SourceNote.Trim();
+        route.UpdatedAt = DateTimeOffset.UtcNow;
+        route.UpdatedByUserId = userId;
+
+        await dbContext.RoutePoints
+            .Where(point => point.RouteId == route.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        await ReplaceRoutePointsAsync(route, entryId, request, language, userId, dbContext, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DeleteEntryRouteAsync(
+        Guid entryId,
+        Guid routeId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var route = await dbContext.EntryRoutes
+            .FirstOrDefaultAsync(item => item.Id == routeId && item.EntryId == entryId, cancellationToken);
+
+        if (route is null)
+        {
+            return Results.NotFound();
+        }
+
+        await dbContext.RoutePoints
+            .Where(point => point.RouteId == route.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        dbContext.EntryRoutes.Remove(route);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static async Task ReplaceRoutePointsAsync(
+        EntryRoute route,
+        Guid entryId,
+        AdminEntryRouteRequest request,
+        string language,
+        string? userId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        route.Points.Clear();
 
         var orderedPoints = request.Points
             .OrderBy(point => point.SortOrder)
@@ -81,7 +154,7 @@ public static class AdminRouteEndpoints
 
         foreach (var point in orderedPoints)
         {
-            var place = await UpsertPlaceAsync(point, language, createdByUserId, dbContext, cancellationToken);
+            var place = await UpsertPlaceAsync(point, language, userId, dbContext, cancellationToken);
             route.Points.Add(new RoutePoint
             {
                 Route = route,
@@ -121,11 +194,34 @@ public static class AdminRouteEndpoints
             orderedPoints
                 .Select(point => new Coordinate(point.Longitude, point.Latitude))
                 .ToArray());
+    }
 
-        dbContext.EntryRoutes.Add(route);
-        await dbContext.SaveChangesAsync(cancellationToken);
+    private static string? ValidateRouteRequest(AdminEntryRouteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return "Route name is required.";
+        }
 
-        return Results.Created($"/api/admin/entries/{entryId}/routes/{route.Id}", new ResourceCreatedResponse(route.Id, null));
+        if (request.Points.Count < 2)
+        {
+            return "Route requires at least two points.";
+        }
+
+        foreach (var point in request.Points)
+        {
+            if (string.IsNullOrWhiteSpace(point.Name))
+            {
+                return "Every route point requires a place name.";
+            }
+
+            if (point.Longitude is < -180 or > 180 || point.Latitude is < -90 or > 90)
+            {
+                return "Longitude must be between -180 and 180 and latitude between -90 and 90.";
+            }
+        }
+
+        return null;
     }
 
     private static async Task<Place> UpsertPlaceAsync(
