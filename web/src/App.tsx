@@ -8,6 +8,7 @@ import {
   Languages,
   Lock,
   MapPin,
+  Moon,
   Music,
   PanelRight,
   PlayCircle,
@@ -16,6 +17,7 @@ import {
   Route,
   Save,
   Search,
+  Sun,
   Tags,
   Trash2,
   Upload,
@@ -269,6 +271,14 @@ type AdminEntryDetail = AdminEntryListItem & {
   timePrecision?: string | null
   timeConfidence?: string | null
   primaryTimePeriodId?: string | null
+  translations: Array<{
+    languageCode: string
+    title: string
+    hasSummary: boolean
+    hasDescription: boolean
+    hasWhyItMatters: boolean
+    hasDatingNote: boolean
+  }>
   places: EntryDetail['places']
   routes: EntryRouteDetail[]
   relationships: AdminEntryRelationshipDetail[]
@@ -577,6 +587,7 @@ function periodYearLabel(period: TimePeriodListItem) {
 }
 
 type AdminPage = 'import' | 'periods' | 'tags' | 'entry' | 'places' | 'routes' | 'relationships' | 'sources' | 'media'
+type ThemeMode = 'light' | 'dark'
 
 type AdminAuthSession = {
   accessToken: string
@@ -585,6 +596,7 @@ type AdminAuthSession = {
 }
 
 const adminSessionStorageKey = 'howdidwegethere.adminSession'
+const themeStorageKey = 'howdidwegethere.theme'
 
 const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'import', label: 'Import' },
@@ -596,6 +608,12 @@ const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'relationships', label: 'Relations' },
   { id: 'sources', label: 'Sources' },
   { id: 'media', label: 'Media' },
+]
+
+const contentLanguages = [
+  { code: 'en', label: 'EN' },
+  { code: 'cs', label: 'CS' },
+  { code: 'es', label: 'ES' },
 ]
 
 function createAdminSession(tokenResponse: AccessTokenResponse): AdminAuthSession {
@@ -649,7 +667,29 @@ function persistAdminSession(session: AdminAuthSession | null) {
   }
 }
 
+function readStoredTheme(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'dark'
+  }
+
+  const storedTheme = window.localStorage.getItem(themeStorageKey)
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    return storedTheme
+  }
+
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
+function persistTheme(theme: ThemeMode) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(themeStorageKey, theme)
+}
+
 function App() {
+  const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme())
   const [language, setLanguage] = useState('en')
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
@@ -737,6 +777,7 @@ function App() {
     note: '',
   })
   const [adminEntrySources, setAdminEntrySources] = useState<EntryDetail['sources']>([])
+  const [adminEntryTranslations, setAdminEntryTranslations] = useState<AdminEntryDetail['translations']>([])
   const [tagForm, setTagForm] = useState({
     id: null as string | null,
     name: '',
@@ -950,6 +991,10 @@ function App() {
   useEffect(() => {
     persistAdminSession(adminSession)
   }, [adminSession])
+
+  useEffect(() => {
+    persistTheme(theme)
+  }, [theme])
 
   useEffect(() => {
     if (!adminSession?.refreshToken) {
@@ -1312,6 +1357,7 @@ function App() {
     setAdminEntryImages([])
     setAdminEntryAudioTracks([])
     setAdminEntryPlaces([])
+    setAdminEntryTranslations([])
   }
 
   function loadTagForm(tag: Pick<TagListItem, 'id' | 'name' | 'slug' | 'tagGroup'> & Partial<Pick<TagListItem, 'parentTagId'>>) {
@@ -1368,7 +1414,7 @@ function App() {
     setLoadingAdminEntries(false)
   }
 
-  async function loadAdminEntryDetail(entryId: string) {
+  async function loadAdminEntryDetail(entryId: string, requestedLanguage = language) {
     if (!adminToken) {
       return
     }
@@ -1381,7 +1427,7 @@ function App() {
           entryId,
         },
         query: {
-          language,
+          language: requestedLanguage,
         },
       },
     })
@@ -1399,6 +1445,7 @@ function App() {
     const detailImages = detail.images ?? []
     const detailAudioTracks = detail.audioTracks ?? []
     const detailPlaces = detail.places ?? []
+    const detailTranslations = detail.translations ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1425,6 +1472,7 @@ function App() {
     setAdminEntryImages(detailImages)
     setAdminEntryAudioTracks(detailAudioTracks)
     setAdminEntryPlaces(detailPlaces)
+    setAdminEntryTranslations(detailTranslations)
     setMediaForm((current) => {
       const image = current.imageId ? detailImages.find((item) => item.id === current.imageId) : null
       const audioTrack = current.audioTrackId
@@ -1518,6 +1566,15 @@ function App() {
           }
     })
     setAdminStatus('Entry loaded.')
+  }
+
+  async function switchEntryLanguage(languageCode: string) {
+    if (entryForm.id) {
+      await loadAdminEntryDetail(entryForm.id, languageCode)
+      return
+    }
+
+    patchEntryForm({ languageCode })
   }
 
   async function signInAdmin(event: FormEvent<HTMLFormElement>) {
@@ -2511,7 +2568,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand">
           <Globe2 aria-hidden="true" />
@@ -2526,6 +2583,15 @@ function App() {
               <option value="es">ES</option>
             </select>
           </label>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+          </button>
           <button
             className="icon-button"
             type="button"
@@ -3216,6 +3282,24 @@ function App() {
               ))}
             </div>
             <form className="entry-editor" onSubmit={saveEntry}>
+              <div className="translation-switcher" aria-label="Entry translation language">
+                {contentLanguages.map((contentLanguage) => {
+                  const translation = adminEntryTranslations.find((item) => item.languageCode === contentLanguage.code)
+                  const isActive = entryForm.languageCode === contentLanguage.code
+
+                  return (
+                    <button
+                      className={isActive ? 'active' : ''}
+                      key={contentLanguage.code}
+                      type="button"
+                      onClick={() => void switchEntryLanguage(contentLanguage.code)}
+                    >
+                      {contentLanguage.label}
+                      <small>{translation ? 'ready' : 'missing'}</small>
+                    </button>
+                  )
+                })}
+              </div>
               <label>
                 Title
                 <input
@@ -3274,10 +3358,16 @@ function App() {
                 </label>
                 <label>
                   Language
-                  <input
+                  <select
                     value={entryForm.languageCode}
-                    onChange={(event) => patchEntryForm({ languageCode: event.target.value })}
-                  />
+                    onChange={(event) => void switchEntryLanguage(event.target.value)}
+                  >
+                    {contentLanguages.map((contentLanguage) => (
+                      <option key={contentLanguage.code} value={contentLanguage.code}>
+                        {contentLanguage.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
               <div className="admin-field-row">
@@ -3343,10 +3433,24 @@ function App() {
                 />
               </label>
               <label>
+                Description
+                <textarea
+                  value={entryForm.description}
+                  onChange={(event) => patchEntryForm({ description: event.target.value })}
+                />
+              </label>
+              <label>
                 Why it matters
                 <textarea
                   value={entryForm.whyItMatters}
                   onChange={(event) => patchEntryForm({ whyItMatters: event.target.value })}
+                />
+              </label>
+              <label>
+                Dating note
+                <textarea
+                  value={entryForm.datingNote}
+                  onChange={(event) => patchEntryForm({ datingNote: event.target.value })}
                 />
               </label>
               <button className="admin-action" type="submit">

@@ -218,6 +218,7 @@ public sealed record AdminEntryDetailResponse(
     Guid? PrimaryTimePeriodId,
     string? SourceSheet,
     int? SourceRow,
+    IReadOnlyList<AdminEntryTranslationResponse> Translations,
     IReadOnlyList<EntryPlaceResponse> Places,
     IReadOnlyList<EntryRouteResponse> Routes,
     IReadOnlyList<AdminEntryRelationshipResponse> Relationships,
@@ -225,6 +226,14 @@ public sealed record AdminEntryDetailResponse(
     IReadOnlyList<EntryTagResponse> Tags,
     IReadOnlyList<EntryImageResponse> Images,
     IReadOnlyList<EntryAudioTrackResponse> AudioTracks);
+
+public sealed record AdminEntryTranslationResponse(
+    string LanguageCode,
+    string Title,
+    bool HasSummary,
+    bool HasDescription,
+    bool HasWhyItMatters,
+    bool HasDatingNote);
 
 public sealed record AdminEntryRelationshipResponse(
     Guid Id,

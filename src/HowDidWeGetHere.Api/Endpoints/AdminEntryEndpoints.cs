@@ -119,6 +119,16 @@ public static class AdminEntryEndpoints
             entry.PrimaryTimePeriodId,
             entry.SourceSheet,
             entry.SourceRow,
+            entry.Translations
+                .OrderBy(item => item.LanguageCode)
+                .Select(item => new AdminEntryTranslationResponse(
+                    item.LanguageCode,
+                    item.Title,
+                    !string.IsNullOrWhiteSpace(item.Summary),
+                    !string.IsNullOrWhiteSpace(item.Description),
+                    !string.IsNullOrWhiteSpace(item.WhyItMatters),
+                    !string.IsNullOrWhiteSpace(item.DatingNote)))
+                .ToList(),
             entry.Places
                 .OrderBy(entryPlace => entryPlace.SortOrder)
                 .Select(entryPlace => new EntryPlaceResponse(
@@ -329,10 +339,15 @@ public static class AdminEntryEndpoints
             entry.Slug = MakeUniqueEntrySlugForUpdate(requestedSlug, dbContext, entry.Id);
         }
 
+        var language = EndpointHelpers.NormalizeLanguage(request.LanguageCode);
+
         entry.Kind = request.Kind;
         entry.Status = request.Status;
         entry.RealityStatus = request.RealityStatus;
-        entry.DefaultTitle = request.Title.Trim();
+        if (language.Equals("en", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(entry.DefaultTitle))
+        {
+            entry.DefaultTitle = request.Title.Trim();
+        }
         entry.DateLabel = request.DateLabel;
         entry.StartYear = request.StartYear ?? parsedDate.StartYear;
         entry.StartMonth = request.StartMonth ?? parsedDate.StartMonth;
@@ -346,7 +361,6 @@ public static class AdminEntryEndpoints
         entry.UpdatedAt = DateTimeOffset.UtcNow;
         entry.UpdatedByUserId = user.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        var language = EndpointHelpers.NormalizeLanguage(request.LanguageCode);
         var translation = entry.Translations.FirstOrDefault(item => item.LanguageCode == language);
         if (translation is null)
         {

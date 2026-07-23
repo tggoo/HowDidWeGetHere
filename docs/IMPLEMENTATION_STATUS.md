@@ -32,6 +32,8 @@ Last updated: 2026-07-23
 - 2026-07-23: Added frontend admin session persistence, automatic refresh token renewal and sign-out.
 - 2026-07-23: Added workbook import preview endpoint and admin preview table before saving imports.
 - 2026-07-23: Added structured workbook import validation report with severity counts and row-level issues.
+- 2026-07-23: Added admin entry translation overview and EN/CS/ES editing workflow.
+- 2026-07-23: Added persistent light/dark theme toggle with dark styling for app panels, admin UI and map tiles.
 
 ## Goal
 
@@ -106,6 +108,7 @@ Build a mobile-first historical world map app with:
 - admin-only route group under `/api/admin`
 - list admin entries
 - get admin entry detail
+- admin entry detail includes available translation coverage
 - create entry
 - update entry
 - add entry image URL
@@ -141,6 +144,7 @@ Build a mobile-first historical world map app with:
 
 - Vite React TypeScript app
 - mobile-first map workspace skeleton
+- persistent light/dark theme toggle
 - typed API client via OpenAPI
 - public map data loading from API
 - language selector
@@ -170,6 +174,8 @@ Build a mobile-first historical world map app with:
 - workbook import result displays created and updated entry counts
 - admin entry list
 - entry create/edit form
+- EN/CS/ES entry translation switcher in the admin entry editor
+- entry editor supports localized title, summary, description, why-it-matters and dating note
 - place/coordinate attachment form
 - route attachment form with ordered points
 - route edit/delete controls for existing entry routes
@@ -213,11 +219,11 @@ The importer reads the current workbook sheets, previews create/update counts an
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add/edit/delete media URLs, upload local image/audio files, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. Admin tools are now separated into single-page sections with table views for non-entry entities. It is not yet a complete CMS. Missing pieces include richer validation and cloud/object media storage.
+Admin can sign in, import, list entries, create/edit basic content and EN/CS/ES entry translations, add/edit/delete media URLs, upload local image/audio files, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. Admin tools are now separated into single-page sections with table views for non-entry entities. It is not yet a complete CMS. Missing pieces include richer validation and cloud/object media storage.
 
 ### Multilingual support
 
-The schema supports translations and the UI can request EN/CS/ES. The imported workbook currently creates EN text only unless admins add translations through API/UI later.
+The schema supports translations and the UI can request EN/CS/ES. Admins can now switch an entry editor between EN/CS/ES, see which translations exist and save localized title/body fields. The imported workbook currently creates EN text only unless admins add translations through the admin editor later.
 
 ## Not implemented yet
 

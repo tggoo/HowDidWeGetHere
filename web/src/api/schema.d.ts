@@ -2121,6 +2121,7 @@ export interface components {
             sourceSheet: null | string;
             /** Format: int32 */
             sourceRow: null | number | string;
+            translations: components["schemas"]["AdminEntryTranslationResponse"][];
             places: components["schemas"]["EntryPlaceResponse"][];
             routes: components["schemas"]["EntryRouteResponse"][];
             relationships: components["schemas"]["AdminEntryRelationshipResponse"][];
@@ -2236,6 +2237,14 @@ export interface components {
         };
         AdminEntryTagRequest: {
             tagSlug: string;
+        };
+        AdminEntryTranslationResponse: {
+            languageCode: string;
+            title: string;
+            hasSummary: boolean;
+            hasDescription: boolean;
+            hasWhyItMatters: boolean;
+            hasDatingNote: boolean;
         };
         AdminEntryUpsertRequest: {
             title: string;
