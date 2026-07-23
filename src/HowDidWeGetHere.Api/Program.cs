@@ -43,8 +43,19 @@ builder.Services.AddAuthorizationBuilder()
 
 builder.Services.AddCors(options =>
 {
-    var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-        ?? ["http://localhost:5173"];
+    var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+        ?? [];
+    var environmentOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var origins = configuredOrigins
+        .Concat(environmentOrigins)
+        .Concat([
+            "http://localhost:5173",
+            "https://howdidwegethere-web.onrender.com"
+        ])
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     options.AddPolicy("Frontend", policy =>
     {
