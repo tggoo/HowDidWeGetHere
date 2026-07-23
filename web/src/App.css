@@ -385,6 +385,25 @@
   background: #ffffff;
 }
 
+.history-cluster {
+  align-items: center;
+  background: #ffffff;
+  border: 2px solid #25634d;
+  border-radius: 50%;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.2);
+  color: #25634d;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: center;
+}
+
+.history-cluster.selected {
+  background: #25634d;
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
 .history-popup .leaflet-popup-content {
   display: grid;
   gap: 4px;
@@ -394,6 +413,18 @@
 .history-popup small,
 .history-popup span {
   color: #667085;
+}
+
+.history-cluster-popup ul {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-cluster-popup li {
+  color: #17191c;
 }
 
 .detail-panel h1 {

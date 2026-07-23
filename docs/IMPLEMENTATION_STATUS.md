@@ -21,6 +21,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin source update/delete endpoints and source edit/delete controls in the admin UI.
 - 2026-07-23: Added admin tag detach/delete endpoints and controls for attached entry tags.
 - 2026-07-23: Added admin time period delete endpoint and guarded delete control in the admin UI.
+- 2026-07-23: Added lightweight Leaflet marker clustering for dense low-zoom map views.
 
 ## Goal
 
@@ -132,6 +133,7 @@ Build a mobile-first historical world map app with:
 - selected entry detail panel loaded from public entry detail API
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
 - Leaflet map renders stored public coordinates/routes when entries have places/routes
+- Leaflet map clusters dense marker sets at low zoom
 - map falls back to starter sample points when no stored coordinates exist
 - admin sign-in panel
 - workbook upload/import from frontend
@@ -170,7 +172,7 @@ Build a mobile-first historical world map app with:
 
 ### Map experience
 
-The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Admins can create, edit and delete simple ordered routes from coordinate rows. The map still needs richer UX such as clustering, viewport-aware filtering, better route styling and mobile controls.
+The frontend now uses Leaflet for the real map layer and renders stored public coordinates/routes when data exists. Dense low-zoom marker sets are grouped with lightweight client-side clustering. Admins can create, edit and delete simple ordered routes from coordinate rows. The map still needs richer UX such as viewport-aware filtering, better route styling and mobile controls.
 
 ### Workbook import
 
@@ -189,7 +191,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 ### Real map data
 
 - richer route drawing on a real map from stored coordinates/GeoJSON
-- marker clustering for mobile
 - place/time/tag combined filtering with map bounds
 
 ### Relationships
@@ -244,7 +245,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Add marker clustering and viewport-aware filtering.
+1. Add viewport-aware map filtering.
 2. Add richer relationship display.
 3. Improve the era side panel and period hierarchy UI.
 4. Add real media upload/storage.
