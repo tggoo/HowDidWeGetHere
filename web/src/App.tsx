@@ -230,6 +230,7 @@ type AdminEntryDetail = AdminEntryListItem & {
   routes: EntryRouteDetail[]
   relationships: AdminEntryRelationshipDetail[]
   sources: EntryDetail['sources']
+  tags: EntryDetail['tags']
 }
 
 type EntryFormState = {
@@ -574,6 +575,7 @@ function App() {
     parentTagId: '',
     attachSlug: '',
   })
+  const [adminEntryTags, setAdminEntryTags] = useState<EntryDetail['tags']>([])
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -979,9 +981,10 @@ function App() {
     setAdminEntryRoutes([])
     setAdminEntryRelationships([])
     setAdminEntrySources([])
+    setAdminEntryTags([])
   }
 
-  function loadTagForm(tag: TagListItem) {
+  function loadTagForm(tag: Pick<TagListItem, 'id' | 'name' | 'slug' | 'tagGroup'> & Partial<Pick<TagListItem, 'parentTagId'>>) {
     setTagForm({
       id: tag.id,
       name: tag.name,
@@ -1062,6 +1065,7 @@ function App() {
     const detailRoutes = detail.routes ?? []
     const detailRelationships = detail.relationships ?? []
     const detailSources = detail.sources ?? []
+    const detailTags = detail.tags ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1084,6 +1088,7 @@ function App() {
     setAdminEntryRoutes(detailRoutes)
     setAdminEntryRelationships(detailRelationships)
     setAdminEntrySources(detailSources)
+    setAdminEntryTags(detailTags)
     setRouteForm((current) => {
       if (!current.id) {
         return current
@@ -1845,6 +1850,67 @@ function App() {
 
     setAdminStatus('Tag attached.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function detachTagFromEntry(tagId: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before detaching a tag.')
+      return
+    }
+
+    setAdminStatus('Detaching tag...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/tags/{tagId}', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+          tagId,
+        },
+      },
+    })
+
+    if (result.error) {
+      setAdminStatus('Tag was not detached.')
+      return
+    }
+
+    setAdminStatus('Tag detached.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteTag() {
+    if (!tagForm.id || !adminToken) {
+      setAdminStatus('Select a tag before deleting it.')
+      return
+    }
+
+    setAdminStatus('Deleting tag...')
+    const result = await apiClient.DELETE('/api/admin/tags/{tagId}', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          tagId: tagForm.id,
+        },
+      },
+    })
+
+    if (result.error) {
+      setAdminStatus('Tag was not deleted. Detach it from entries and remove child tags first.')
+      return
+    }
+
+    setTagForm({
+      id: null,
+      name: '',
+      slug: '',
+      tagGroup: 'topic',
+      parentTagId: '',
+      attachSlug: '',
+    })
+    setAdminStatus('Tag deleted.')
+    setReloadKey((value) => value + 1)
   }
 
   return (
@@ -2298,6 +2364,12 @@ function App() {
                 <Save aria-hidden="true" />
                 {tagForm.id ? 'Save tag' : 'Create tag'}
               </button>
+              {tagForm.id && (
+                <button className="admin-action secondary danger" type="button" onClick={deleteTag}>
+                  <Trash2 aria-hidden="true" />
+                  Delete tag
+                </button>
+              )}
               <label>
                 Attach tag
                 <select
@@ -2316,6 +2388,29 @@ function App() {
                 <Tags aria-hidden="true" />
                 Attach tag
               </button>
+              {adminEntryTags.length > 0 && (
+                <div className="route-manager">
+                  <strong>Attached tags</strong>
+                  {adminEntryTags.map((tag) => (
+                    <div className="route-manager-item" key={tag.id}>
+                      <span>
+                        {tag.name}
+                        <small>{tag.tagGroup} - {tag.slug}</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button className="admin-action secondary" type="button" onClick={() => loadTagForm(tag)}>
+                          <Tags aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button className="admin-action secondary danger" type="button" onClick={() => detachTagFromEntry(tag.id)}>
+                          <Trash2 aria-hidden="true" />
+                          Detach
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </form>
             <div className="admin-section-title">
               <span>Content</span>

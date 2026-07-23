@@ -22,9 +22,18 @@ public static class AdminTagEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
+        admin.MapDelete("/tags/{tagId:guid}", DeleteTagAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
         admin.MapPost("/entries/{entryId:guid}/tags", AddEntryTagAsync)
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        admin.MapDelete("/entries/{entryId:guid}/tags/{tagId:guid}", DetachEntryTagAsync)
+            .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
         return admin;
@@ -165,6 +174,36 @@ public static class AdminTagEndpoints
         return Results.NoContent();
     }
 
+    private static async Task<IResult> DeleteTagAsync(
+        Guid tagId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var tag = await dbContext.Tags
+            .Include(item => item.Children)
+            .Include(item => item.Entries)
+            .FirstOrDefaultAsync(item => item.Id == tagId, cancellationToken);
+        if (tag is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (tag.Children.Count > 0)
+        {
+            return Results.Conflict(new { error = "Tag cannot be deleted while it has child tags." });
+        }
+
+        if (tag.Entries.Count > 0)
+        {
+            return Results.Conflict(new { error = "Tag cannot be deleted while it is attached to entries." });
+        }
+
+        dbContext.Tags.Remove(tag);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
     private static async Task<IResult> AddEntryTagAsync(
         Guid entryId,
         AdminEntryTagRequest request,
@@ -200,6 +239,26 @@ public static class AdminTagEndpoints
             });
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DetachEntryTagAsync(
+        Guid entryId,
+        Guid tagId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var entryTag = await dbContext.EntryTags.FirstOrDefaultAsync(
+            item => item.EntryId == entryId && item.TagId == tagId,
+            cancellationToken);
+        if (entryTag is null)
+        {
+            return Results.NotFound();
+        }
+
+        dbContext.EntryTags.Remove(entryTag);
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         return Results.NoContent();
     }

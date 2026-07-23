@@ -76,6 +76,9 @@ public static class AdminEntryEndpoints
                     .ThenInclude(relatedEntry => relatedEntry.Translations)
             .Include(item => item.Sources)
                 .ThenInclude(entrySource => entrySource.Source)
+            .Include(item => item.Tags)
+                .ThenInclude(entryTag => entryTag.Tag)
+                    .ThenInclude(tag => tag.Translations)
             .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
 
         if (entry is null)
@@ -162,6 +165,22 @@ public static class AdminEntryEndpoints
                     entrySource.Source.LanguageCode,
                     entrySource.SupportsField.ToString(),
                     entrySource.Note))
+                .ToList(),
+            entry.Tags
+                .OrderBy(entryTag => entryTag.Tag.TagGroup)
+                .ThenBy(entryTag => entryTag.Tag.Slug)
+                .Select(entryTag => new EntryTagResponse(
+                    entryTag.TagId,
+                    entryTag.Tag.Slug,
+                    entryTag.Tag.TagGroup,
+                    entryTag.Tag.Translations
+                        .Where(translation => translation.LanguageCode == lang)
+                        .Select(translation => translation.Name)
+                        .FirstOrDefault() ??
+                    entryTag.Tag.Translations
+                        .Select(translation => translation.Name)
+                        .FirstOrDefault() ??
+                    entryTag.Tag.Slug))
                 .ToList()));
     }
 

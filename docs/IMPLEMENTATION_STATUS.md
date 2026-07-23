@@ -19,6 +19,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin route update/delete endpoints and route edit/delete controls in the admin UI.
 - 2026-07-23: Added admin relationship update/delete endpoints and relationship edit/delete controls in the admin UI.
 - 2026-07-23: Added admin source update/delete endpoints and source edit/delete controls in the admin UI.
+- 2026-07-23: Added admin tag detach/delete endpoints and controls for attached entry tags.
 
 ## Goal
 
@@ -108,6 +109,8 @@ Build a mobile-first historical world map app with:
 - list, create and update time periods
 - list, create and update tags
 - attach tag to entry by slug
+- detach tag from entry
+- delete unused tags
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -144,6 +147,8 @@ Build a mobile-first historical world map app with:
 - primary time period selector in the entry editor
 - tag create/update form
 - tag attachment selector in the entry editor
+- attached-tag list with detach controls in the entry editor
+- unused tag delete control
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -170,7 +175,7 @@ The importer reads the current workbook sheets, creates or updates entries, tags
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update time periods and create/update/attach tags. It is not yet a complete CMS. Missing pieces include tag delete/detach, time period delete and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include time period delete and richer validation.
 
 ### Multilingual support
 
@@ -191,7 +196,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Tags
 
-- tag delete/detach
 - richer tag management and grouping UI
 
 ### Time periods
@@ -241,7 +245,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 1. Add marker clustering and viewport-aware filtering.
 2. Add richer relationship display.
 3. Improve the era side panel and period hierarchy UI.
-4. Add tag detach/delete.
+4. Add time period delete.
 5. Add real media upload/storage.
 6. Add importer preview, conflict review and route/place mapping.
 7. Add CS/ES translation workflow.

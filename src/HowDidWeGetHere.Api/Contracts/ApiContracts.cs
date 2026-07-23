@@ -220,7 +220,8 @@ public sealed record AdminEntryDetailResponse(
     int? SourceRow,
     IReadOnlyList<EntryRouteResponse> Routes,
     IReadOnlyList<AdminEntryRelationshipResponse> Relationships,
-    IReadOnlyList<EntrySourceResponse> Sources);
+    IReadOnlyList<EntrySourceResponse> Sources,
+    IReadOnlyList<EntryTagResponse> Tags);
 
 public sealed record AdminEntryRelationshipResponse(
     Guid Id,
