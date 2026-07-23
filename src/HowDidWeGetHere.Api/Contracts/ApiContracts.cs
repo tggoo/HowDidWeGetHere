@@ -221,7 +221,9 @@ public sealed record AdminEntryDetailResponse(
     IReadOnlyList<EntryRouteResponse> Routes,
     IReadOnlyList<AdminEntryRelationshipResponse> Relationships,
     IReadOnlyList<EntrySourceResponse> Sources,
-    IReadOnlyList<EntryTagResponse> Tags);
+    IReadOnlyList<EntryTagResponse> Tags,
+    IReadOnlyList<EntryImageResponse> Images,
+    IReadOnlyList<EntryAudioTrackResponse> AudioTracks);
 
 public sealed record AdminEntryRelationshipResponse(
     Guid Id,

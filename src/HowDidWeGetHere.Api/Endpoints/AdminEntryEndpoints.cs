@@ -79,6 +79,9 @@ public static class AdminEntryEndpoints
             .Include(item => item.Tags)
                 .ThenInclude(entryTag => entryTag.Tag)
                     .ThenInclude(tag => tag.Translations)
+            .Include(item => item.Images)
+                .ThenInclude(image => image.Translations)
+            .Include(item => item.AudioTracks)
             .FirstOrDefaultAsync(item => item.Id == entryId, cancellationToken);
 
         if (entry is null)
@@ -181,6 +184,45 @@ public static class AdminEntryEndpoints
                         .Select(translation => translation.Name)
                         .FirstOrDefault() ??
                     entryTag.Tag.Slug))
+                .ToList(),
+            entry.Images
+                .OrderByDescending(image => image.IsPrimary)
+                .ThenBy(image => image.SortOrder)
+                .Select(image =>
+                {
+                    var imageTranslation = image.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+                        ?? image.Translations.FirstOrDefault();
+
+                    return new EntryImageResponse(
+                        image.Id,
+                        image.PublicUrl ?? image.StorageKey,
+                        image.Kind.ToString(),
+                        image.IsPrimary,
+                        image.SortOrder,
+                        imageTranslation?.AltText,
+                        imageTranslation?.Caption,
+                        image.Attribution,
+                        image.License,
+                        image.SourceUrl);
+                })
+                .ToList(),
+            entry.AudioTracks
+                .OrderBy(audio => audio.LanguageCode)
+                .ThenByDescending(audio => audio.IsPrimary)
+                .ThenBy(audio => audio.SortOrder)
+                .Select(audio => new EntryAudioTrackResponse(
+                    audio.Id,
+                    audio.PublicUrl ?? audio.StorageKey,
+                    audio.Kind.ToString(),
+                    audio.LanguageCode,
+                    audio.IsPrimary,
+                    audio.SortOrder,
+                    audio.Title,
+                    audio.Transcript,
+                    audio.DurationSeconds,
+                    audio.Attribution,
+                    audio.License,
+                    audio.SourceUrl))
                 .ToList()));
     }
 

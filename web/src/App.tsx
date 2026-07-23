@@ -231,6 +231,8 @@ type AdminEntryDetail = AdminEntryListItem & {
   relationships: AdminEntryRelationshipDetail[]
   sources: EntryDetail['sources']
   tags: EntryDetail['tags']
+  images: EntryDetail['images']
+  audioTracks: EntryDetail['audioTracks']
 }
 
 type EntryFormState = {
@@ -560,11 +562,15 @@ function App() {
   const [entryForm, setEntryForm] = useState<EntryFormState>(defaultEntryForm)
   const [timePeriodForm, setTimePeriodForm] = useState<TimePeriodFormState>(defaultTimePeriodForm)
   const [mediaForm, setMediaForm] = useState({
+    imageId: null as string | null,
     imageUrl: '',
     imageAlt: '',
+    audioTrackId: null as string | null,
     audioUrl: '',
     audioTitle: '',
   })
+  const [adminEntryImages, setAdminEntryImages] = useState<EntryDetail['images']>([])
+  const [adminEntryAudioTracks, setAdminEntryAudioTracks] = useState<EntryDetail['audioTracks']>([])
   const [placeForm, setPlaceForm] = useState({
     name: '',
     slug: '',
@@ -889,6 +895,42 @@ function App() {
     setPlaceForm((current) => ({ ...current, ...patch }))
   }
 
+  function resetImageForm() {
+    setMediaForm((current) => ({
+      ...current,
+      imageId: null,
+      imageUrl: '',
+      imageAlt: '',
+    }))
+  }
+
+  function resetAudioForm() {
+    setMediaForm((current) => ({
+      ...current,
+      audioTrackId: null,
+      audioUrl: '',
+      audioTitle: '',
+    }))
+  }
+
+  function loadImageForm(image: EntryDetail['images'][number]) {
+    setMediaForm((current) => ({
+      ...current,
+      imageId: image.id,
+      imageUrl: image.url,
+      imageAlt: image.altText ?? '',
+    }))
+  }
+
+  function loadAudioForm(audioTrack: EntryDetail['audioTracks'][number]) {
+    setMediaForm((current) => ({
+      ...current,
+      audioTrackId: audioTrack.id,
+      audioUrl: audioTrack.url,
+      audioTitle: audioTrack.title ?? '',
+    }))
+  }
+
   function patchRouteForm(patch: Partial<typeof routeForm>) {
     setRouteForm((current) => ({ ...current, ...patch }))
   }
@@ -1022,8 +1064,10 @@ function App() {
   function resetEntryForm() {
     setEntryForm({ ...defaultEntryForm, languageCode: language })
     setMediaForm({
+      imageId: null,
       imageUrl: '',
       imageAlt: '',
+      audioTrackId: null,
       audioUrl: '',
       audioTitle: '',
     })
@@ -1075,6 +1119,8 @@ function App() {
     setAdminEntryRelationships([])
     setAdminEntrySources([])
     setAdminEntryTags([])
+    setAdminEntryImages([])
+    setAdminEntryAudioTracks([])
   }
 
   function loadTagForm(tag: Pick<TagListItem, 'id' | 'name' | 'slug' | 'tagGroup'> & Partial<Pick<TagListItem, 'parentTagId'>>) {
@@ -1159,6 +1205,8 @@ function App() {
     const detailRelationships = detail.relationships ?? []
     const detailSources = detail.sources ?? []
     const detailTags = detail.tags ?? []
+    const detailImages = detail.images ?? []
+    const detailAudioTracks = detail.audioTracks ?? []
     setEntryForm({
       id: detail.id,
       title: detail.title,
@@ -1182,6 +1230,23 @@ function App() {
     setAdminEntryRelationships(detailRelationships)
     setAdminEntrySources(detailSources)
     setAdminEntryTags(detailTags)
+    setAdminEntryImages(detailImages)
+    setAdminEntryAudioTracks(detailAudioTracks)
+    setMediaForm((current) => {
+      const image = current.imageId ? detailImages.find((item) => item.id === current.imageId) : null
+      const audioTrack = current.audioTrackId
+        ? detailAudioTracks.find((item) => item.id === current.audioTrackId)
+        : null
+
+      return {
+        imageId: image?.id ?? null,
+        imageUrl: image?.url ?? '',
+        imageAlt: image?.altText ?? '',
+        audioTrackId: audioTrack?.id ?? null,
+        audioUrl: audioTrack?.url ?? '',
+        audioTitle: audioTrack?.title ?? '',
+      }
+    })
     setRouteForm((current) => {
       if (!current.id) {
         return current
@@ -1387,9 +1452,9 @@ function App() {
     }
   }
 
-  async function addPrimaryImage() {
+  async function savePrimaryImage() {
     if (!entryForm.id || !adminToken) {
-      setAdminStatus('Select or create an entry before adding an image.')
+      setAdminStatus('Select or create an entry before saving an image.')
       return
     }
 
@@ -1416,29 +1481,73 @@ function App() {
       caption: null,
     }
 
-    const result = await apiClient.POST('/api/admin/entries/{entryId}/images', {
+    setAdminStatus(mediaForm.imageId ? 'Saving image...' : 'Adding image...')
+    const result = mediaForm.imageId
+      ? await apiClient.PUT('/api/admin/entries/{entryId}/images/{imageId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+              imageId: mediaForm.imageId,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/entries/{entryId}/images', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+            },
+          },
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Image was not saved.')
+      return
+    }
+
+    resetImageForm()
+    setAdminStatus(mediaForm.imageId ? 'Image saved.' : 'Image added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteEntryImage(imageId: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before deleting an image.')
+      return
+    }
+
+    setAdminStatus('Deleting image...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/images/{imageId}', {
       headers: authHeaders(),
       params: {
         path: {
           entryId: entryForm.id,
+          imageId,
         },
       },
-      body,
     })
 
     if (result.error) {
-      setAdminStatus('Image was not added.')
+      setAdminStatus('Image was not deleted.')
       return
     }
 
-    setMediaForm((current) => ({ ...current, imageUrl: '', imageAlt: '' }))
-    setAdminStatus('Image added.')
+    if (mediaForm.imageId === imageId) {
+      resetImageForm()
+    }
+
+    setAdminStatus('Image deleted.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
   }
 
-  async function addPrimaryAudio() {
+  async function savePrimaryAudio() {
     if (!entryForm.id || !adminToken) {
-      setAdminStatus('Select or create an entry before adding audio.')
+      setAdminStatus('Select or create an entry before saving audio.')
       return
     }
 
@@ -1464,24 +1573,68 @@ function App() {
       sourceUrl: null,
     }
 
-    const result = await apiClient.POST('/api/admin/entries/{entryId}/audio-tracks', {
+    setAdminStatus(mediaForm.audioTrackId ? 'Saving audio...' : 'Adding audio...')
+    const result = mediaForm.audioTrackId
+      ? await apiClient.PUT('/api/admin/entries/{entryId}/audio-tracks/{audioTrackId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+              audioTrackId: mediaForm.audioTrackId,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/entries/{entryId}/audio-tracks', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              entryId: entryForm.id,
+            },
+          },
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Audio was not saved.')
+      return
+    }
+
+    resetAudioForm()
+    setAdminStatus(mediaForm.audioTrackId ? 'Audio saved.' : 'Audio added.')
+    setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function deleteEntryAudioTrack(audioTrackId: string) {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select an entry before deleting audio.')
+      return
+    }
+
+    setAdminStatus('Deleting audio...')
+    const result = await apiClient.DELETE('/api/admin/entries/{entryId}/audio-tracks/{audioTrackId}', {
       headers: authHeaders(),
       params: {
         path: {
           entryId: entryForm.id,
+          audioTrackId,
         },
       },
-      body,
     })
 
     if (result.error) {
-      setAdminStatus('Audio was not added.')
+      setAdminStatus('Audio was not deleted.')
       return
     }
 
-    setMediaForm((current) => ({ ...current, audioUrl: '', audioTitle: '' }))
-    setAdminStatus('Audio added.')
+    if (mediaForm.audioTrackId === audioTrackId) {
+      resetAudioForm()
+    }
+
+    setAdminStatus('Audio deleted.')
     setReloadKey((value) => value + 1)
+    await loadAdminEntryDetail(entryForm.id)
   }
 
   async function addEntryPlace() {
@@ -3059,8 +3212,31 @@ function App() {
                   New source
                 </button>
               </div>
+              {adminEntryImages.length > 0 && (
+                <div className="route-manager">
+                  <strong>Images</strong>
+                  {adminEntryImages.map((image) => (
+                    <div className="route-manager-item" key={image.id}>
+                      <span>
+                        {image.altText || image.caption || image.url}
+                        <small>{image.kind} - {image.isPrimary ? 'Primary' : `Order ${image.sortOrder}`}</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button className="admin-action secondary" type="button" onClick={() => loadImageForm(image)}>
+                          <ImageIcon aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button className="admin-action secondary danger" type="button" onClick={() => deleteEntryImage(image.id)}>
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
-                Primary image URL
+                {mediaForm.imageId ? 'Editing image URL' : 'Primary image URL'}
                 <input
                   value={mediaForm.imageUrl}
                   onChange={(event) => setMediaForm((current) => ({ ...current, imageUrl: event.target.value }))}
@@ -3073,12 +3249,45 @@ function App() {
                   onChange={(event) => setMediaForm((current) => ({ ...current, imageAlt: event.target.value }))}
                 />
               </label>
-              <button className="admin-action secondary" type="button" onClick={addPrimaryImage}>
-                <ImageIcon aria-hidden="true" />
-                Add image
-              </button>
+              <div className="admin-field-row">
+                <button className="admin-action secondary" type="button" onClick={savePrimaryImage}>
+                  <ImageIcon aria-hidden="true" />
+                  {mediaForm.imageId ? 'Save image' : 'Add image'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={resetImageForm}>
+                  <Plus aria-hidden="true" />
+                  New image
+                </button>
+              </div>
+              {adminEntryAudioTracks.length > 0 && (
+                <div className="route-manager">
+                  <strong>Audio tracks</strong>
+                  {adminEntryAudioTracks.map((audioTrack) => (
+                    <div className="route-manager-item" key={audioTrack.id}>
+                      <span>
+                        {audioTrack.title || audioTrack.url}
+                        <small>{audioTrack.languageCode} - {audioTrack.kind}</small>
+                      </span>
+                      <div className="route-manager-actions">
+                        <button className="admin-action secondary" type="button" onClick={() => loadAudioForm(audioTrack)}>
+                          <Music aria-hidden="true" />
+                          Edit
+                        </button>
+                        <button
+                          className="admin-action secondary danger"
+                          type="button"
+                          onClick={() => deleteEntryAudioTrack(audioTrack.id)}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
-                Audio URL
+                {mediaForm.audioTrackId ? 'Editing audio URL' : 'Audio URL'}
                 <input
                   value={mediaForm.audioUrl}
                   onChange={(event) => setMediaForm((current) => ({ ...current, audioUrl: event.target.value }))}
@@ -3091,10 +3300,16 @@ function App() {
                   onChange={(event) => setMediaForm((current) => ({ ...current, audioTitle: event.target.value }))}
                 />
               </label>
-              <button className="admin-action secondary" type="button" onClick={addPrimaryAudio}>
-                <Music aria-hidden="true" />
-                Add audio
-              </button>
+              <div className="admin-field-row">
+                <button className="admin-action secondary" type="button" onClick={savePrimaryAudio}>
+                  <Music aria-hidden="true" />
+                  {mediaForm.audioTrackId ? 'Save audio' : 'Add audio'}
+                </button>
+                <button className="admin-action secondary" type="button" onClick={resetAudioForm}>
+                  <Plus aria-hidden="true" />
+                  New audio
+                </button>
+              </div>
             </div>
           </aside>
         )}

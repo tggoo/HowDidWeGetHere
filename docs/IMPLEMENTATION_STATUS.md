@@ -25,6 +25,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added viewport-aware map data filtering with map bounds sent to the public map API.
 - 2026-07-23: Added localized and grouped public related-topic display.
 - 2026-07-23: Added hierarchical time period filter panel using parent/child periods.
+- 2026-07-23: Added admin image/audio update/delete endpoints and media edit/delete controls for URL-based media.
 
 ## Goal
 
@@ -103,6 +104,8 @@ Build a mobile-first historical world map app with:
 - update entry
 - add entry image URL
 - add entry audio URL
+- update and delete entry images
+- update and delete entry audio tracks
 - add place/coordinate to entry
 - add route with ordered coordinate points to entry
 - update route with a replacement set of ordered coordinate points
@@ -163,6 +166,7 @@ Build a mobile-first historical world map app with:
 - unused tag delete control
 - primary image URL attachment
 - primary audio URL attachment
+- image/audio URL edit and delete controls
 
 ### Deployment
 
@@ -187,7 +191,7 @@ The importer reads the current workbook sheets, creates or updates entries, tags
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include richer validation and media upload/storage.
+Admin can sign in, import, list entries, create/edit basic content, add/edit/delete media URLs, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. It is not yet a complete CMS. Missing pieces include richer validation and real media upload/storage.
 
 ### Multilingual support
 
@@ -218,7 +222,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 - object storage integration
 - thumbnail generation
 - image/audio moderation/validation
-- media replacement and deletion
+- media replacement and deletion for uploaded objects
 
 ### Authentication/admin
 
