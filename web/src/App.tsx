@@ -523,6 +523,14 @@ function relationshipDirectionLabel(direction: string, language: string) {
   return relationshipDirectionLabels[direction]?.[language] ?? relationshipDirectionLabels[direction]?.en ?? direction
 }
 
+function periodYearLabel(period: TimePeriodListItem) {
+  if (period.startYear == null && period.endYear == null) {
+    return 'Date unknown'
+  }
+
+  return `${period.startYear ?? '?'}-${period.endYear ?? '?'}`
+}
+
 function App() {
   const [language, setLanguage] = useState('en')
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
@@ -828,6 +836,16 @@ function App() {
       }))
       .filter((group) => group.entries.length > 0)
   }, [selectedEntryDetail])
+
+  const periodHierarchy = useMemo(() => {
+    const periodsById = new Map(periods.map((period) => [period.id, period]))
+    return periods
+      .filter((period) => !period.parentPeriodId || !periodsById.has(period.parentPeriodId))
+      .map((period) => ({
+        period,
+        children: periods.filter((child) => child.parentPeriodId === period.id),
+      }))
+  }, [periods])
 
   function toggleTag(tag: string) {
     setSelectedTags((current) =>
@@ -2083,19 +2101,33 @@ function App() {
               <CalendarRange aria-hidden="true" />
               <span>Time period</span>
             </div>
-            <div className="period-list">
-              {periods.slice(0, 4).map((period) => (
-                <button
-                  className={selectedPeriodId === period.id ? 'period-item active' : 'period-item'}
-                  key={period.id}
-                  type="button"
-                  onClick={() => selectPeriodFilter(period)}
-                >
-                  <span>{period.name}</span>
-                  <small>
-                    {period.startYear ?? '?'}-{period.endYear ?? '?'}
-                  </small>
-                </button>
+            <div className="period-tree">
+              {periodHierarchy.map(({ period, children }) => (
+                <div className="period-branch" key={period.id}>
+                  <button
+                    className={selectedPeriodId === period.id ? 'period-item active' : 'period-item'}
+                    type="button"
+                    onClick={() => selectPeriodFilter(period)}
+                  >
+                    <span>{period.name}</span>
+                    <small>{periodYearLabel(period)}</small>
+                  </button>
+                  {children.length > 0 && (
+                    <div className="period-children">
+                      {children.map((child) => (
+                        <button
+                          className={selectedPeriodId === child.id ? 'period-item active child' : 'period-item child'}
+                          key={child.id}
+                          type="button"
+                          onClick={() => selectPeriodFilter(child)}
+                        >
+                          <span>{child.name}</span>
+                          <small>{periodYearLabel(child)}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
             <div className="year-filter-row">

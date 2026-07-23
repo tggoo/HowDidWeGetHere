@@ -24,6 +24,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added lightweight Leaflet marker clustering for dense low-zoom map views.
 - 2026-07-23: Added viewport-aware map data filtering with map bounds sent to the public map API.
 - 2026-07-23: Added localized and grouped public related-topic display.
+- 2026-07-23: Added hierarchical time period filter panel using parent/child periods.
 
 ## Goal
 
@@ -132,6 +133,7 @@ Build a mobile-first historical world map app with:
 - language selector
 - tag filter buttons loaded from backend tag API
 - time period side panel
+- hierarchical time period filter panel
 - period buttons and manual year range filters update entry and map queries
 - search input updates entry and map queries
 - selected entry detail panel loaded from public entry detail API
@@ -204,8 +206,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Time periods
 
-- richer era/period side panel
-- period hierarchy UI
 - richer timeline/time slider
 
 ### Sources
@@ -245,11 +245,10 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Improve the era side panel and period hierarchy UI.
-2. Add real media upload/storage.
-3. Add importer preview, conflict review and route/place mapping.
-4. Add CS/ES translation workflow.
-5. Add backend/frontend tests.
+1. Add real media upload/storage.
+2. Add importer preview, conflict review and route/place mapping.
+3. Add CS/ES translation workflow.
+4. Add backend/frontend tests.
 
 ## Current answer
 
