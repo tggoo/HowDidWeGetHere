@@ -1025,6 +1025,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/entries/{entryId}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminEntryRelationshipRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ResourceCreatedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/imports/workbook": {
         parameters: {
             query?: never;
@@ -1186,6 +1241,13 @@ export interface components {
             geoNamesId: null | number | string;
             /** Format: int32 */
             sortOrder: number | string;
+            note: null | string;
+        };
+        AdminEntryRelationshipRequest: {
+            targetEntrySlug: string;
+            relationshipType: components["schemas"]["EntryRelationshipType"];
+            /** Format: double */
+            confidence: null | number | string;
             note: null | string;
         };
         AdminEntryRoutePointRequest: {
@@ -1364,6 +1426,8 @@ export interface components {
             confidence: null | number | string;
             note: null | string;
         };
+        /** @enum {unknown} */
+        EntryRelationshipType: "Caused" | "Influenced" | "Preceded" | "Followed" | "PartOf" | "HasPart" | "RelatedTo" | "Contradicts" | "SameTraditionAs" | "LocatedWithin" | "DerivedFrom" | "Other";
         EntryRouteResponse: {
             /** Format: uuid */
             id: string;

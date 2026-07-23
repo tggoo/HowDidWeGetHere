@@ -9,6 +9,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added public map entries API, admin place attachment endpoint and frontend rendering of stored coordinates on the map canvas.
 - 2026-07-23: Replaced the custom map canvas with a Leaflet map layer that renders stored markers and routes.
 - 2026-07-23: Added admin route creation endpoint and route form that creates ordered route points with coordinates.
+- 2026-07-23: Added admin relationship creation endpoint and related-topic form by target entry slug.
 
 ## Goal
 
@@ -84,6 +85,7 @@ Build a mobile-first historical world map app with:
 - add entry audio URL
 - add place/coordinate to entry
 - add route with ordered coordinate points to entry
+- add relationship to another entry by target slug
 - import workbook from `.xlsx`
 - workbook import preserves raw row JSON and source row metadata
 - imported workbook rows can be published immediately from the UI
@@ -107,6 +109,7 @@ Build a mobile-first historical world map app with:
 - entry create/edit form
 - place/coordinate attachment form
 - route attachment form with ordered points
+- related-entry attachment form
 - primary image URL attachment
 - primary audio URL attachment
 
@@ -133,7 +136,7 @@ The importer reads the current workbook sheets, creates entries, tags, time peri
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates and create basic routes. It is not yet a complete CMS. Missing pieces include tag editing, relationships, route update/delete, source editing, time period editing and richer validation.
+Admin can sign in, import, list entries, create/edit basic content, add media URLs, attach point places with coordinates, create basic routes and add relationships by target slug. It is not yet a complete CMS. Missing pieces include tag editing, relationship update/delete, route update/delete, source editing, time period editing and richer validation.
 
 ### Multilingual support
 
@@ -150,7 +153,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ### Relationships
 
-- admin relationship endpoints
+- relationship update/delete
 - richer public relationship labels and grouping
 - relationship labels translated by language
 
@@ -206,7 +209,7 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 1. Add route update/delete in admin UI.
 2. Add marker clustering and viewport-aware filtering.
-3. Add admin/public relationship endpoints beyond the current detail payload.
+3. Add relationship update/delete and richer relationship display.
 4. Add time period CRUD and improve the era side panel.
 5. Add source editing.
 6. Add real media upload/storage.

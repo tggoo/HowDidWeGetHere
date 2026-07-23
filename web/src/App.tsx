@@ -30,8 +30,10 @@ type AdminEntryImageRequest = components['schemas']['AdminEntryImageRequest']
 type AdminEntryAudioTrackRequest = components['schemas']['AdminEntryAudioTrackRequest']
 type AdminEntryPlaceRequest = components['schemas']['AdminEntryPlaceRequest']
 type AdminEntryRouteRequest = components['schemas']['AdminEntryRouteRequest']
+type AdminEntryRelationshipRequest = components['schemas']['AdminEntryRelationshipRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
+type EntryRelationshipType = components['schemas']['EntryRelationshipType']
 type EntryPlaceRole = components['schemas']['EntryPlaceRole']
 type PlaceType = components['schemas']['PlaceType']
 type RealityStatus = components['schemas']['RealityStatus']
@@ -390,6 +392,20 @@ const routePointRoles: RoutePointRole[] = [
   'Approximate',
   'Other',
 ]
+const relationshipTypes: EntryRelationshipType[] = [
+  'Caused',
+  'Influenced',
+  'Preceded',
+  'Followed',
+  'PartOf',
+  'HasPart',
+  'RelatedTo',
+  'Contradicts',
+  'SameTraditionAs',
+  'LocatedWithin',
+  'DerivedFrom',
+  'Other',
+]
 const spatialConfidences: SpatialConfidence[] = [
   'Exact',
   'Approximate',
@@ -445,6 +461,12 @@ function App() {
     spatialConfidence: 'Approximate' as SpatialConfidence,
     sourceNote: '',
     pointsText: '',
+  })
+  const [relationshipForm, setRelationshipForm] = useState({
+    targetEntrySlug: '',
+    relationshipType: 'RelatedTo' as EntryRelationshipType,
+    confidence: '',
+    note: '',
   })
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -651,6 +673,10 @@ function App() {
     setRouteForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchRelationshipForm(patch: Partial<typeof relationshipForm>) {
+    setRelationshipForm((current) => ({ ...current, ...patch }))
+  }
+
   function parseRoutePoints(pointsText: string) {
     return pointsText
       .split('\n')
@@ -702,6 +728,12 @@ function App() {
       spatialConfidence: 'Approximate',
       sourceNote: '',
       pointsText: '',
+    })
+    setRelationshipForm({
+      targetEntrySlug: '',
+      relationshipType: 'RelatedTo',
+      confidence: '',
+      note: '',
     })
   }
 
@@ -1106,6 +1138,57 @@ function App() {
       pointsText: '',
     }))
     setAdminStatus('Route added.')
+    setReloadKey((value) => value + 1)
+  }
+
+  async function addEntryRelationship() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before adding a relationship.')
+      return
+    }
+
+    if (!relationshipForm.targetEntrySlug.trim()) {
+      setAdminStatus('Target entry slug is required.')
+      return
+    }
+
+    const confidence = relationshipForm.confidence.trim()
+      ? Number(relationshipForm.confidence)
+      : null
+    if (confidence !== null && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
+      setAdminStatus('Confidence must be between 0 and 1.')
+      return
+    }
+
+    const body: AdminEntryRelationshipRequest = {
+      targetEntrySlug: relationshipForm.targetEntrySlug.trim(),
+      relationshipType: relationshipForm.relationshipType,
+      confidence,
+      note: relationshipForm.note.trim() || null,
+    }
+
+    const result = await apiClient.POST('/api/admin/entries/{entryId}/relationships', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+        },
+      },
+      body,
+    })
+
+    if (result.error) {
+      setAdminStatus('Relationship was not added. Check target slug.')
+      return
+    }
+
+    setRelationshipForm((current) => ({
+      ...current,
+      targetEntrySlug: '',
+      confidence: '',
+      note: '',
+    }))
+    setAdminStatus('Relationship added.')
     setReloadKey((value) => value + 1)
   }
 
@@ -1643,6 +1726,50 @@ function App() {
               <button className="admin-action secondary" type="button" onClick={addEntryRoute}>
                 <Route aria-hidden="true" />
                 Add route
+              </button>
+              <label>
+                Related entry slug
+                <input
+                  value={relationshipForm.targetEntrySlug}
+                  onChange={(event) => patchRelationshipForm({ targetEntrySlug: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Relationship
+                  <select
+                    value={relationshipForm.relationshipType}
+                    onChange={(event) =>
+                      patchRelationshipForm({ relationshipType: event.target.value as EntryRelationshipType })
+                    }
+                  >
+                    {relationshipTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Confidence
+                  <input
+                    inputMode="decimal"
+                    placeholder="0.8"
+                    value={relationshipForm.confidence}
+                    onChange={(event) => patchRelationshipForm({ confidence: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label>
+                Relationship note
+                <input
+                  value={relationshipForm.note}
+                  onChange={(event) => patchRelationshipForm({ note: event.target.value })}
+                />
+              </label>
+              <button className="admin-action secondary" type="button" onClick={addEntryRelationship}>
+                <Tags aria-hidden="true" />
+                Add relationship
               </button>
               <label>
                 Primary image URL

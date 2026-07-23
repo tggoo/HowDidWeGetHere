@@ -315,3 +315,9 @@ public sealed record AdminEntryRoutePointRequest(
     int SortOrder,
     string? DateLabel,
     string? Note);
+
+public sealed record AdminEntryRelationshipRequest(
+    string TargetEntrySlug,
+    EntryRelationshipType RelationshipType,
+    decimal? Confidence,
+    string? Note);
