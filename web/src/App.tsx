@@ -495,6 +495,34 @@ const sourceSupportKinds: SourceSupportKind[] = [
   'Translation',
 ]
 
+const relationshipTypeLabels: Record<string, Record<string, string>> = {
+  Caused: { en: 'Caused', cs: 'Zpusobilo', es: 'Causo' },
+  Influenced: { en: 'Influenced', cs: 'Ovlivnilo', es: 'Influyo en' },
+  Preceded: { en: 'Came before', cs: 'Predchazelo', es: 'Precedio a' },
+  Followed: { en: 'Came after', cs: 'Nasledovalo', es: 'Siguio a' },
+  PartOf: { en: 'Was part of', cs: 'Bylo soucasti', es: 'Fue parte de' },
+  HasPart: { en: 'Includes', cs: 'Obsahuje', es: 'Incluye' },
+  RelatedTo: { en: 'Related to', cs: 'Souvisi s', es: 'Relacionado con' },
+  Contradicts: { en: 'Contradicts', cs: 'Je v rozporu s', es: 'Contradice' },
+  SameTraditionAs: { en: 'Same tradition as', cs: 'Stejna tradice jako', es: 'Misma tradicion que' },
+  LocatedWithin: { en: 'Located within', cs: 'Nachazi se v', es: 'Ubicado dentro de' },
+  DerivedFrom: { en: 'Derived from', cs: 'Odvozene od', es: 'Derivado de' },
+  Other: { en: 'Other relation', cs: 'Jina vazba', es: 'Otra relacion' },
+}
+
+const relationshipDirectionLabels: Record<string, Record<string, string>> = {
+  outgoing: { en: 'Leads to', cs: 'Navazuje na', es: 'Conduce a' },
+  incoming: { en: 'Linked from', cs: 'Odkazuje sem', es: 'Enlazado desde' },
+}
+
+function relationshipLabel(type: string, language: string) {
+  return relationshipTypeLabels[type]?.[language] ?? relationshipTypeLabels[type]?.en ?? type
+}
+
+function relationshipDirectionLabel(direction: string, language: string) {
+  return relationshipDirectionLabels[direction]?.[language] ?? relationshipDirectionLabels[direction]?.en ?? direction
+}
+
 function App() {
   const [language, setLanguage] = useState('en')
   const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
@@ -790,6 +818,16 @@ function App() {
     }),
     [fromYear, language, reloadKey, searchText, selectedTags, toYear],
   )
+
+  const relatedEntryGroups = useMemo(() => {
+    const relatedEntries = selectedEntryDetail?.relatedEntries ?? []
+    return ['outgoing', 'incoming']
+      .map((direction) => ({
+        direction,
+        entries: relatedEntries.filter((entry) => entry.direction === direction),
+      }))
+      .filter((group) => group.entries.length > 0)
+  }, [selectedEntryDetail])
 
   function toggleTag(tag: string) {
     setSelectedTags((current) =>
@@ -2172,17 +2210,23 @@ function App() {
               )}
             </div>
           </div>
-          {selectedEntryDetail?.relatedEntries.length ? (
+          {relatedEntryGroups.length ? (
             <div className="detail-list">
               <strong>Related topics</strong>
-              {selectedEntryDetail.relatedEntries.map((entry) => (
-                <button
-                  key={`${entry.direction}-${entry.entryId}`}
-                  type="button"
-                  onClick={() => setSelectedEntryId(entries.find((item) => item.id === entry.entryId)?.id ?? selectedEntryId)}
-                >
-                  {entry.relationshipType}: {entry.title}
-                </button>
+              {relatedEntryGroups.map((group) => (
+                <div className="relationship-group" key={group.direction}>
+                  <span>{relationshipDirectionLabel(group.direction, language)}</span>
+                  {group.entries.map((entry) => (
+                    <button
+                      key={`${entry.direction}-${entry.entryId}-${entry.relationshipType}`}
+                      type="button"
+                      onClick={() => setSelectedEntryId(entries.find((item) => item.id === entry.entryId)?.id ?? selectedEntryId)}
+                    >
+                      <small>{relationshipLabel(entry.relationshipType, language)}</small>
+                      {entry.title}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           ) : null}

@@ -509,6 +509,28 @@
   text-align: left;
 }
 
+.relationship-group {
+  display: grid;
+  gap: 6px;
+}
+
+.relationship-group > span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.relationship-group button {
+  display: grid;
+  gap: 2px;
+}
+
+.relationship-group button small {
+  color: #667085;
+  font-size: 12px;
+}
+
 .detail-chip-list {
   display: flex;
   flex-wrap: wrap;

@@ -23,6 +23,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added admin time period delete endpoint and guarded delete control in the admin UI.
 - 2026-07-23: Added lightweight Leaflet marker clustering for dense low-zoom map views.
 - 2026-07-23: Added viewport-aware map data filtering with map bounds sent to the public map API.
+- 2026-07-23: Added localized and grouped public related-topic display.
 
 ## Goal
 
@@ -84,6 +85,7 @@ Build a mobile-first historical world map app with:
 - published-only public entries
 - primary image/audio URLs included in entry list responses
 - entry detail payload includes tags, time periods, places, routes, related entries, sources, images and audio tracks
+- public related-topic display groups incoming/outgoing relationships and localizes relationship labels
 - public tag list is filtered to tags used by published entries
 - public map payload includes entries with stored coordinates and route geometry/route-point geometry
 - public entry and map queries can be filtered by year range
@@ -196,11 +198,6 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 - richer route drawing on a real map from stored coordinates/GeoJSON
 - more advanced place/time/tag filtering with map bounds and anti-meridian handling
 
-### Relationships
-
-- richer public relationship labels and grouping
-- relationship labels translated by language
-
 ### Tags
 
 - richer tag management and grouping UI
@@ -248,12 +245,11 @@ The schema supports translations and the UI can request EN/CS/ES. The imported w
 
 ## Recommended next implementation order
 
-1. Add richer relationship display.
-2. Improve the era side panel and period hierarchy UI.
-3. Add real media upload/storage.
-4. Add importer preview, conflict review and route/place mapping.
-5. Add CS/ES translation workflow.
-6. Add backend/frontend tests.
+1. Improve the era side panel and period hierarchy UI.
+2. Add real media upload/storage.
+3. Add importer preview, conflict review and route/place mapping.
+4. Add CS/ES translation workflow.
+5. Add backend/frontend tests.
 
 ## Current answer
 
