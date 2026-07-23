@@ -343,3 +343,13 @@ public sealed record AdminTimePeriodUpsertRequest(
     TimePrecision StartPrecision,
     TimePrecision EndPrecision,
     int SortOrder);
+
+public sealed record AdminTagUpsertRequest(
+    string Name,
+    string? Slug,
+    string? LanguageCode,
+    string TagGroup,
+    Guid? ParentTagId);
+
+public sealed record AdminEntryTagRequest(
+    string TagSlug);

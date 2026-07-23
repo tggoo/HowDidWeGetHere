@@ -22,6 +22,7 @@ public static class EndpointRouteBuilderExtensions
         admin.MapAdminRelationshipEndpoints();
         admin.MapAdminSourceEndpoints();
         admin.MapAdminTimePeriodEndpoints();
+        admin.MapAdminTagEndpoints();
         admin.MapAdminImportEndpoints();
 
         return endpoints;

@@ -33,6 +33,8 @@ type AdminEntryRouteRequest = components['schemas']['AdminEntryRouteRequest']
 type AdminEntryRelationshipRequest = components['schemas']['AdminEntryRelationshipRequest']
 type AdminEntrySourceRequest = components['schemas']['AdminEntrySourceRequest']
 type AdminTimePeriodUpsertRequest = components['schemas']['AdminTimePeriodUpsertRequest']
+type AdminTagUpsertRequest = components['schemas']['AdminTagUpsertRequest']
+type AdminEntryTagRequest = components['schemas']['AdminEntryTagRequest']
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
 type EntryRelationshipType = components['schemas']['EntryRelationshipType']
@@ -535,6 +537,14 @@ function App() {
     supportsField: 'General' as SourceSupportKind,
     note: '',
   })
+  const [tagForm, setTagForm] = useState({
+    id: null as string | null,
+    name: '',
+    slug: '',
+    tagGroup: 'topic',
+    parentTagId: '',
+    attachSlug: '',
+  })
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -748,6 +758,10 @@ function App() {
     setSourceForm((current) => ({ ...current, ...patch }))
   }
 
+  function patchTagForm(patch: Partial<typeof tagForm>) {
+    setTagForm((current) => ({ ...current, ...patch }))
+  }
+
   function patchTimePeriodForm(patch: Partial<TimePeriodFormState>) {
     setTimePeriodForm((current) => ({ ...current, ...patch }))
   }
@@ -816,6 +830,25 @@ function App() {
       publisher: '',
       supportsField: 'General',
       note: '',
+    })
+    setTagForm({
+      id: null,
+      name: '',
+      slug: '',
+      tagGroup: 'topic',
+      parentTagId: '',
+      attachSlug: '',
+    })
+  }
+
+  function loadTagForm(tag: TagListItem) {
+    setTagForm({
+      id: tag.id,
+      name: tag.name,
+      slug: tag.slug,
+      tagGroup: tag.tagGroup,
+      parentTagId: tag.parentTagId ?? '',
+      attachSlug: tag.slug,
     })
   }
 
@@ -1390,6 +1423,92 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
+  async function saveTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!adminToken) {
+      setAdminStatus('Sign in before saving a tag.')
+      return
+    }
+
+    if (!tagForm.name.trim()) {
+      setAdminStatus('Tag name is required.')
+      return
+    }
+
+    const body: AdminTagUpsertRequest = {
+      name: tagForm.name.trim(),
+      slug: tagForm.slug.trim() || null,
+      languageCode: language,
+      tagGroup: tagForm.tagGroup.trim() || 'topic',
+      parentTagId: tagForm.parentTagId || null,
+    }
+
+    const result = tagForm.id
+      ? await apiClient.PUT('/api/admin/tags/{tagId}', {
+          headers: authHeaders(),
+          params: {
+            path: {
+              tagId: tagForm.id,
+            },
+          },
+          body,
+        })
+      : await apiClient.POST('/api/admin/tags', {
+          headers: authHeaders(),
+          body,
+        })
+
+    if (result.error) {
+      setAdminStatus('Tag save failed.')
+      return
+    }
+
+    setAdminStatus(tagForm.id ? 'Tag saved.' : 'Tag created.')
+    setTagForm({
+      id: null,
+      name: '',
+      slug: '',
+      tagGroup: 'topic',
+      parentTagId: '',
+      attachSlug: '',
+    })
+    setReloadKey((value) => value + 1)
+  }
+
+  async function attachTagToEntry() {
+    if (!entryForm.id || !adminToken) {
+      setAdminStatus('Select or create an entry before attaching a tag.')
+      return
+    }
+
+    if (!tagForm.attachSlug.trim()) {
+      setAdminStatus('Choose a tag before attaching it.')
+      return
+    }
+
+    const body: AdminEntryTagRequest = {
+      tagSlug: tagForm.attachSlug.trim(),
+    }
+
+    const result = await apiClient.POST('/api/admin/entries/{entryId}/tags', {
+      headers: authHeaders(),
+      params: {
+        path: {
+          entryId: entryForm.id,
+        },
+      },
+      body,
+    })
+
+    if (result.error) {
+      setAdminStatus('Tag was not attached.')
+      return
+    }
+
+    setAdminStatus('Tag attached.')
+    setReloadKey((value) => value + 1)
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1731,6 +1850,100 @@ function App() {
               <button className="admin-action" type="submit">
                 <Save aria-hidden="true" />
                 {timePeriodForm.id ? 'Save period' : 'Create period'}
+              </button>
+            </form>
+            <div className="admin-section-title">
+              <span>Tags</span>
+              <button
+                className="icon-button subtle"
+                type="button"
+                onClick={() =>
+                  setTagForm({
+                    id: null,
+                    name: '',
+                    slug: '',
+                    tagGroup: 'topic',
+                    parentTagId: '',
+                    attachSlug: '',
+                  })
+                }
+              >
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
+            <div className="tag-grid">
+              {tags.slice(0, 12).map((tag) => (
+                <button
+                  className={tagForm.id === tag.id ? 'tag active' : 'tag'}
+                  key={tag.id}
+                  type="button"
+                  onClick={() => loadTagForm(tag)}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+            <form className="entry-editor" onSubmit={saveTag}>
+              <label>
+                Tag name
+                <input
+                  value={tagForm.name}
+                  onChange={(event) => patchTagForm({ name: event.target.value })}
+                />
+              </label>
+              <div className="admin-field-row">
+                <label>
+                  Tag slug
+                  <input
+                    value={tagForm.slug}
+                    onChange={(event) => patchTagForm({ slug: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Group
+                  <input
+                    value={tagForm.tagGroup}
+                    onChange={(event) => patchTagForm({ tagGroup: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label>
+                Parent tag
+                <select
+                  value={tagForm.parentTagId}
+                  onChange={(event) => patchTagForm({ parentTagId: event.target.value })}
+                >
+                  <option value="">None</option>
+                  {tags
+                    .filter((tag) => tag.id !== tagForm.id)
+                    .map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button className="admin-action" type="submit">
+                <Save aria-hidden="true" />
+                {tagForm.id ? 'Save tag' : 'Create tag'}
+              </button>
+              <label>
+                Attach tag
+                <select
+                  value={tagForm.attachSlug}
+                  onChange={(event) => patchTagForm({ attachSlug: event.target.value })}
+                >
+                  <option value="">Choose tag</option>
+                  {tags.map((tag) => (
+                    <option key={tag.id} value={tag.slug}>
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="admin-action secondary" type="button" onClick={attachTagToEntry}>
+                <Tags aria-hidden="true" />
+                Attach tag
               </button>
             </form>
             <div className="admin-section-title">
