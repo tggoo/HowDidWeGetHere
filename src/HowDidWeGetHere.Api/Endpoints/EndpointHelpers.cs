@@ -7,8 +7,16 @@ namespace HowDidWeGetHere.Api.Endpoints;
 
 internal static partial class EndpointHelpers
 {
-    public static string NormalizeLanguage(string? language) =>
-        string.IsNullOrWhiteSpace(language) ? "en" : language.Trim().ToLowerInvariant();
+    public static string NormalizeLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return "en";
+        }
+
+        var normalized = language.Trim().ToLowerInvariant();
+        return normalized is "sp" or "spa" or "spanish" ? "es" : normalized;
+    }
 
     public static string MakeUniqueEntrySlug(string baseSlug, HistoryDbContext dbContext)
     {
@@ -54,4 +62,3 @@ internal static partial class EndpointHelpers
     [GeneratedRegex("-+")]
     private static partial Regex CollapseDashesRegex();
 }
-

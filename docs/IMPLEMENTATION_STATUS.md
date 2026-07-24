@@ -38,6 +38,8 @@ Last updated: 2026-07-24
 - 2026-07-24: Normalized workbook rows so current preview validation reports zero warnings.
 - 2026-07-24: Added bulk audio ZIP upload and workbook-to-TTS narration generation workflow.
 - 2026-07-24: Added bulk audio ZIP preview so admins can validate slug matches before upload.
+- 2026-07-24: Added content package ZIP generation from workbook plus generated media.
+- 2026-07-24: Added admin content package preview/import endpoints and frontend workflow for one ZIP containing entries, audio and images.
 
 ## Goal
 
@@ -121,6 +123,8 @@ Build a mobile-first historical world map app with:
 - upload local entry audio files
 - bulk upload local entry audio files from a slug-named ZIP
 - preview slug matches for bulk audio ZIP uploads
+- import a full content package ZIP containing `entries.json`, audio and images
+- preview content package entry/media counts before saving
 - update and delete entry images
 - update and delete entry audio tracks
 - add place/coordinate to entry
@@ -179,6 +183,8 @@ Build a mobile-first historical world map app with:
 - mobile admin panel opens as a full-screen closeable panel
 - workbook upload/import from frontend
 - workbook preview from frontend before saving import rows
+- content package ZIP upload/import from frontend
+- content package ZIP preview from frontend before saving entries and media
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list

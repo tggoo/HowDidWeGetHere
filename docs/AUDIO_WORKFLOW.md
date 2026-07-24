@@ -34,3 +34,39 @@ The backend matches audio files by entry slug. Supported names:
 - `entry-slug.es.mp3`
 
 When an entry already has a primary audio track for that language, bulk upload replaces it. Otherwise it creates a new primary narration track.
+
+## Preferred content package workflow
+
+The preferred import path is now a single content package ZIP. It contains entries plus media, so admins do not need to upload workbook rows, audio and images separately.
+
+Generate packages from the current workbook and generated media:
+
+```powershell
+python tools/build-content-packages.py
+```
+
+Generated package files:
+
+- `generated/packages/master-timeline.zip`
+- `generated/packages/mythology.zip`
+
+Each package has this structure:
+
+```text
+entries.json
+audio/en/<entry-slug>.mp3
+audio/cs/<entry-slug>.mp3
+audio/es/<entry-slug>.mp3
+images/<entry-slug>.<ext>
+```
+
+`entries.json` stores normalized entries, tags, time periods, sources, approximate places and references to media paths inside the same ZIP.
+
+Admin import order:
+
+1. Open `Admin -> Import`.
+2. Select a generated content package ZIP.
+3. Run `Preview package`.
+4. If counts look correct, run `Import package`.
+
+The package import is idempotent. It updates existing entries by `sourceSheet/sourceRow` first, then by `slug`. Existing primary audio for the same language and existing primary images are replaced on re-import.

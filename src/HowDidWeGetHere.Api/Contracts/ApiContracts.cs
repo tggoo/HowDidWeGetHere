@@ -328,6 +328,51 @@ public sealed record BulkAudioUploadPreviewRow(
     bool EntryExists,
     string? Warning);
 
+public sealed record ContentPackageImportResult(
+    Guid ImportBatchId,
+    int EntriesRead,
+    int EntriesCreated,
+    int EntriesUpdated,
+    int TagsAttached,
+    int TimePeriodsAttached,
+    int PlacesAttached,
+    int SourcesAttached,
+    int AudioTracksCreated,
+    int AudioTracksUpdated,
+    int ImagesCreated,
+    int ImagesUpdated,
+    IReadOnlyList<string> Warnings);
+
+public sealed record ContentPackageImportPreviewResult(
+    string PackageSlug,
+    string Title,
+    int EntriesRead,
+    int EntriesToCreate,
+    int EntriesToUpdate,
+    int TagsToAttach,
+    int TimePeriodsToAttach,
+    int PlacesToAttach,
+    int SourcesToAttach,
+    int AudioFilesToAttach,
+    int ImageFilesToAttach,
+    IReadOnlyList<ContentPackageImportPreviewRow> Rows,
+    IReadOnlyList<string> Warnings);
+
+public sealed record ContentPackageImportPreviewRow(
+    string Slug,
+    string Title,
+    string? SourceSheet,
+    int? SourceRow,
+    bool WillUpdateExistingEntry,
+    Guid? ExistingEntryId,
+    int Tags,
+    int TimePeriods,
+    int Places,
+    int Sources,
+    int AudioFiles,
+    int ImageFiles,
+    IReadOnlyList<string> Warnings);
+
 public sealed record AdminEntryPlaceRequest(
     string Name,
     string? Slug,

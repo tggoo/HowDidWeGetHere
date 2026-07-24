@@ -210,6 +210,52 @@ type WorkbookImportResult = {
   warnings: string[]
 }
 
+type ContentPackageImportResult = {
+  importBatchId: string
+  entriesRead: number | string
+  entriesCreated: number | string
+  entriesUpdated: number | string
+  tagsAttached: number | string
+  timePeriodsAttached: number | string
+  placesAttached: number | string
+  sourcesAttached: number | string
+  audioTracksCreated: number | string
+  audioTracksUpdated: number | string
+  imagesCreated: number | string
+  imagesUpdated: number | string
+  warnings: string[]
+}
+
+type ContentPackageImportPreviewResult = {
+  packageSlug: string
+  title: string
+  entriesRead: number | string
+  entriesToCreate: number | string
+  entriesToUpdate: number | string
+  tagsToAttach: number | string
+  timePeriodsToAttach: number | string
+  placesToAttach: number | string
+  sourcesToAttach: number | string
+  audioFilesToAttach: number | string
+  imageFilesToAttach: number | string
+  rows: Array<{
+    slug: string
+    title: string
+    sourceSheet?: string | null
+    sourceRow?: number | string | null
+    willUpdateExistingEntry: boolean
+    existingEntryId?: string | null
+    tags: number | string
+    timePeriods: number | string
+    places: number | string
+    sources: number | string
+    audioFiles: number | string
+    imageFiles: number | string
+    warnings: string[]
+  }>
+  warnings: string[]
+}
+
 type BulkAudioUploadResult = {
   filesRead: number | string
   tracksCreated: number | string
@@ -749,6 +795,11 @@ function App() {
   const [isPreviewingImport, setPreviewingImport] = useState(false)
   const [importPreview, setImportPreview] = useState<WorkbookImportPreviewResult | null>(null)
   const [importResult, setImportResult] = useState<WorkbookImportResult | null>(null)
+  const [contentPackageFile, setContentPackageFile] = useState<File | null>(null)
+  const [isPreviewingContentPackage, setPreviewingContentPackage] = useState(false)
+  const [isImportingContentPackage, setImportingContentPackage] = useState(false)
+  const [contentPackagePreview, setContentPackagePreview] = useState<ContentPackageImportPreviewResult | null>(null)
+  const [contentPackageResult, setContentPackageResult] = useState<ContentPackageImportResult | null>(null)
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
   const [isLoadingAdminEntries, setLoadingAdminEntries] = useState(false)
   const [entryForm, setEntryForm] = useState<EntryFormState>(defaultEntryForm)
@@ -1640,7 +1691,98 @@ function App() {
     resetEntryForm()
     setImportPreview(null)
     setImportResult(null)
+    setContentPackagePreview(null)
+    setContentPackageResult(null)
     setAdminStatus('Signed out.')
+  }
+
+  async function previewContentPackage() {
+    if (!adminToken) {
+      setAdminStatus('Sign in before previewing a content package.')
+      return
+    }
+
+    if (!contentPackageFile) {
+      setAdminStatus('Choose a content package .zip file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', contentPackageFile)
+    formData.append('publishImportedEntries', 'true')
+    formData.append('updateExistingRows', 'true')
+
+    setPreviewingContentPackage(true)
+    setAdminStatus('Reading content package preview...')
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package/preview`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        setAdminStatus(`Content package preview failed with HTTP ${response.status}.`)
+        return
+      }
+
+      const result = (await response.json()) as ContentPackageImportPreviewResult
+      setContentPackagePreview(result)
+      setContentPackageResult(null)
+      setAdminStatus(
+        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.`,
+      )
+    } catch {
+      setAdminStatus('Content package preview failed. Check API availability and CORS settings.')
+    } finally {
+      setPreviewingContentPackage(false)
+    }
+  }
+
+  async function importContentPackage() {
+    if (!adminToken) {
+      setAdminStatus('Sign in before importing a content package.')
+      return
+    }
+
+    if (!contentPackageFile) {
+      setAdminStatus('Choose a content package .zip file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', contentPackageFile)
+    formData.append('publishImportedEntries', 'true')
+    formData.append('updateExistingRows', 'true')
+
+    setImportingContentPackage(true)
+    setAdminStatus('Importing content package...')
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        setAdminStatus(`Content package import failed with HTTP ${response.status}.`)
+        return
+      }
+
+      const result = (await response.json()) as ContentPackageImportResult
+      setContentPackageResult(result)
+      setContentPackagePreview(null)
+      setAdminStatus(
+        `Imported package: ${result.entriesCreated} entries created, ${result.entriesUpdated} updated, ${result.audioTracksCreated} audio created, ${result.audioTracksUpdated} audio updated.`,
+      )
+      setReloadKey((value) => value + 1)
+    } catch {
+      setAdminStatus('Content package import failed. Check API availability and CORS settings.')
+    } finally {
+      setImportingContentPackage(false)
+    }
   }
 
   async function previewWorkbook() {
@@ -3029,18 +3171,50 @@ function App() {
                 </nav>
                 {adminPage === 'import' && (
                   <div className="admin-form">
-              <label>
-                Workbook
-                <input
-                  accept=".xlsx,.xlsm"
-                  type="file"
-                  onChange={(event) => {
-                    setImportFile(event.target.files?.[0] ?? null)
-                    setImportPreview(null)
-                    setImportResult(null)
-                  }}
-                />
-              </label>
+                    <label>
+                      Content package ZIP
+                      <input
+                        accept=".zip,application/zip"
+                        type="file"
+                        onChange={(event) => {
+                          setContentPackageFile(event.target.files?.[0] ?? null)
+                          setContentPackagePreview(null)
+                          setContentPackageResult(null)
+                        }}
+                      />
+                    </label>
+                    <div className="admin-field-row">
+                      <button
+                        className="admin-action secondary"
+                        disabled={isPreviewingContentPackage || isImportingContentPackage}
+                        type="button"
+                        onClick={previewContentPackage}
+                      >
+                        <Search aria-hidden="true" />
+                        {isPreviewingContentPackage ? 'Previewing package...' : 'Preview package'}
+                      </button>
+                      <button
+                        className="admin-action"
+                        disabled={isPreviewingContentPackage || isImportingContentPackage}
+                        type="button"
+                        onClick={importContentPackage}
+                      >
+                        <Upload aria-hidden="true" />
+                        {isImportingContentPackage ? 'Importing package...' : 'Import package'}
+                      </button>
+                    </div>
+                    <label>
+                      Workbook legacy import
+                      <input
+                        accept=".xlsx,.xlsm"
+                        type="file"
+                        onChange={(event) => {
+                          setImportFile(event.target.files?.[0] ?? null)
+                          setImportPreview(null)
+                          setImportResult(null)
+                        }}
+                      />
+                    </label>
                     <div className="admin-field-row">
                       <button
                         className="admin-action secondary"
@@ -3056,6 +3230,81 @@ function App() {
                         {isImporting ? 'Importing...' : 'Import workbook'}
                       </button>
                     </div>
+                  </div>
+                )}
+                {adminPage === 'import' && contentPackagePreview && (
+                  <>
+                    <div className="import-result">
+                      <strong>
+                        {contentPackagePreview.title} ({contentPackagePreview.entriesRead} entries)
+                      </strong>
+                      <span>{contentPackagePreview.entriesToCreate} entries would be created</span>
+                      <span>{contentPackagePreview.entriesToUpdate} entries would be updated</span>
+                      <span>{contentPackagePreview.tagsToAttach} tag links</span>
+                      <span>{contentPackagePreview.placesToAttach} place links</span>
+                      <span>{contentPackagePreview.audioFilesToAttach} audio files</span>
+                      <span>{contentPackagePreview.imageFilesToAttach} image files</span>
+                      {contentPackagePreview.warnings.length > 0 && <span>{contentPackagePreview.warnings.length} warnings</span>}
+                    </div>
+                    {contentPackagePreview.warnings.length > 0 && (
+                      <div className="validation-report">
+                        <strong>Package validation report</strong>
+                        {contentPackagePreview.warnings.slice(0, 12).map((warning, index) => (
+                          <span className="validation-issue warning" key={`${warning}-${index}`}>
+                            {warning}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Entry</th>
+                            <th>Action</th>
+                            <th>Links</th>
+                            <th>Media</th>
+                            <th>Warnings</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {contentPackagePreview.rows.slice(0, 60).map((row) => (
+                            <tr key={row.slug}>
+                              <td>
+                                {row.title}
+                                <small>
+                                  {row.sourceSheet && row.sourceRow ? `${row.sourceSheet} #${row.sourceRow}` : row.slug}
+                                </small>
+                              </td>
+                              <td>{row.willUpdateExistingEntry ? 'Update' : 'Create'}</td>
+                              <td>
+                                {row.tags} tags / {row.places} places / {row.sources} sources
+                              </td>
+                              <td>
+                                {row.audioFiles} audio / {row.imageFiles} images
+                              </td>
+                              <td>{row.warnings.length > 0 ? row.warnings.join(', ') : 'OK'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+                {adminPage === 'import' && contentPackageResult && (
+                  <div className="import-result">
+                    <strong>{contentPackageResult.entriesCreated} package entries imported</strong>
+                    <span>{contentPackageResult.entriesUpdated} entries updated</span>
+                    <span>{contentPackageResult.tagsAttached} tag links attached</span>
+                    <span>{contentPackageResult.placesAttached} place links attached</span>
+                    <span>{contentPackageResult.sourcesAttached} source links attached</span>
+                    <span>
+                      {contentPackageResult.audioTracksCreated} audio created / {contentPackageResult.audioTracksUpdated} updated
+                    </span>
+                    <span>
+                      {contentPackageResult.imagesCreated} images created / {contentPackageResult.imagesUpdated} updated
+                    </span>
+                    {contentPackageResult.warnings.length > 0 && <span>{contentPackageResult.warnings.length} warnings</span>}
                   </div>
                 )}
                 {adminPage === 'import' && importPreview && (
