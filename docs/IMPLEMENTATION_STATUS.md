@@ -1,6 +1,6 @@
 # HowDidWeGetHere - implementation status
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 ## Progress log
 
@@ -34,6 +34,7 @@ Last updated: 2026-07-23
 - 2026-07-23: Added structured workbook import validation report with severity counts and row-level issues.
 - 2026-07-23: Added admin entry translation overview and EN/CS/ES editing workflow.
 - 2026-07-23: Added persistent light/dark theme toggle with dark styling for app panels, admin UI and map tiles.
+- 2026-07-24: Added workbook import mapping from known region/tradition labels to approximate map places.
 
 ## Goal
 
@@ -140,6 +141,7 @@ Build a mobile-first historical world map app with:
 - imported workbook rows can be published immediately from the UI
 - imported workbook rows can update existing entries by source sheet and row instead of creating duplicates
 - imported workbook rows can also update existing entries by slug when source row metadata is missing or changed
+- imported workbook rows can attach approximate regional map places from known Region/Tradition labels
 
 ### Frontend
 
@@ -216,7 +218,7 @@ The frontend now uses Leaflet for the real map layer and renders stored public c
 
 ### Workbook import
 
-The importer reads the current workbook sheets, previews create/update counts and validation issues without saving, then creates or updates entries, tags, time periods and source links when the import is confirmed. Re-import uses source sheet and source row metadata as the first idempotency key, then falls back to matching by slug, so repeated uploads update existing imported rows instead of creating another copy. It does not yet geocode regions, create real places/routes, create relationships, add translations, or import images/audio. Places can currently be added manually from the admin panel after import.
+The importer reads the current workbook sheets, previews create/update counts and validation issues without saving, then creates or updates entries, tags, time periods, source links and approximate regional places when the import is confirmed. Re-import uses source sheet and source row metadata as the first idempotency key, then falls back to matching by slug, so repeated uploads update existing imported rows instead of creating another copy. It does not yet create precise event places, real routes, relationships, translations, or images/audio from workbook columns. Places can still be refined manually from the admin panel after import.
 
 ### Admin UI
 
@@ -260,7 +262,7 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 
 ### Import workflow
 
-- mapping workbook columns to places/routes/relationships/tags
+- mapping workbook columns to precise places/routes/relationships
 - import CS/ES translations
 
 ### Testing

@@ -8,15 +8,77 @@ using HowDidWeGetHere.Application.Time;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Domain.Imports;
+using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 
 namespace HowDidWeGetHere.Infrastructure.Imports;
 
 public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : IWorkbookImportService
 {
+    private const int Wgs84Srid = 4326;
+
+    private static readonly IReadOnlyDictionary<string, ImportedPlaceSeed> ImportedPlaceSeeds =
+        new Dictionary<string, ImportedPlaceSeed>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["africa"] = Region("africa", "Africa", 20.0, 0.0),
+            ["america"] = Region("americas", "Americas", -75.0, 10.0),
+            ["americas"] = Region("americas", "Americas", -75.0, 10.0),
+            ["anatolia"] = Region("anatolia", "Anatolia", 35.0, 39.0),
+            ["andes"] = Region("andes", "Andes", -72.0, -13.0),
+            ["antarctica"] = Region("antarctica", "Antarctica", 0.0, -82.0, PlaceType.Continent),
+            ["arabia"] = Region("arabia", "Arabia", 45.0, 24.0),
+            ["asia"] = Region("asia", "Asia", 100.0, 34.0, PlaceType.Continent),
+            ["atlantic"] = Region("atlantic-ocean", "Atlantic Ocean", -30.0, 25.0, PlaceType.Ocean),
+            ["australia"] = Region("australia", "Australia", 134.0, -25.0),
+            ["britain"] = Region("britain", "Britain", -2.0, 54.0),
+            ["celtic"] = Region("celtic-europe", "Celtic Europe", -4.0, 53.0, confidence: SpatialConfidence.Mythic),
+            ["central-and-western-europe"] = Region("central-and-western-europe", "Central and Western Europe", 7.0, 48.0),
+            ["china"] = Region("china", "China", 104.0, 35.0, PlaceType.Country),
+            ["chinese"] = Region("china", "China", 104.0, 35.0, PlaceType.Country, SpatialConfidence.Mythic),
+            ["eastern-mediterranean"] = Region("eastern-mediterranean", "Eastern Mediterranean", 32.0, 35.0),
+            ["egypt"] = Region("egypt", "Egypt", 30.0, 26.0, PlaceType.Country),
+            ["egyptian"] = Region("egypt", "Egypt", 30.0, 26.0, PlaceType.Country, SpatialConfidence.Mythic),
+            ["england"] = Region("england", "England", -1.5, 52.4, PlaceType.Country),
+            ["eurasia"] = Region("eurasia", "Eurasia", 60.0, 50.0),
+            ["europe"] = Region("europe", "Europe", 10.0, 50.0, PlaceType.Continent),
+            ["france"] = Region("france", "France", 2.0, 46.0, PlaceType.Country),
+            ["greek"] = Region("greece", "Greece", 22.0, 39.0, PlaceType.Country, SpatialConfidence.Mythic),
+            ["greece"] = Region("greece", "Greece", 22.0, 39.0, PlaceType.Country),
+            ["iceland"] = Region("iceland", "Iceland", -19.0, 65.0, PlaceType.Country),
+            ["india"] = Region("india", "India", 78.0, 22.0, PlaceType.Country),
+            ["ireland"] = Region("ireland", "Ireland", -8.0, 53.0, PlaceType.Country),
+            ["italy"] = Region("italy", "Italy", 12.5, 42.5, PlaceType.Country),
+            ["japan"] = Region("japan", "Japan", 138.0, 37.0, PlaceType.Country),
+            ["japanese"] = Region("japan", "Japan", 138.0, 37.0, PlaceType.Country, SpatialConfidence.Mythic),
+            ["levant"] = Region("levant", "Levant", 36.0, 33.0),
+            ["mediterranean"] = Region("mediterranean", "Mediterranean", 18.0, 37.0),
+            ["mesopotamia"] = Region("mesopotamia", "Mesopotamia", 44.0, 33.0),
+            ["mexico"] = Region("mexico", "Mexico", -102.0, 23.0, PlaceType.Country),
+            ["middle-east"] = Region("middle-east", "Middle East", 45.0, 29.0),
+            ["north-africa"] = Region("north-africa", "North Africa", 10.0, 28.0),
+            ["north-america"] = Region("north-america", "North America", -100.0, 45.0, PlaceType.Continent),
+            ["norse"] = Region("northern-europe", "Northern Europe", 15.0, 60.0, confidence: SpatialConfidence.Mythic),
+            ["northern-europe"] = Region("northern-europe", "Northern Europe", 15.0, 60.0),
+            ["pacific"] = Region("pacific-ocean", "Pacific Ocean", -150.0, 0.0, PlaceType.Ocean),
+            ["persia"] = Region("persia", "Persia", 53.0, 32.0),
+            ["roman-empire"] = Region("roman-empire", "Roman Empire", 12.5, 42.0),
+            ["roman-judea"] = Region("roman-judea", "Roman Judea", 35.0, 32.0),
+            ["rome"] = Region("rome", "Rome", 12.496, 41.902, PlaceType.City),
+            ["russia"] = Region("russia", "Russia", 90.0, 60.0, PlaceType.Country),
+            ["slavic"] = Region("slavic-europe", "Slavic Europe", 25.0, 52.0, confidence: SpatialConfidence.Mythic),
+            ["slavic-europe"] = Region("slavic-europe", "Slavic Europe", 25.0, 52.0),
+            ["south-asia"] = Region("south-asia", "South Asia", 78.0, 22.0),
+            ["southwest-asia"] = Region("southwest-asia", "Southwest Asia", 45.0, 29.0),
+            ["ukraine"] = Region("ukraine", "Ukraine", 31.0, 49.0, PlaceType.Country),
+            ["united-states"] = Region("united-states", "United States", -98.0, 39.0, PlaceType.Country),
+            ["wales"] = Region("wales", "Wales", -3.8, 52.3, PlaceType.Country),
+            ["western-europe"] = Region("western-europe", "Western Europe", 2.0, 48.0)
+        };
+
     public async Task<WorkbookImportPreviewResult> PreviewAsync(
         Stream workbookStream,
         bool publishImportedEntries,
@@ -196,6 +258,9 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         var periodCache = await dbContext.TimePeriods
             .Include(period => period.Translations)
             .ToDictionaryAsync(period => period.Slug, cancellationToken);
+        var placeCache = await dbContext.Places
+            .Include(place => place.Translations)
+            .ToDictionaryAsync(place => place.Slug, cancellationToken);
         var sourceCache = await dbContext.Sources
             .ToDictionaryAsync(source => source.Url, cancellationToken);
         var warnings = new List<string>();
@@ -208,6 +273,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 .Include(entry => entry.Tags)
                 .Include(entry => entry.Sources)
                 .Include(entry => entry.TimePeriods)
+                .Include(entry => entry.Places)
                 .OrderBy(entry => entry.CreatedAt)
                 .ToListAsync(cancellationToken)
             : [];
@@ -316,6 +382,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 AttachSource(entry, rowValues, sourceCache);
                 AttachImportedTags(entry, rowValues, worksheet.Name, tagCache);
                 AttachTimePeriod(entry, rowValues, periodCache);
+                AttachImportedPlaces(entry, rowValues, worksheet.Name, placeCache);
             }
         }
 
@@ -723,6 +790,128 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         }
     }
 
+    private void AttachImportedPlaces(
+        Entry entry,
+        IReadOnlyDictionary<string, string?> row,
+        string sheetName,
+        IDictionary<string, Place> placeCache)
+    {
+        var sourceValue = sheetName.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase)
+            ? Value(row, "Region")
+            : Value(row, "Tradition");
+        if (string.IsNullOrWhiteSpace(sourceValue))
+        {
+            return;
+        }
+
+        var sortOrder = entry.Places.Count == 0 ? 0 : entry.Places.Max(place => place.SortOrder) + 1;
+        foreach (var importedPlace in ResolveImportedPlaces(sourceValue, sheetName))
+        {
+            if (!placeCache.TryGetValue(importedPlace.Slug, out var place))
+            {
+                place = new Place
+                {
+                    Slug = importedPlace.Slug,
+                    DefaultName = importedPlace.Name,
+                    PlaceType = importedPlace.PlaceType,
+                    SpatialConfidence = importedPlace.SpatialConfidence,
+                    Geometry = new Point(importedPlace.Longitude, importedPlace.Latitude) { SRID = Wgs84Srid },
+                    Translations =
+                    [
+                        new PlaceTranslation
+                        {
+                            LanguageCode = "en",
+                            Name = importedPlace.Name,
+                            Description = importedPlace.Description
+                        }
+                    ]
+                };
+                placeCache[place.Slug] = place;
+                dbContext.Places.Add(place);
+            }
+
+            if (entry.Places.Any(entryPlace => entryPlace.Place == place || entryPlace.PlaceId == place.Id))
+            {
+                continue;
+            }
+
+            entry.Places.Add(new EntryPlace
+            {
+                Entry = entry,
+                Place = place,
+                Role = EntryPlaceRole.Region,
+                SortOrder = sortOrder++,
+                Note = importedPlace.Description
+            });
+        }
+    }
+
+    private static IEnumerable<ImportedPlaceSeed> ResolveImportedPlaces(string value, string sheetName)
+    {
+        var seenSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var label in SplitImportedPlaceLabels(value))
+        {
+            var lookupKey = NormalizeImportedPlaceLabel(label);
+            if (string.IsNullOrWhiteSpace(lookupKey) || IsSkippedImportedPlaceLabel(lookupKey))
+            {
+                continue;
+            }
+
+            if (!ImportedPlaceSeeds.TryGetValue(lookupKey, out var seed) || !seenSlugs.Add(seed.Slug))
+            {
+                continue;
+            }
+
+            var sourceType = sheetName.Equals("Mythology Index", StringComparison.OrdinalIgnoreCase)
+                ? "tradition"
+                : "region";
+            yield return seed with
+            {
+                Description = $"Approximate {sourceType} centroid inferred from workbook value '{value}'."
+            };
+        }
+    }
+
+    private static IEnumerable<string> SplitImportedPlaceLabels(string value) =>
+        value.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(label => label.Trim());
+
+    private static string NormalizeImportedPlaceLabel(string value)
+    {
+        var normalized = value
+            .Replace("and other regions", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("other regions", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? string.Empty : CreateSlug(normalized);
+    }
+
+    private static bool IsSkippedImportedPlaceLabel(string normalizedLabel) =>
+        normalizedLabel is
+            "global" or
+            "global-oceans" or
+            "moon" or
+            "space" or
+            "moon-space" or
+            "science" or
+            "technology" or
+            "present-day";
+
+    private static ImportedPlaceSeed Region(
+        string slug,
+        string name,
+        double longitude,
+        double latitude,
+        PlaceType placeType = PlaceType.Region,
+        SpatialConfidence confidence = SpatialConfidence.Regional) =>
+        new(
+            $"import-region-{slug}",
+            name,
+            longitude,
+            latitude,
+            placeType,
+            confidence,
+            "Approximate region centroid inferred from workbook import.");
+
     private void AddTag(Entry entry, string? value, string group, IDictionary<string, Tag> tagCache)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -895,4 +1084,13 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
     private static partial Regex CollapseDashesRegex();
 
     private sealed record ExistingImportEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
+
+    private sealed record ImportedPlaceSeed(
+        string Slug,
+        string Name,
+        double Longitude,
+        double Latitude,
+        PlaceType PlaceType,
+        SpatialConfidence SpatialConfidence,
+        string Description);
 }
