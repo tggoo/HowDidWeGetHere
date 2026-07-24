@@ -487,7 +487,7 @@ public static class AdminContentPackageImportEndpoints
         IDictionary<string, Tag> tagCache,
         HistoryDbContext dbContext)
     {
-        var name = EmptyToNull(packageTag.Name) ?? EmptyToNull(packageTag.Slug) ?? "Imported tag";
+        var name = ResolvePackageLabel(packageTag.Translations, packageTag.Name, packageTag.Slug, "Imported tag");
         var slug = EndpointHelpers.Slugify(EmptyToNull(packageTag.Slug) ?? $"{packageTag.Group}-{name}");
         var group = EmptyToNull(packageTag.Group) ?? "import";
         if (!tagCache.TryGetValue(slug, out var tag))
@@ -558,11 +558,7 @@ public static class AdminContentPackageImportEndpoints
         IDictionary<string, TimePeriod> periodCache,
         HistoryDbContext dbContext)
     {
-        var name = EmptyToNull(packagePeriod.Name) ?? EmptyToNull(packagePeriod.Slug);
-        if (name is null)
-        {
-            return 0;
-        }
+        var name = ResolvePackageLabel(packagePeriod.Translations, packagePeriod.Name, packagePeriod.Slug, "Imported period");
 
         var slug = EndpointHelpers.Slugify(EmptyToNull(packagePeriod.Slug) ?? name);
         var range = ResolveKnownPeriodRange(slug);
@@ -709,8 +705,8 @@ public static class AdminContentPackageImportEndpoints
         IDictionary<string, Place> placeCache,
         HistoryDbContext dbContext)
     {
-        var name = EmptyToNull(packagePlace.Name) ?? EmptyToNull(packagePlace.Slug);
-        if (name is null || packagePlace.Longitude is null || packagePlace.Latitude is null)
+        var name = ResolvePackageLabel(packagePlace.Translations, packagePlace.Name, packagePlace.Slug, "Imported place");
+        if (packagePlace.Longitude is null || packagePlace.Latitude is null)
         {
             return 0;
         }
@@ -791,6 +787,32 @@ public static class AdminContentPackageImportEndpoints
                 translation.Description = importedTranslation.Description;
             }
         }
+    }
+
+    private static string ResolvePackageLabel(
+        IReadOnlyDictionary<string, string> translations,
+        string? legacyName,
+        string? slug,
+        string fallback)
+    {
+        var englishName = translations
+            .Where(translation => NormalizeLanguage(translation.Key) == "en")
+            .Select(translation => EmptyToNull(translation.Value))
+            .FirstOrDefault(value => value is not null);
+        if (englishName is not null)
+        {
+            return englishName;
+        }
+
+        var firstTranslatedName = translations
+            .Select(translation => EmptyToNull(translation.Value))
+            .FirstOrDefault(value => value is not null);
+        if (firstTranslatedName is not null)
+        {
+            return firstTranslatedName;
+        }
+
+        return EmptyToNull(legacyName) ?? EmptyToNull(slug) ?? fallback;
     }
 
     private static bool UpsertAudio(
@@ -1019,6 +1041,21 @@ public static class AdminContentPackageImportEndpoints
             warnings.Add("Entry has no title or translations.");
         }
 
+        foreach (var tag in entry.Tags)
+        {
+            AddTaxonomyTranslationWarnings(warnings, "Tag", tag.Slug, tag.Translations, tag.Name);
+        }
+
+        foreach (var period in entry.TimePeriods)
+        {
+            AddTaxonomyTranslationWarnings(warnings, "Time period", period.Slug, period.Translations, period.Name);
+        }
+
+        foreach (var place in entry.Places)
+        {
+            AddTaxonomyTranslationWarnings(warnings, "Place", place.Slug, place.Translations, place.Name);
+        }
+
         foreach (var audio in entry.Audio)
         {
             if (string.IsNullOrWhiteSpace(audio.Path))
@@ -1060,6 +1097,28 @@ public static class AdminContentPackageImportEndpoints
         }
 
         return warnings;
+    }
+
+    private static void AddTaxonomyTranslationWarnings(
+        ICollection<string> warnings,
+        string itemType,
+        string? slug,
+        IReadOnlyDictionary<string, string> translations,
+        string? legacyName)
+    {
+        if (translations.Count == 0 && !string.IsNullOrWhiteSpace(legacyName))
+        {
+            return;
+        }
+
+        var hasEnglishTranslation = translations.Any(translation =>
+            NormalizeLanguage(translation.Key) == "en" &&
+            !string.IsNullOrWhiteSpace(translation.Value));
+
+        if (!hasEnglishTranslation)
+        {
+            warnings.Add($"{itemType} '{slug ?? legacyName ?? "unknown"}' should define translations.en.");
+        }
     }
 
     private static async Task<StoredMediaFile?> StorePackageMediaAsync(

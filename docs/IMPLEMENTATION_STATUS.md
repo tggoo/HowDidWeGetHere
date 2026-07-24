@@ -50,6 +50,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Made public filter clear reset tags/search/year filters and hid empty route/audio placeholder sections from entry detail.
 - 2026-07-24: Reduced public tag filter clutter by showing the most-used tags per group and moving the full group list into a modal.
 - 2026-07-24: Added EN/CS taxonomy translations to generated content packages and content-package import upsert for tags, places and time periods.
+- 2026-07-24: Simplified generated content-package taxonomy schema so tags, places and time periods use `translations` instead of duplicated `name` and `languageCode` fields.
 
 ## Goal
 
@@ -201,6 +202,7 @@ Build a mobile-first historical world map app with:
 - content package ZIP upload/import from frontend
 - content package ZIP preview from frontend before saving entries and media
 - generated content package ZIPs include EN/CS translations for imported tags, places and time periods
+- generated content package taxonomy objects use `translations` as the source of truth; legacy `name`/`languageCode` is only accepted by the backend for older ZIPs
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list

@@ -356,9 +356,7 @@ def tags_from_value(raw: str, group: str) -> list[dict[str, object]]:
             continue
         tags.append({
             "slug": slugify(f"{group}-{name}"),
-            "name": name,
             "group": group,
-            "languageCode": "en",
             "translations": label_translations(name),
         })
     return tags
@@ -377,8 +375,6 @@ def places_from_value(raw: str, source_type: str) -> list[dict[str, object]]:
         places.append(
             {
                 "slug": seed_slug,
-                "name": name,
-                "languageCode": "en",
                 "translations": label_translations(name),
                 "role": "Region",
                 "placeType": place_type,
@@ -449,8 +445,6 @@ def time_period_from_era(era: str) -> dict[str, object] | None:
     start_year, end_year = ERA_RANGES.get(slug, (None, None))
     return {
         "slug": slug,
-        "name": era,
-        "languageCode": "en",
         "translations": label_translations(era),
         "periodType": "Era",
         "relationType": "Primary",
@@ -532,7 +526,7 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                             "datingNote": dating_note,
                         }
                     },
-                    "tags": [{"slug": "category-mythology", "name": "Mythology", "group": "category", "languageCode": "en", "translations": label_translations("Mythology")}]
+                    "tags": [{"slug": "category-mythology", "group": "category", "translations": label_translations("Mythology")}]
                     + tags_from_value(tradition, "tradition")
                     + tags_from_value(mythology_type, "mythology-type"),
                     "timePeriods": [],
