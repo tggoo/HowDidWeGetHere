@@ -1,6 +1,6 @@
-const APP_CACHE = 'hwdwgh-app-v1'
+const APP_CACHE = 'hwdwgh-app-v2'
 const DATA_CACHE = 'hwdwgh-data-v1'
-const MEDIA_CACHE = 'hwdwgh-media-v1'
+const MEDIA_CACHE = 'hwdwgh-media-v2'
 const TILE_CACHE = 'hwdwgh-tiles-v1'
 const DATA_MAX_AGE_MS = 15 * 60 * 1000
 
@@ -255,9 +255,13 @@ async function prefetchUrls(urls, client) {
         const response = await fetchWithCorsFallback(url.href)
         if (response.ok || response.type === 'opaque') {
           await cache.put(url.href, response.clone())
+          completed += 1
+        } else {
+          failed += 1
         }
+      } else {
+        completed += 1
       }
-      completed += 1
     } catch {
       failed += 1
     }

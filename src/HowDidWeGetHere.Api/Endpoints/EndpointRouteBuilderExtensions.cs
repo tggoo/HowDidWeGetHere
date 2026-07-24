@@ -26,6 +26,8 @@ public static class EndpointRouteBuilderExtensions
         admin.MapAdminImportEndpoints();
         admin.MapAdminContentPackageImportEndpoints();
 
+        endpoints.MapMediaFallbackEndpoints();
+
         return endpoints;
     }
 }

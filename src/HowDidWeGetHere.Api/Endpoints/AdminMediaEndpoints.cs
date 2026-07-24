@@ -1,8 +1,10 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.IO.Compression;
 using HowDidWeGetHere.Api.Contracts;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
+using HowDidWeGetHere.Domain.Media;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
@@ -159,7 +161,7 @@ public static class AdminMediaEndpoints
             return Results.BadRequest(new { error = validationError });
         }
 
-        var storedFile = await SaveUploadAsync(file, "images", environment, configuration, httpRequest, cancellationToken);
+        var storedFile = await SaveUploadAsync(file, "images", dbContext, environment, configuration, httpRequest, cancellationToken);
         var image = new EntryImage
         {
             EntryId = entryId,
@@ -302,7 +304,7 @@ public static class AdminMediaEndpoints
             return Results.BadRequest(new { error = validationError });
         }
 
-        var storedFile = await SaveUploadAsync(file, "audio", environment, configuration, httpRequest, cancellationToken);
+        var storedFile = await SaveUploadAsync(file, "audio", dbContext, environment, configuration, httpRequest, cancellationToken);
         var audioTrack = new EntryAudioTrack
         {
             EntryId = entryId,
@@ -476,6 +478,7 @@ public static class AdminMediaEndpoints
                 archiveEntry.Name,
                 ResolveAudioMediaType(extension),
                 "audio",
+                dbContext,
                 environment,
                 configuration,
                 httpRequest,
@@ -653,6 +656,7 @@ public static class AdminMediaEndpoints
     private static async Task<StoredMediaFile> SaveUploadAsync(
         IFormFile file,
         string mediaFolder,
+        HistoryDbContext dbContext,
         IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
@@ -664,6 +668,7 @@ public static class AdminMediaEndpoints
             file.FileName,
             file.ContentType,
             mediaFolder,
+            dbContext,
             environment,
             configuration,
             httpRequest,
@@ -675,6 +680,7 @@ public static class AdminMediaEndpoints
         string fileName,
         string? contentType,
         string mediaFolder,
+        HistoryDbContext dbContext,
         IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
@@ -694,13 +700,46 @@ public static class AdminMediaEndpoints
         EnsurePathIsInsideRoot(staticRoot, fullPath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
-        await using (var stream = File.Create(fullPath))
+        byte[] content;
+        await using (var memory = new MemoryStream())
         {
-            await sourceStream.CopyToAsync(stream, cancellationToken);
+            await sourceStream.CopyToAsync(memory, cancellationToken);
+            content = memory.ToArray();
         }
+
+        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
+        UpsertMediaBlob(dbContext, storageKey, contentType ?? "application/octet-stream", content);
 
         var publicPath = "/" + storageKey;
         return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), contentType);
+    }
+
+    private static void UpsertMediaBlob(
+        HistoryDbContext dbContext,
+        string storageKey,
+        string contentType,
+        byte[] content)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+        var existing = dbContext.MediaBlobs.Local.FirstOrDefault(blob => blob.StorageKey == storageKey);
+        if (existing is null)
+        {
+            dbContext.MediaBlobs.Add(new MediaBlob
+            {
+                StorageKey = storageKey,
+                ContentType = contentType,
+                Content = content,
+                ContentLength = content.LongLength,
+                ContentHash = hash
+            });
+            return;
+        }
+
+        existing.ContentType = contentType;
+        existing.Content = content;
+        existing.ContentLength = content.LongLength;
+        existing.ContentHash = hash;
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private static string GetStaticRoot(IWebHostEnvironment environment, IConfiguration configuration)

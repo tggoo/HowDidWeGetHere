@@ -1,6 +1,7 @@
 using HowDidWeGetHere.Domain.Actors;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Imports;
+using HowDidWeGetHere.Domain.Media;
 using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
@@ -29,6 +30,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
     public DbSet<EntryTimePeriod> EntryTimePeriods => Set<EntryTimePeriod>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<ImportedRow> ImportedRows => Set<ImportedRow>();
+    public DbSet<MediaBlob> MediaBlobs => Set<MediaBlob>();
     public DbSet<Place> Places => Set<Place>();
     public DbSet<PlaceTranslation> PlaceTranslations => Set<PlaceTranslation>();
     public DbSet<RoutePoint> RoutePoints => Set<RoutePoint>();
@@ -45,6 +47,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         ConfigureActors(builder);
         ConfigureEntries(builder);
         ConfigureImports(builder);
+        ConfigureMedia(builder);
         ConfigurePlaces(builder);
         ConfigureRoutes(builder);
         ConfigureSources(builder);
@@ -174,6 +177,18 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
             entity.HasIndex(row => new { row.ImportBatchId, row.SheetName, row.RowNumber }).IsUnique();
             entity.Property(row => row.SheetName).HasMaxLength(120);
             entity.Property(row => row.RawJson).HasColumnType("jsonb");
+        });
+    }
+
+    private static void ConfigureMedia(ModelBuilder builder)
+    {
+        builder.Entity<MediaBlob>(entity =>
+        {
+            entity.ToTable("media_blobs");
+            entity.HasIndex(blob => blob.StorageKey).IsUnique();
+            entity.Property(blob => blob.StorageKey).HasMaxLength(600);
+            entity.Property(blob => blob.ContentType).HasMaxLength(120);
+            entity.Property(blob => blob.ContentHash).HasMaxLength(96);
         });
     }
 

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using HowDidWeGetHere.Api.Contracts;
@@ -7,6 +8,7 @@ using HowDidWeGetHere.Application.Time;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Domain.Imports;
+using HowDidWeGetHere.Domain.Media;
 using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
@@ -305,6 +307,7 @@ public static class AdminContentPackageImportEndpoints
                     archive,
                     audio.Path,
                     "audio",
+                    dbContext,
                     environment,
                     configuration,
                     httpRequest,
@@ -331,6 +334,7 @@ public static class AdminContentPackageImportEndpoints
                     archive,
                     image.Path,
                     "images",
+                    dbContext,
                     environment,
                     configuration,
                     httpRequest,
@@ -1107,6 +1111,7 @@ public static class AdminContentPackageImportEndpoints
         ZipArchive archive,
         string? packagePath,
         string mediaFolder,
+        HistoryDbContext dbContext,
         IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
@@ -1132,14 +1137,48 @@ public static class AdminContentPackageImportEndpoints
         EnsurePathIsInsideRoot(staticRoot, fullPath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
+        byte[] content;
         await using (var source = archiveEntry.Open())
-        await using (var target = File.Create(fullPath))
+        await using (var memory = new MemoryStream())
         {
-            await source.CopyToAsync(target, cancellationToken);
+            await source.CopyToAsync(memory, cancellationToken);
+            content = memory.ToArray();
         }
+
+        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
+
+        UpsertMediaBlob(dbContext, storageKey, ResolveMediaType(extension), content);
 
         var publicPath = "/" + storageKey;
         return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), ResolveMediaType(extension));
+    }
+
+    private static void UpsertMediaBlob(
+        HistoryDbContext dbContext,
+        string storageKey,
+        string contentType,
+        byte[] content)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+        var existing = dbContext.MediaBlobs.Local.FirstOrDefault(blob => blob.StorageKey == storageKey);
+        if (existing is null)
+        {
+            dbContext.MediaBlobs.Add(new MediaBlob
+            {
+                StorageKey = storageKey,
+                ContentType = contentType,
+                Content = content,
+                ContentLength = content.LongLength,
+                ContentHash = hash
+            });
+            return;
+        }
+
+        existing.ContentType = contentType;
+        existing.Content = content;
+        existing.ContentLength = content.LongLength;
+        existing.ContentHash = hash;
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private static ZipArchiveEntry? GetPackageEntry(ZipArchive archive, string? packagePath)
