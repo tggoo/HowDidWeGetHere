@@ -127,6 +127,10 @@
   width: 36px;
 }
 
+.mobile-only {
+  display: none;
+}
+
 .map-workspace {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 340px;
@@ -146,6 +150,10 @@
 
 .detail-panel {
   border-width: 0 0 0 1px;
+}
+
+.filter-panel-header {
+  display: none;
 }
 
 .search-box {
@@ -1120,6 +1128,10 @@
     padding: 0 12px;
   }
 
+  .mobile-only {
+    display: inline-flex;
+  }
+
   .map-workspace {
     display: flex;
     flex-direction: column;
@@ -1127,8 +1139,27 @@
   }
 
   .filter-panel {
-    border-width: 0 0 1px;
-    padding: 12px;
+    border: 0;
+    border-radius: 0;
+    bottom: auto;
+    box-shadow: none;
+    display: none;
+    height: 100svh;
+    inset: 0;
+    max-height: none;
+    overflow: auto;
+    padding: 14px;
+    position: fixed;
+    width: 100%;
+    z-index: 10;
+  }
+
+  .filter-panel.mobile-open {
+    display: block;
+  }
+
+  .filter-panel-header {
+    display: flex;
   }
 
   .cache-panel {

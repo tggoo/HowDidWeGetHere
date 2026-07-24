@@ -46,6 +46,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Reworked public tag filters into grouped sections so mythology, country/tradition and region tags are visible instead of being capped at 16 tags.
 - 2026-07-24: Added public API/media caching headers, frontend service worker runtime caching and manual offline media prefetch for current results.
 - 2026-07-24: Added Zustand app store for shared frontend UI state such as language, theme, filters, panels and media-cache progress.
+- 2026-07-24: Changed mobile filters into a full-screen closeable overlay so tags, time periods and offline media controls no longer consume map viewport height.
 
 ## Goal
 
@@ -177,6 +178,7 @@ Build a mobile-first historical world map app with:
 - search input updates entry and map queries
 - selected entry detail panel loaded from public entry detail API
 - mobile selected entry detail replaces the map as a full-screen closeable panel
+- mobile filter panel opens as a full-screen closeable panel instead of taking permanent map space
 - selected entry detail can display summary, importance text, tags, places, route counts, related topics, sources, images and audio
 - Leaflet map renders stored public coordinates/routes when entries have places/routes
 - Leaflet map clusters dense marker sets at low zoom

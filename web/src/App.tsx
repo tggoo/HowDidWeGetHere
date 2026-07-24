@@ -772,6 +772,7 @@ function App() {
   const fromYear = useAppStore((state) => state.fromYear)
   const isAdminOpen = useAppStore((state) => state.isAdminOpen)
   const isEntryDetailOpen = useAppStore((state) => state.isEntryDetailOpen)
+  const isFilterPanelOpen = useAppStore((state) => state.isFilterPanelOpen)
   const isMediaPrefetching = useAppStore((state) => state.isMediaPrefetching)
   const isOfflineCacheAvailable = useAppStore((state) => state.isOfflineCacheAvailable)
   const language = useAppStore((state) => state.language)
@@ -785,6 +786,7 @@ function App() {
   const setAdminOpen = useAppStore((state) => state.setAdminOpen)
   const setAdminPage = useAppStore((state) => state.setAdminPage)
   const setEntryDetailOpen = useAppStore((state) => state.setEntryDetailOpen)
+  const setFilterPanelOpen = useAppStore((state) => state.setFilterPanelOpen)
   const setFromYear = useAppStore((state) => state.setFromYear)
   const setLanguage = useAppStore((state) => state.setLanguage)
   const setMapViewport = useAppStore((state) => state.setMapViewport)
@@ -2996,6 +2998,19 @@ function App() {
           <span>HowDidWeGetHere</span>
         </div>
         <div className="topbar-actions">
+          <button
+            className="icon-button mobile-only"
+            type="button"
+            aria-label="Open filters"
+            title="Open filters"
+            onClick={() => {
+              setAdminOpen(false)
+              setEntryDetailOpen(false)
+              setFilterPanelOpen(true)
+            }}
+          >
+            <Filter aria-hidden="true" />
+          </button>
           <label className="language-select">
             <Languages aria-hidden="true" />
             <select value={language} onChange={(event) => setLanguage(event.target.value)}>
@@ -3020,6 +3035,7 @@ function App() {
             title="Open admin panel"
             onClick={() => {
               setEntryDetailOpen(false)
+              setFilterPanelOpen(false)
               setAdminOpen((value) => !value)
             }}
           >
@@ -3029,7 +3045,22 @@ function App() {
       </header>
 
       <section className="map-workspace">
-        <aside className="filter-panel" aria-label="Map filters">
+        <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label="Map filters">
+          <div className="panel-header filter-panel-header">
+            <span>
+              <Filter aria-hidden="true" />
+              Filters
+            </span>
+            <button
+              className="panel-close"
+              type="button"
+              aria-label="Close filters"
+              title="Close filters"
+              onClick={() => setFilterPanelOpen(false)}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
           <div className="status-pill">
             {isLoadingMap ? <Filter aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
             <span>{mapStatus}</span>

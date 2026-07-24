@@ -16,6 +16,7 @@ type AppState = {
   fromYear: string
   isAdminOpen: boolean
   isEntryDetailOpen: boolean
+  isFilterPanelOpen: boolean
   isMediaPrefetching: boolean
   isOfflineCacheAvailable: boolean
   language: string
@@ -33,6 +34,7 @@ type AppState = {
   setAdminOpen: (isOpen: boolean | ((current: boolean) => boolean)) => void
   setAdminPage: (adminPage: AdminPage) => void
   setEntryDetailOpen: (isOpen: boolean) => void
+  setFilterPanelOpen: (isOpen: boolean) => void
   setFromYear: (fromYear: string) => void
   setLanguage: (language: string) => void
   setMapViewport: (mapViewport: MapViewport | null | ((current: MapViewport | null) => MapViewport | null)) => void
@@ -64,6 +66,7 @@ export const useAppStore = create<AppState>()(
       fromYear: '',
       isAdminOpen: false,
       isEntryDetailOpen: false,
+      isFilterPanelOpen: false,
       isMediaPrefetching: false,
       isOfflineCacheAvailable: false,
       language: 'en',
@@ -88,6 +91,7 @@ export const useAppStore = create<AppState>()(
         })),
       setAdminPage: (adminPage) => set({ adminPage }),
       setEntryDetailOpen: (isEntryDetailOpen) => set({ isEntryDetailOpen }),
+      setFilterPanelOpen: (isFilterPanelOpen) => set({ isFilterPanelOpen }),
       setFromYear: (fromYear) => set({ fromYear }),
       setLanguage: (language) => set({ language }),
       setMapViewport: (mapViewport) =>
