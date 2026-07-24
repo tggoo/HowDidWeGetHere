@@ -52,6 +52,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Added EN/CS taxonomy translations to generated content packages and content-package import upsert for tags, places and time periods.
 - 2026-07-24: Simplified generated content-package taxonomy schema so tags, places and time periods use `translations` instead of duplicated `name` and `languageCode` fields.
 - 2026-07-24: Localized the public map/filter/detail/cache UI to EN/CS and reworked desktop layout to remove the top menu, use full viewport height and keep scrolling inside panels.
+- 2026-07-24: Fixed public audio playback by falling back from the selected language to EN audio tracks and resolving media URLs against the API host.
 
 ## Goal
 
@@ -207,6 +208,7 @@ Build a mobile-first historical world map app with:
 - public map, filter, empty-state, cache and selected-entry UI labels switch between EN and CS
 - desktop layout has no top menu; branding lives in the left filter panel and language/theme/admin controls live in the right panel
 - desktop viewport does not scroll as a whole; long lists scroll inside their panels
+- public audio playback prefers the selected language, falls back to EN and uses API-hosted media URLs for Render frontend/API split hosting
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list

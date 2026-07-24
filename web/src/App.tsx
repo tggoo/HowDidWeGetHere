@@ -1459,6 +1459,12 @@ function App() {
     return [...urls]
   }, [entries, selectedEntryDetail])
 
+  const selectedEntryImage = selectedEntryDetail?.images[0]
+  const selectedEntryImageUrl = mediaUrlToAbsolute(selectedEntryImage?.url)
+  const selectedEntryAudioUrl = mediaUrlToAbsolute(
+    selectedEntryDetail?.audioTracks[0]?.url ?? selectedEntry?.primaryAudioUrl,
+  )
+
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
     setEntryDetailOpen(true)
@@ -3459,11 +3465,11 @@ function App() {
             <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
-          {selectedEntryDetail?.images[0]?.url && (
+          {selectedEntryImageUrl && (
             <img
-              alt={selectedEntryDetail.images[0].altText ?? selectedEntryDetail.title}
+              alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
               className="entry-image"
-              src={selectedEntryDetail.images[0].url}
+              src={selectedEntryImageUrl}
             />
           )}
           {selectedEntryDetail?.summary && <p className="entry-summary">{selectedEntryDetail.summary}</p>}
@@ -3507,12 +3513,12 @@ function App() {
               ))}
             </div>
           ) : null}
-          {(selectedEntryDetail?.audioTracks[0]?.url || selectedEntry?.primaryAudioUrl) && (
+          {selectedEntryAudioUrl && (
             <div className="route-card">
               <PlayCircle aria-hidden="true" />
               <div>
                 <strong>{ui.audio}</strong>
-                <audio controls src={selectedEntryDetail?.audioTracks[0]?.url ?? selectedEntry?.primaryAudioUrl ?? undefined}>
+                <audio controls src={selectedEntryAudioUrl}>
                   <track kind="captions" />
                 </audio>
               </div>

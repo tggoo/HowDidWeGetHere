@@ -92,8 +92,9 @@ public static class PublicEndpoints
                     .Select(image => image.PublicUrl ?? image.StorageKey)
                     .FirstOrDefault(),
                 entry.AudioTracks
-                    .Where(audio => audio.LanguageCode == lang)
-                    .OrderByDescending(audio => audio.IsPrimary)
+                    .OrderByDescending(audio => audio.LanguageCode == lang)
+                    .ThenByDescending(audio => audio.LanguageCode == "en")
+                    .ThenByDescending(audio => audio.IsPrimary)
                     .ThenBy(audio => audio.SortOrder)
                     .Select(audio => audio.PublicUrl ?? audio.StorageKey)
                     .FirstOrDefault()))
@@ -361,8 +362,9 @@ public static class PublicEndpoints
                 })
                 .ToList(),
             entry.AudioTracks
-                .Where(audio => audio.LanguageCode == lang)
-                .OrderByDescending(audio => audio.IsPrimary)
+                .OrderByDescending(audio => audio.LanguageCode == lang)
+                .ThenByDescending(audio => audio.LanguageCode == "en")
+                .ThenByDescending(audio => audio.IsPrimary)
                 .ThenBy(audio => audio.SortOrder)
                 .Select(audio => new EntryAudioTrackResponse(
                     audio.Id,
