@@ -1678,10 +1678,11 @@ function App() {
       }
 
       const result = (await response.json()) as WorkbookImportPreviewResult
+      const rowsWithPlaces = result.rows.filter((row) => row.places.length > 0).length
       setImportPreview(result)
       setImportResult(null)
       setAdminStatus(
-        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new, ${result.entriesToUpdate} updates and ${result.placesToAttach} map places.`,
+        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new, ${result.entriesToUpdate} updates and ${result.placesToAttach} place links across ${rowsWithPlaces} rows.`,
       )
     } catch {
       setAdminStatus('Preview failed. Check API availability and CORS settings.')
@@ -1725,7 +1726,7 @@ function App() {
       setImportResult(result)
       setImportPreview(null)
       setAdminStatus(
-        `Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows. Attached ${result.placesAttached} map places.`,
+        `Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows. Attached ${result.placesAttached} place links.`,
       )
       setReloadKey((value) => value + 1)
     } catch {
@@ -3063,7 +3064,10 @@ function App() {
                       <strong>{importPreview.rowsRead} rows in preview</strong>
                       <span>{importPreview.entriesToCreate} entries would be created</span>
                       <span>{importPreview.entriesToUpdate} entries would be updated</span>
-                      <span>{importPreview.placesToAttach} map places would be attached</span>
+                      <span>
+                        {importPreview.placesToAttach} place links across{' '}
+                        {importPreview.rows.filter((row) => row.places.length > 0).length} rows
+                      </span>
                       <span>
                         {importPreview.validationSummary.errors} errors / {importPreview.validationSummary.warnings} warnings /{' '}
                         {importPreview.validationSummary.info} info
@@ -3121,8 +3125,8 @@ function App() {
                   <div className="import-result">
                     <strong>{importResult.entriesCreated} entries imported</strong>
                     <span>{importResult.entriesUpdated} entries updated</span>
-                    <span>{importResult.placesCreated} map places created</span>
-                    <span>{importResult.placesAttached} map places attached</span>
+                    <span>{importResult.placesCreated} reusable places created</span>
+                    <span>{importResult.placesAttached} entry-place links attached</span>
                     <span>{importResult.rowsRead} rows read</span>
                     {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
                   </div>
