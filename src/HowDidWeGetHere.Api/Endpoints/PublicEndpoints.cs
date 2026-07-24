@@ -54,12 +54,16 @@ public static class PublicEndpoints
 
         if (fromYear.HasValue)
         {
-            query = query.Where(entry => entry.EndYear == null || entry.EndYear >= fromYear.Value);
+            query = query.Where(entry =>
+                (entry.StartYear != null || entry.EndYear != null) &&
+                (entry.EndYear ?? entry.StartYear) >= fromYear.Value);
         }
 
         if (toYear.HasValue)
         {
-            query = query.Where(entry => entry.StartYear == null || entry.StartYear <= toYear.Value);
+            query = query.Where(entry =>
+                (entry.StartYear != null || entry.EndYear != null) &&
+                (entry.StartYear ?? entry.EndYear) <= toYear.Value);
         }
 
         foreach (var tagSlug in tag?.Where(value => !string.IsNullOrWhiteSpace(value)) ?? [])
@@ -428,12 +432,16 @@ public static class PublicEndpoints
 
         if (fromYear.HasValue)
         {
-            query = query.Where(entry => entry.EndYear == null || entry.EndYear >= fromYear.Value);
+            query = query.Where(entry =>
+                (entry.StartYear != null || entry.EndYear != null) &&
+                (entry.EndYear ?? entry.StartYear) >= fromYear.Value);
         }
 
         if (toYear.HasValue)
         {
-            query = query.Where(entry => entry.StartYear == null || entry.StartYear <= toYear.Value);
+            query = query.Where(entry =>
+                (entry.StartYear != null || entry.EndYear != null) &&
+                (entry.StartYear ?? entry.EndYear) <= toYear.Value);
         }
 
         foreach (var tagSlug in tag?.Where(value => !string.IsNullOrWhiteSpace(value)) ?? [])
@@ -473,9 +481,16 @@ public static class PublicEndpoints
 
         var periods = await dbContext.TimePeriods
             .AsNoTracking()
+            .Include(period => period.Translations)
             .OrderBy(period => period.SortOrder)
             .ThenBy(period => period.StartYear ?? long.MaxValue)
-            .Select(period => new TimePeriodListItemResponse(
+            .ToListAsync(cancellationToken);
+
+        var response = periods
+            .Select(period =>
+            {
+                var fallbackRange = ResolveKnownPeriodRange(period.Slug);
+                return new TimePeriodListItemResponse(
                 period.Id,
                 period.Slug,
                 period.ParentPeriodId,
@@ -488,12 +503,28 @@ public static class PublicEndpoints
                     .Where(translation => translation.LanguageCode == lang)
                     .Select(translation => translation.ShortDescription)
                     .FirstOrDefault(),
-                period.StartYear,
-                period.EndYear))
-            .ToListAsync(cancellationToken);
+                period.StartYear ?? fallbackRange.StartYear,
+                period.EndYear ?? fallbackRange.EndYear);
+            })
+            .ToList();
 
-        return Results.Ok(periods);
+        return Results.Ok(response);
     }
+
+    private static (long? StartYear, long? EndYear) ResolveKnownPeriodRange(string slug) =>
+        slug.ToLowerInvariant() switch
+        {
+            "prehistory" => (-3000000, -3000),
+            "neolithic" => (-10000, -3300),
+            "ancient" => (-3300, 500),
+            "late-antiquity" => (250, 750),
+            "middle-ages" => (500, 1500),
+            "early-modern" => (1500, 1800),
+            "industrial-age" => (1760, 1914),
+            "modern" => (1800, 1945),
+            "contemporary" => (1945, 2026),
+            _ => (null, null)
+        };
 
     private static string LocalizedTagName(Domain.Tags.Tag tag, string language) =>
         tag.Translations

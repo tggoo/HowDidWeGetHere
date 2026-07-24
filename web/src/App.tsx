@@ -661,6 +661,17 @@ function periodYearLabel(period: TimePeriodListItem) {
   return `${period.startYear ?? '?'}-${period.endYear ?? '?'}`
 }
 
+function tagGroupLabel(group: string) {
+  const labels: Record<string, string> = {
+    category: 'Topics',
+    tradition: 'Traditions and countries',
+    'legacy-region-label': 'Places and regions',
+    'mythology-type': 'Mythology types',
+  }
+
+  return labels[group] ?? group.replaceAll('-', ' ')
+}
+
 type AdminPage = 'import' | 'periods' | 'tags' | 'entry' | 'places' | 'routes' | 'relationships' | 'sources' | 'media'
 type ThemeMode = 'light' | 'dark'
 
@@ -1157,6 +1168,32 @@ function App() {
         children: periods.filter((child) => child.parentPeriodId === period.id),
       }))
   }, [periods])
+
+  const tagGroups = useMemo(() => {
+    const preferredOrder = ['category', 'tradition', 'legacy-region-label', 'mythology-type']
+    const groups = new Map<string, TagListItem[]>()
+
+    for (const tag of tags) {
+      groups.set(tag.tagGroup, [...(groups.get(tag.tagGroup) ?? []), tag])
+    }
+
+    return [...groups.entries()]
+      .map(([group, items]) => ({
+        group,
+        label: tagGroupLabel(group),
+        items: items.sort((left, right) => left.name.localeCompare(right.name)),
+      }))
+      .sort((left, right) => {
+        const leftIndex = preferredOrder.indexOf(left.group)
+        const rightIndex = preferredOrder.indexOf(right.group)
+        if (leftIndex !== -1 || rightIndex !== -1) {
+          return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+            (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex)
+        }
+
+        return left.label.localeCompare(right.label)
+      })
+  }, [tags])
 
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
@@ -2898,17 +2935,24 @@ function App() {
               <Tags aria-hidden="true" />
               <span>Tags</span>
             </div>
-            <div className="tag-grid">
-              {tags.slice(0, 16).map((tag) => (
-                <button
-                  className={selectedTags.includes(tag.slug) ? 'tag active' : 'tag'}
-                  key={tag.id}
-                  type="button"
-                  onClick={() => toggleTag(tag.slug)}
-                >
-                  {tag.name}
-                  {Number(tag.entryCount) > 0 && <small>{tag.entryCount}</small>}
-                </button>
+            <div className="tag-filter-groups">
+              {tagGroups.map((group) => (
+                <div className="tag-filter-group" key={group.group}>
+                  <span>{group.label}</span>
+                  <div className="tag-grid">
+                    {group.items.map((tag) => (
+                      <button
+                        className={selectedTags.includes(tag.slug) ? 'tag active' : 'tag'}
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.slug)}
+                      >
+                        {tag.name}
+                        {Number(tag.entryCount) > 0 && <small>{tag.entryCount}</small>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -2977,6 +3021,7 @@ function App() {
           autoFitKey={mapAutoFitKey}
           entries={mapEntries}
           fallbackEntryIds={entries.map((entry) => entry.id)}
+          language={language}
           showFallback={!mapViewport}
           selectedEntryId={selectedEntryId}
           onViewportChange={handleMapViewportChange}

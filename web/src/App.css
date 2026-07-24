@@ -264,6 +264,31 @@
   margin-top: 10px;
 }
 
+.tag-filter-groups {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  max-height: 34svh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.tag-filter-group {
+  display: grid;
+  gap: 6px;
+}
+
+.tag-filter-group > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tag-filter-group .tag-grid {
+  margin-top: 0;
+}
+
 .tag {
   align-items: center;
   background: var(--panel);

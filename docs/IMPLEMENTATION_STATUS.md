@@ -40,6 +40,10 @@ Last updated: 2026-07-24
 - 2026-07-24: Added bulk audio ZIP preview so admins can validate slug matches before upload.
 - 2026-07-24: Added content package ZIP generation from workbook plus generated media.
 - 2026-07-24: Added admin content package preview/import endpoints and frontend workflow for one ZIP containing entries, audio and images.
+- 2026-07-24: Added Render media path configuration and explicit `/media` static serving for uploaded/imported audio and images.
+- 2026-07-24: Added map collision handling for entries that share identical coordinates, plus configurable map tile URL templates with `{language}` support.
+- 2026-07-24: Fixed known era ranges for public time-period filters and content-package/workbook imports.
+- 2026-07-24: Reworked public tag filters into grouped sections so mythology, country/tradition and region tags are visible instead of being capped at 16 tags.
 
 ## Goal
 
@@ -263,10 +267,10 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 
 ### Media storage
 
-- object storage integration
+- object storage integration for multi-instance production deployments
 - thumbnail generation
 - image/audio moderation/validation
-- media replacement and deletion for uploaded objects
+- media replacement and deletion for uploaded objects beyond current local persistent-disk storage
 
 ### Authentication/admin
 
@@ -295,4 +299,4 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 
 ## Current answer
 
-No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet and can render stored coordinates/routes, workbook re-import updates existing source rows, and admins can now edit/delete routes, but it still needs importer mapping and production-quality map UX.
+No, the whole product is not finished. The foundation is implemented and deployable, there is a usable first admin workflow for importing and editing basic content, and public entry detail/tag/map APIs now exist. The map now uses Leaflet, renders stored coordinates/routes, handles low-zoom clusters and identical-coordinate collisions, and imported media is served from a configurable media path. Public filtering supports grouped tags and known era ranges. It still needs persistent object storage or a paid Render disk, richer route/place/relationship import mapping, CS/ES translation import and production-quality map localization with a vector or language-aware tile provider.

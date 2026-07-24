@@ -22,6 +22,18 @@ LANGUAGE_ALIASES = {
     "sp": "es",
 }
 
+ERA_RANGES = {
+    "prehistory": (-3000000, -3000),
+    "neolithic": (-10000, -3300),
+    "ancient": (-3300, 500),
+    "late-antiquity": (250, 750),
+    "middle-ages": (500, 1500),
+    "early-modern": (1500, 1800),
+    "industrial-age": (1760, 1914),
+    "modern": (1800, 1945),
+    "contemporary": (1945, 2026),
+}
+
 PLACE_SEEDS = {
     "africa": ("import-region-africa", "Africa", 20.0, 0.0, "Region", "Regional"),
     "america": ("import-region-americas", "Americas", -75.0, 10.0, "Region", "Regional"),
@@ -225,6 +237,22 @@ def images_for_slug(slug: str, images_root: Path) -> list[dict[str, object]]:
     return images
 
 
+def time_period_from_era(era: str) -> dict[str, object] | None:
+    if not era:
+        return None
+
+    slug = slugify(era)
+    start_year, end_year = ERA_RANGES.get(slug, (None, None))
+    return {
+        "slug": slug,
+        "name": era,
+        "periodType": "Era",
+        "relationType": "Primary",
+        "startYear": start_year,
+        "endYear": end_year,
+    }
+
+
 def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> dict[str, list[dict[str, object]]]:
     workbook = load_workbook(workbook_path, read_only=True, data_only=True)
     package_entries = {package_slug: [] for package_slug in SUPPORTED_SHEETS.values()}
@@ -267,16 +295,7 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                         }
                     },
                     "tags": tags_from_value(category, "category") + tags_from_value(region, "legacy-region-label"),
-                    "timePeriods": [
-                        {
-                            "slug": slugify(era),
-                            "name": era,
-                            "periodType": "Era",
-                            "relationType": "Primary",
-                        }
-                    ]
-                    if era
-                    else [],
+                    "timePeriods": [time_period_from_era(era)] if time_period_from_era(era) else [],
                     "sources": [{"url": source_url, "supportsField": "General"}] if source_url else [],
                     "places": places_from_value(region, "region"),
                     "raw": {header: value(row, index, header) for header in index},

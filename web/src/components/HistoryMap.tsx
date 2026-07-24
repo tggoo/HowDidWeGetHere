@@ -39,6 +39,7 @@ export type MapViewport = {
 type HistoryMapProps = {
   entries: MapEntry[]
   fallbackEntryIds: string[]
+  language: string
   selectedEntryId?: string
   autoFitKey: string
   showFallback: boolean
@@ -56,6 +57,26 @@ const defaultCenter: L.LatLngExpression = [25, 10]
 const defaultZoom = 2
 const clusterCellSize = 52
 const maxClusterZoom = 5
+const coordinateGroupPrecision = 5
+const defaultTileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+const defaultTileAttribution =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+
+function resolveTileLayerConfig(language: string) {
+  const normalizedLanguage = language.trim().toLowerCase() || 'en'
+  const environment = import.meta.env as Record<string, string | undefined>
+  const languageKey = normalizedLanguage.toUpperCase()
+  const template =
+    environment[`VITE_MAP_TILE_URL_${languageKey}`] ??
+    environment.VITE_MAP_TILE_URL ??
+    defaultTileUrl
+  const attribution = environment.VITE_MAP_TILE_ATTRIBUTION ?? defaultTileAttribution
+
+  return {
+    attribution,
+    url: template.replaceAll('{language}', encodeURIComponent(normalizedLanguage)),
+  }
+}
 
 function popupContent(entry: MapEntry, placeName: string, role: string) {
   const date = entry.dateLabel ? `<span>${entry.dateLabel}</span>` : ''
@@ -106,6 +127,24 @@ function clusterPopupContent(markers: MapPointMarker[]) {
   `
 }
 
+function coordinateGroupKey(marker: MapPointMarker) {
+  return `${marker.coordinate.lat.toFixed(coordinateGroupPrecision)}:${marker.coordinate.lng.toFixed(coordinateGroupPrecision)}`
+}
+
+function groupByExactCoordinate(markers: MapPointMarker[]) {
+  const groups = new Map<string, MapPointMarker[]>()
+  for (const marker of markers) {
+    const key = coordinateGroupKey(marker)
+    groups.set(key, [...(groups.get(key) ?? []), marker])
+  }
+
+  return groups
+}
+
+function hasSingleCoordinate(markers: MapPointMarker[]) {
+  return new Set(markers.map(coordinateGroupKey)).size === 1
+}
+
 function viewportFromMap(map: L.Map): MapViewport {
   const bounds = map.getBounds()
   return {
@@ -127,6 +166,7 @@ function clampLatitude(value: number) {
 export function HistoryMap({
   entries,
   fallbackEntryIds,
+  language,
   selectedEntryId,
   autoFitKey,
   showFallback,
@@ -136,6 +176,7 @@ export function HistoryMap({
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const overlayRef = useRef<L.LayerGroup | null>(null)
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
   const lastAutoFitKeyRef = useRef<string>('')
   const [mapRevision, setMapRevision] = useState(0)
 
@@ -165,11 +206,6 @@ export function HistoryMap({
       worldCopyJump: true,
     }).setView(defaultCenter, defaultZoom)
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      minZoom: 2,
-    }).addTo(map)
-
     L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('&copy; OpenStreetMap').addTo(map)
     overlayRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
@@ -182,11 +218,29 @@ export function HistoryMap({
 
     return () => {
       map.off('zoomend moveend', redraw)
+      tileLayerRef.current?.remove()
       map.remove()
       mapRef.current = null
       overlayRef.current = null
+      tileLayerRef.current = null
     }
   }, [onViewportChange])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) {
+      return
+    }
+
+    tileLayerRef.current?.remove()
+    const tileLayerConfig = resolveTileLayerConfig(language)
+    tileLayerRef.current = L.tileLayer(tileLayerConfig.url, {
+      attribution: tileLayerConfig.attribution,
+      maxZoom: 18,
+      minZoom: 2,
+      subdomains: 'abcd',
+    }).addTo(map)
+  }, [language])
 
   useEffect(() => {
     const map = mapRef.current
@@ -254,12 +308,23 @@ export function HistoryMap({
         marker.bindPopup(clusterPopupContent(clusterMarkers), {
           className: 'history-popup history-cluster-popup',
         })
-        marker.on('click', () => map.fitBounds(clusterBounds.pad(0.18), { maxZoom: 7 }))
+        marker.on('click', () => {
+          if (hasSingleCoordinate(clusterMarkers)) {
+            map.setView(center, Math.max(map.getZoom() + 2, maxClusterZoom + 1), { animate: true })
+            return
+          }
+
+          map.fitBounds(clusterBounds.pad(0.18), { maxZoom: 7 })
+        })
         marker.addTo(overlay)
       }
     } else {
-      for (const markerPoint of markerPoints) {
-        addPointMarker(overlay, markerPoint, selectedEntryId, onSelectEntry)
+      for (const coordinateGroup of groupByExactCoordinate(markerPoints).values()) {
+        if (coordinateGroup.length === 1) {
+          addPointMarker(overlay, coordinateGroup[0], selectedEntryId, onSelectEntry)
+        } else {
+          addSpiderfiedPointMarkers(map, overlay, coordinateGroup, selectedEntryId, onSelectEntry)
+        }
       }
     }
 
@@ -299,6 +364,46 @@ export function HistoryMap({
   )
 }
 
+function addSpiderfiedPointMarkers(
+  map: L.Map,
+  overlay: L.LayerGroup,
+  markerPoints: MapPointMarker[],
+  selectedEntryId: string | undefined,
+  onSelectEntry: (entryId: string) => void,
+) {
+  const center = markerPoints[0].coordinate
+  const zoom = map.getZoom()
+  const projectedCenter = map.project(center, zoom)
+  const radius = Math.min(96, 28 + markerPoints.length * 2.5)
+
+  markerPoints.forEach((markerPoint, index) => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / markerPoints.length
+    const projectedPoint = L.point(
+      projectedCenter.x + Math.cos(angle) * radius,
+      projectedCenter.y + Math.sin(angle) * radius,
+    )
+    const displayCoordinate = map.unproject(projectedPoint, zoom)
+
+    L.polyline([center, displayCoordinate], {
+      color: '#135e96',
+      dashArray: '2 4',
+      interactive: false,
+      opacity: 0.35,
+      weight: 1,
+    }).addTo(overlay)
+
+    addPointMarker(
+      overlay,
+      {
+        ...markerPoint,
+        coordinate: displayCoordinate,
+      },
+      selectedEntryId,
+      onSelectEntry,
+    )
+  })
+}
+
 function addPointMarker(
   overlay: L.LayerGroup,
   markerPoint: MapPointMarker,
@@ -309,6 +414,7 @@ function addPointMarker(
   const marker = L.marker(coordinate, {
     icon: markerIcon(selectedEntryId === entry.entryId),
     title: `${entry.title} / ${point.role}: ${point.placeName}`,
+    zIndexOffset: selectedEntryId === entry.entryId ? 1000 : 0,
   })
 
   marker.bindPopup(popupContent(entry, point.placeName, point.role), {

@@ -535,14 +535,17 @@ public static class AdminContentPackageImportEndpoints
         }
 
         var slug = EndpointHelpers.Slugify(EmptyToNull(packagePeriod.Slug) ?? name);
+        var range = ResolveKnownPeriodRange(slug);
+        var startYear = packagePeriod.StartYear ?? range.StartYear;
+        var endYear = packagePeriod.EndYear ?? range.EndYear;
         if (!periodCache.TryGetValue(slug, out var period))
         {
             period = new TimePeriod
             {
                 Slug = slug,
                 PeriodType = ParseEnum(packagePeriod.PeriodType, TimePeriodType.Era),
-                StartYear = packagePeriod.StartYear,
-                EndYear = packagePeriod.EndYear,
+                StartYear = startYear,
+                EndYear = endYear,
                 Translations =
                 [
                     new TimePeriodTranslation
@@ -554,6 +557,12 @@ public static class AdminContentPackageImportEndpoints
             };
             periodCache[slug] = period;
             dbContext.TimePeriods.Add(period);
+        }
+        else
+        {
+            period.PeriodType = ParseEnum(packagePeriod.PeriodType, period.PeriodType);
+            period.StartYear ??= startYear;
+            period.EndYear ??= endYear;
         }
 
         var relationType = ParseEnum(packagePeriod.RelationType, PeriodMembershipType.Primary);
@@ -577,6 +586,21 @@ public static class AdminContentPackageImportEndpoints
         });
         return 1;
     }
+
+    private static (long? StartYear, long? EndYear) ResolveKnownPeriodRange(string slug) =>
+        slug.ToLowerInvariant() switch
+        {
+            "prehistory" => (-3000000, -3000),
+            "neolithic" => (-10000, -3300),
+            "ancient" => (-3300, 500),
+            "late-antiquity" => (250, 750),
+            "middle-ages" => (500, 1500),
+            "early-modern" => (1500, 1800),
+            "industrial-age" => (1760, 1914),
+            "modern" => (1800, 1945),
+            "contemporary" => (1945, 2026),
+            _ => (null, null)
+        };
 
     private static int AttachSource(
         Entry entry,

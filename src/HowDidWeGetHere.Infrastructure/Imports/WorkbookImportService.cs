@@ -771,12 +771,15 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         }
 
         var slug = CreateSlug(eraName);
+        var range = ResolveKnownPeriodRange(slug);
         if (!periodCache.TryGetValue(slug, out var period))
         {
             period = new TimePeriod
             {
                 Slug = slug,
                 PeriodType = TimePeriodType.Era,
+                StartYear = range.StartYear,
+                EndYear = range.EndYear,
                 Translations =
                 [
                     new TimePeriodTranslation
@@ -788,6 +791,11 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             };
             periodCache[slug] = period;
             dbContext.TimePeriods.Add(period);
+        }
+        else
+        {
+            period.StartYear ??= range.StartYear;
+            period.EndYear ??= range.EndYear;
         }
 
         entry.PrimaryTimePeriod = period;
@@ -801,6 +809,21 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             });
         }
     }
+
+    private static (long? StartYear, long? EndYear) ResolveKnownPeriodRange(string slug) =>
+        slug.ToLowerInvariant() switch
+        {
+            "prehistory" => (-3000000, -3000),
+            "neolithic" => (-10000, -3300),
+            "ancient" => (-3300, 500),
+            "late-antiquity" => (250, 750),
+            "middle-ages" => (500, 1500),
+            "early-modern" => (1500, 1800),
+            "industrial-age" => (1760, 1914),
+            "modern" => (1800, 1945),
+            "contemporary" => (1945, 2026),
+            _ => (null, null)
+        };
 
     private ImportedPlaceAttachCounts AttachImportedPlaces(
         Entry entry,

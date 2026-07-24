@@ -4,6 +4,7 @@ using HowDidWeGetHere.Infrastructure;
 using HowDidWeGetHere.Infrastructure.Identity;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.FileProviders;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -76,6 +77,11 @@ if (app.Environment.IsDevelopment())
 app.UseSerilogRequestLogging();
 app.UseCors("Frontend");
 app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(GetMediaRoot(app.Environment, app.Configuration)),
+    RequestPath = "/media"
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -84,3 +90,15 @@ app.MapApiEndpoints();
 await app.ApplyDatabaseMigrationsAsync(app.Configuration);
 await app.Services.SeedAdminUserAsync(app.Configuration);
 await app.RunAsync();
+
+static string GetMediaRoot(IWebHostEnvironment environment, IConfiguration configuration)
+{
+    var configuredRoot = configuration["Media:StorageRootPath"];
+    var staticRoot = string.IsNullOrWhiteSpace(configuredRoot)
+        ? environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot")
+        : configuredRoot;
+    var mediaRoot = Path.Combine(staticRoot, "media");
+
+    Directory.CreateDirectory(mediaRoot);
+    return Path.GetFullPath(mediaRoot);
+}
