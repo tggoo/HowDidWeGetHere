@@ -48,6 +48,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Added Zustand app store for shared frontend UI state such as language, theme, filters, panels and media-cache progress.
 - 2026-07-24: Changed mobile filters into a full-screen closeable overlay so tags, time periods and offline media controls no longer consume map viewport height.
 - 2026-07-24: Made public filter clear reset tags/search/year filters and hid empty route/audio placeholder sections from entry detail.
+- 2026-07-24: Reduced public tag filter clutter by showing the most-used tags per group and moving the full group list into a modal.
 
 ## Goal
 
@@ -173,6 +174,7 @@ Build a mobile-first historical world map app with:
 - public map data loading from API
 - language selector
 - tag filter buttons loaded from backend tag API
+- public tag filters show the most-used tags first with per-group modal expansion for long tag lists
 - time period side panel
 - hierarchical time period filter panel
 - period buttons and manual year range filters update entry and map queries

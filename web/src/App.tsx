@@ -627,6 +627,8 @@ const sourceSupportKinds: SourceSupportKind[] = [
   'Translation',
 ]
 
+const visibleTagLimit = 10
+
 const relationshipTypeLabels: Record<string, Record<string, string>> = {
   Caused: { en: 'Caused', cs: 'Zpusobilo', es: 'Causo' },
   Influenced: { en: 'Influenced', cs: 'Ovlivnilo', es: 'Influyo en' },
@@ -672,6 +674,11 @@ function tagGroupLabel(group: string) {
   }
 
   return labels[group] ?? group.replaceAll('-', ' ')
+}
+
+function tagEntryCount(tag: TagListItem) {
+  const count = Number(tag.entryCount)
+  return Number.isFinite(count) ? count : 0
 }
 
 type AdminAuthSession = {
@@ -807,6 +814,7 @@ function App() {
   const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
+  const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
@@ -1188,6 +1196,21 @@ function App() {
     }
   }, [adminSession])
 
+  useEffect(() => {
+    if (!expandedTagGroup) {
+      return
+    }
+
+    function closeExpandedTagGroup(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setExpandedTagGroup(null)
+      }
+    }
+
+    window.addEventListener('keydown', closeExpandedTagGroup)
+    return () => window.removeEventListener('keydown', closeExpandedTagGroup)
+  }, [expandedTagGroup])
+
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0],
     [entries, selectedEntryId],
@@ -1234,11 +1257,34 @@ function App() {
     }
 
     return [...groups.entries()]
-      .map(([group, items]) => ({
-        group,
-        label: tagGroupLabel(group),
-        items: items.sort((left, right) => left.name.localeCompare(right.name)),
-      }))
+      .map(([group, items]) => {
+        const sortedItems = [...items].sort((left, right) =>
+          tagEntryCount(right) - tagEntryCount(left) || left.name.localeCompare(right.name),
+        )
+        const visibleItemsById = new Map<string, TagListItem>()
+
+        for (const tag of sortedItems) {
+          if (selectedTags.includes(tag.slug)) {
+            visibleItemsById.set(tag.id, tag)
+          }
+        }
+
+        for (const tag of sortedItems) {
+          if (visibleItemsById.size >= visibleTagLimit) {
+            break
+          }
+
+          visibleItemsById.set(tag.id, tag)
+        }
+
+        return {
+          group,
+          hiddenCount: Math.max(sortedItems.length - visibleItemsById.size, 0),
+          label: tagGroupLabel(group),
+          items: sortedItems,
+          visibleItems: [...visibleItemsById.values()],
+        }
+      })
       .sort((left, right) => {
         const leftIndex = preferredOrder.indexOf(left.group)
         const rightIndex = preferredOrder.indexOf(right.group)
@@ -1249,7 +1295,12 @@ function App() {
 
         return left.label.localeCompare(right.label)
       })
-  }, [tags])
+  }, [selectedTags, tags])
+
+  const expandedTagGroupModel = useMemo(
+    () => tagGroups.find((group) => group.group === expandedTagGroup) ?? null,
+    [expandedTagGroup, tagGroups],
+  )
 
   const visibleMediaUrls = useMemo(() => {
     const urls = new Set<string>()
@@ -3109,9 +3160,16 @@ function App() {
             <div className="tag-filter-groups">
               {tagGroups.map((group) => (
                 <div className="tag-filter-group" key={group.group}>
-                  <span>{group.label}</span>
+                  <div className="tag-group-heading">
+                    <span>{group.label}</span>
+                    {group.hiddenCount > 0 && (
+                      <button type="button" onClick={() => setExpandedTagGroup(group.group)}>
+                        More {group.hiddenCount}
+                      </button>
+                    )}
+                  </div>
                   <div className="tag-grid">
-                    {group.items.map((tag) => (
+                    {group.visibleItems.map((tag) => (
                       <button
                         className={selectedTags.includes(tag.slug) ? 'tag active' : 'tag'}
                         key={tag.id}
@@ -3198,6 +3256,47 @@ function App() {
           onViewportChange={handleMapViewportChange}
           onSelectEntry={selectEntry}
         />
+
+        {expandedTagGroupModel && (
+          <div className="modal-backdrop" role="presentation" onClick={() => setExpandedTagGroup(null)}>
+            <section
+              aria-label={`${expandedTagGroupModel.label} tags`}
+              aria-modal="true"
+              className="tag-modal"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="panel-header">
+                <span>
+                  <Tags aria-hidden="true" />
+                  {expandedTagGroupModel.label}
+                </span>
+                <button
+                  className="panel-close"
+                  type="button"
+                  aria-label="Close tags"
+                  title="Close tags"
+                  onClick={() => setExpandedTagGroup(null)}
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+              <div className="tag-modal-grid">
+                {expandedTagGroupModel.items.map((tag) => (
+                  <button
+                    className={selectedTags.includes(tag.slug) ? 'tag active' : 'tag'}
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTag(tag.slug)}
+                  >
+                    {tag.name}
+                    {Number(tag.entryCount) > 0 && <small>{tag.entryCount}</small>}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
 
         <aside className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}>
           <div className="panel-header">
