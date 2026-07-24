@@ -202,7 +202,7 @@ Build a mobile-first historical world map app with:
 - content package ZIP upload/import from frontend
 - content package ZIP preview from frontend before saving entries and media
 - generated content package ZIPs include EN/CS translations for imported tags, places and time periods
-- generated content package taxonomy objects use `translations` as the source of truth; legacy `name`/`languageCode` is only accepted by the backend for older ZIPs
+- generated content package taxonomy objects use `translations` as the source of truth and require `translations.en`
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list
