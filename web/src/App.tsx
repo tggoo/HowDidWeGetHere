@@ -767,8 +767,8 @@ function mediaUrlToAbsolute(url: string | null | undefined) {
 
 function App() {
   const adminPage = useAppStore((state) => state.adminPage)
+  const clearFiltersState = useAppStore((state) => state.clearFilters)
   const clearRuntimeCacheState = useAppStore((state) => state.clearRuntimeCacheState)
-  const clearTimeFilterState = useAppStore((state) => state.clearTimeFilter)
   const fromYear = useAppStore((state) => state.fromYear)
   const isAdminOpen = useAppStore((state) => state.isAdminOpen)
   const isEntryDetailOpen = useAppStore((state) => state.isEntryDetailOpen)
@@ -1295,8 +1295,8 @@ function App() {
     setYearRange(period.id, period.startYear?.toString() ?? '', period.endYear?.toString() ?? '')
   }
 
-  function clearTimeFilter() {
-    clearTimeFilterState()
+  function clearFilters() {
+    clearFiltersState()
   }
 
   async function prefetchVisibleMedia() {
@@ -3181,7 +3181,7 @@ function App() {
                   setToYear(event.target.value)
                 }}
               />
-              <button type="button" onClick={clearTimeFilter}>
+              <button type="button" onClick={clearFilters}>
                 Clear
               </button>
             </div>
@@ -3238,21 +3238,20 @@ function App() {
               </div>
             </div>
           )}
-          <div className="route-card">
-            <Route aria-hidden="true" />
-            <div>
-              <strong>
-                {selectedEntryDetail?.routes.length
-                  ? `${selectedEntryDetail.routes.length} route records`
-                  : 'Route-ready record'}
-              </strong>
-              <p>
-                {selectedEntryDetail?.routes[0]
-                  ? `${selectedEntryDetail.routes[0].name || selectedEntryDetail.routes[0].routeType}: ${selectedEntryDetail.routes[0].points.length} known points.`
-                  : 'Origins, stops, destinations and route geometry come from the backend model.'}
-              </p>
+          {selectedEntryDetail?.routes.length ? (
+            <div className="route-card">
+              <Route aria-hidden="true" />
+              <div>
+                <strong>{selectedEntryDetail.routes.length} route records</strong>
+                {selectedEntryDetail.routes[0] && (
+                  <p>
+                    {selectedEntryDetail.routes[0].name || selectedEntryDetail.routes[0].routeType}: {' '}
+                    {selectedEntryDetail.routes[0].points.length} known points.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
           {selectedEntryDetail?.places.length ? (
             <div className="detail-list">
               <strong>Places</strong>
@@ -3270,22 +3269,17 @@ function App() {
               ))}
             </div>
           ) : null}
-          <div className="route-card">
-            <PlayCircle aria-hidden="true" />
-            <div>
-              <strong>Audio-ready text</strong>
-              <p>
-                {selectedEntryDetail?.audioTracks[0]?.url || selectedEntry?.primaryAudioUrl
-                  ? 'A narrated track is attached for this language.'
-                  : 'Narration can be attached per language for children and audio-first browsing.'}
-              </p>
-              {selectedEntryDetail?.audioTracks[0]?.url && (
-                <audio controls src={selectedEntryDetail.audioTracks[0].url}>
+          {(selectedEntryDetail?.audioTracks[0]?.url || selectedEntry?.primaryAudioUrl) && (
+            <div className="route-card">
+              <PlayCircle aria-hidden="true" />
+              <div>
+                <strong>Audio</strong>
+                <audio controls src={selectedEntryDetail?.audioTracks[0]?.url ?? selectedEntry?.primaryAudioUrl ?? undefined}>
                   <track kind="captions" />
                 </audio>
-              )}
+              </div>
             </div>
-          </div>
+          )}
           {relatedEntryGroups.length ? (
             <div className="detail-list">
               <strong>Related topics</strong>

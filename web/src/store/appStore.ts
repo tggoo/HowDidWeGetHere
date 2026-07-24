@@ -29,8 +29,8 @@ type AppState = {
   selectedTags: string[]
   theme: ThemeMode
   toYear: string
+  clearFilters: () => void
   clearRuntimeCacheState: () => void
-  clearTimeFilter: () => void
   setAdminOpen: (isOpen: boolean | ((current: boolean) => boolean)) => void
   setAdminPage: (adminPage: AdminPage) => void
   setEntryDetailOpen: (isOpen: boolean) => void
@@ -79,12 +79,19 @@ export const useAppStore = create<AppState>()(
       selectedTags: ['category-exploration'],
       theme: preferredInitialTheme(),
       toYear: '',
+      clearFilters: () =>
+        set({
+          fromYear: '',
+          searchText: '',
+          selectedPeriodId: null,
+          selectedTags: [],
+          toYear: '',
+        }),
       clearRuntimeCacheState: () =>
         set({
           mediaCacheProgress: null,
           mediaCacheStatus: 'Cached map data and media were cleared.',
         }),
-      clearTimeFilter: () => set({ fromYear: '', selectedPeriodId: null, toYear: '' }),
       setAdminOpen: (isOpen) =>
         set((state) => ({
           isAdminOpen: typeof isOpen === 'function' ? isOpen(state.isAdminOpen) : isOpen,

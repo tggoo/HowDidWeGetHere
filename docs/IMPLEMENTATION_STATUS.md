@@ -47,6 +47,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Added public API/media caching headers, frontend service worker runtime caching and manual offline media prefetch for current results.
 - 2026-07-24: Added Zustand app store for shared frontend UI state such as language, theme, filters, panels and media-cache progress.
 - 2026-07-24: Changed mobile filters into a full-screen closeable overlay so tags, time periods and offline media controls no longer consume map viewport height.
+- 2026-07-24: Made public filter clear reset tags/search/year filters and hid empty route/audio placeholder sections from entry detail.
 
 ## Goal
 
