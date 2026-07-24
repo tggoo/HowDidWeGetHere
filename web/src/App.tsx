@@ -677,6 +677,7 @@ const uiCopy = {
     closeFilters: 'Close filters',
     closeTags: 'Close tags',
     dateUnknown: 'Date unknown',
+    description: 'Description',
     downloadCount: (count: number) => `Download ${count}`,
     entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
       `Loaded ${entryCount} published entries and ${mapPointCount} map points${yearRange}${viewport}.`,
@@ -729,6 +730,7 @@ const uiCopy = {
     closeFilters: 'Zavřít filtry',
     closeTags: 'Zavřít tagy',
     dateUnknown: 'Datum není známé',
+    description: 'Popis',
     downloadCount: (count: number) => `Stáhnout ${count}`,
     entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
       `Načteno ${entryCount} publikovaných záznamů a ${mapPointCount} bodů na mapě${yearRange}${viewport}.`,
@@ -3632,6 +3634,12 @@ function App() {
             />
           )}
           {selectedEntryDetail?.summary && <p className="entry-summary">{selectedEntryDetail.summary}</p>}
+          {selectedEntryDetail?.description && (
+            <div className="entry-description">
+              <strong>{ui.description}</strong>
+              <p>{selectedEntryDetail.description}</p>
+            </div>
+          )}
           {selectedEntryDetail?.whyItMatters && (
             <div className="route-card">
               <CheckCircle2 aria-hidden="true" />

@@ -892,6 +892,24 @@
   margin: 14px 0 0;
 }
 
+.entry-description {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.entry-description strong {
+  color: var(--text-strong);
+}
+
+.entry-description p {
+  color: var(--text);
+  line-height: 1.55;
+  margin: 0;
+}
+
 .entry-meta {
   flex-wrap: wrap;
   gap: 8px;
