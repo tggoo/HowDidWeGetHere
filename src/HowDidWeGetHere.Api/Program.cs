@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using HowDidWeGetHere.Api.Caching;
 using HowDidWeGetHere.Api.Endpoints;
 using HowDidWeGetHere.Infrastructure;
 using HowDidWeGetHere.Infrastructure.Identity;
@@ -76,11 +77,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseSerilogRequestLogging();
 app.UseCors("Frontend");
+app.UseMiddleware<PublicApiCacheMiddleware>();
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(GetMediaRoot(app.Environment, app.Configuration)),
-    RequestPath = "/media"
+    RequestPath = "/media",
+    OnPrepareResponse = context =>
+    {
+        context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    }
 });
 app.UseAuthentication();
 app.UseAuthorization();

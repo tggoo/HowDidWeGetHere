@@ -44,6 +44,8 @@ Last updated: 2026-07-24
 - 2026-07-24: Added map collision handling for entries that share identical coordinates, plus configurable map tile URL templates with `{language}` support.
 - 2026-07-24: Fixed known era ranges for public time-period filters and content-package/workbook imports.
 - 2026-07-24: Reworked public tag filters into grouped sections so mythology, country/tradition and region tags are visible instead of being capped at 16 tags.
+- 2026-07-24: Added public API/media caching headers, frontend service worker runtime caching and manual offline media prefetch for current results.
+- 2026-07-24: Added Zustand app store for shared frontend UI state such as language, theme, filters, panels and media-cache progress.
 
 ## Goal
 
@@ -100,6 +102,7 @@ Build a mobile-first historical world map app with:
 - `GET /api/tags`
 - `GET /api/map/entries`
 - `GET /api/time-periods`
+- public JSON responses include ETag validation and short stale-while-revalidate cache headers
 - filtering entries by language, tag and year range
 - filtering entries and map data by search text
 - published-only public entries
@@ -111,6 +114,7 @@ Build a mobile-first historical world map app with:
 - public entry and map queries can be filtered by year range
 - public entry and map queries can be filtered by search text
 - public map queries can be filtered by visible map bounds
+- uploaded/imported media is served with long immutable cache headers
 
 ### Admin API
 
@@ -161,6 +165,7 @@ Build a mobile-first historical world map app with:
 
 - Vite React TypeScript app
 - mobile-first map workspace skeleton
+- Zustand app store for shared UI state
 - persistent light/dark theme toggle
 - typed API client via OpenAPI
 - public map data loading from API
@@ -216,6 +221,9 @@ Build a mobile-first historical world map app with:
 - bulk audio ZIP upload from the media admin page
 - bulk audio ZIP preview before upload
 - image/audio URL edit and delete controls
+- service worker caches public JSON data, map/app assets and opened media
+- offline media panel can prefetch audio/images for the currently loaded result set
+- cached runtime media/data can be cleared from the filter panel
 
 ### Deployment
 
@@ -268,6 +276,7 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 ### Media storage
 
 - object storage integration for multi-instance production deployments
+- offline cache quota/status display and selective download groups
 - thumbnail generation
 - image/audio moderation/validation
 - media replacement and deletion for uploaded objects beyond current local persistent-disk storage

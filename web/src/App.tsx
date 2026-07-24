@@ -2,6 +2,7 @@ import {
   AlertCircle,
   CalendarRange,
   CheckCircle2,
+  Download,
   Filter,
   Globe2,
   Image as ImageIcon,
@@ -27,6 +28,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
 import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
+import { useAppStore, type AdminPage, type MediaCacheProgress } from './store/appStore'
 import './App.css'
 
 type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
@@ -672,9 +674,6 @@ function tagGroupLabel(group: string) {
   return labels[group] ?? group.replaceAll('-', ' ')
 }
 
-type AdminPage = 'import' | 'periods' | 'tags' | 'entry' | 'places' | 'routes' | 'relationships' | 'sources' | 'media'
-type ThemeMode = 'light' | 'dark'
-
 type AdminAuthSession = {
   accessToken: string
   refreshToken: string
@@ -682,7 +681,6 @@ type AdminAuthSession = {
 }
 
 const adminSessionStorageKey = 'howdidwegethere.adminSession'
-const themeStorageKey = 'howdidwegethere.theme'
 
 const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'import', label: 'Import' },
@@ -753,45 +751,61 @@ function persistAdminSession(session: AdminAuthSession | null) {
   }
 }
 
-function readStoredTheme(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'dark'
+function mediaUrlToAbsolute(url: string | null | undefined) {
+  if (!url?.trim()) {
+    return null
   }
 
-  const storedTheme = window.localStorage.getItem(themeStorageKey)
-  if (storedTheme === 'light' || storedTheme === 'dark') {
-    return storedTheme
+  const trimmed = url.trim()
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
   }
 
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
-}
-
-function persistTheme(theme: ThemeMode) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(themeStorageKey, theme)
+  const base = apiBaseUrl.replace(/\/$/, '')
+  return `${base}/${trimmed.replace(/^\//, '')}`
 }
 
 function App() {
-  const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme())
-  const [language, setLanguage] = useState('en')
-  const [selectedTags, setSelectedTags] = useState<string[]>(['category-exploration'])
+  const adminPage = useAppStore((state) => state.adminPage)
+  const clearRuntimeCacheState = useAppStore((state) => state.clearRuntimeCacheState)
+  const clearTimeFilterState = useAppStore((state) => state.clearTimeFilter)
+  const fromYear = useAppStore((state) => state.fromYear)
+  const isAdminOpen = useAppStore((state) => state.isAdminOpen)
+  const isEntryDetailOpen = useAppStore((state) => state.isEntryDetailOpen)
+  const isMediaPrefetching = useAppStore((state) => state.isMediaPrefetching)
+  const isOfflineCacheAvailable = useAppStore((state) => state.isOfflineCacheAvailable)
+  const language = useAppStore((state) => state.language)
+  const mapViewport = useAppStore((state) => state.mapViewport)
+  const mediaCacheProgress = useAppStore((state) => state.mediaCacheProgress)
+  const mediaCacheStatus = useAppStore((state) => state.mediaCacheStatus)
+  const searchText = useAppStore((state) => state.searchText)
+  const selectedEntryId = useAppStore((state) => state.selectedEntryId)
+  const selectedPeriodId = useAppStore((state) => state.selectedPeriodId)
+  const selectedTags = useAppStore((state) => state.selectedTags)
+  const setAdminOpen = useAppStore((state) => state.setAdminOpen)
+  const setAdminPage = useAppStore((state) => state.setAdminPage)
+  const setEntryDetailOpen = useAppStore((state) => state.setEntryDetailOpen)
+  const setFromYear = useAppStore((state) => state.setFromYear)
+  const setLanguage = useAppStore((state) => state.setLanguage)
+  const setMapViewport = useAppStore((state) => state.setMapViewport)
+  const setMediaCacheProgress = useAppStore((state) => state.setMediaCacheProgress)
+  const setMediaCacheStatus = useAppStore((state) => state.setMediaCacheStatus)
+  const setMediaPrefetching = useAppStore((state) => state.setMediaPrefetching)
+  const setOfflineCacheAvailable = useAppStore((state) => state.setOfflineCacheAvailable)
+  const setSearchText = useAppStore((state) => state.setSearchText)
+  const setSelectedEntryId = useAppStore((state) => state.setSelectedEntryId)
+  const setSelectedPeriodId = useAppStore((state) => state.setSelectedPeriodId)
+  const setTheme = useAppStore((state) => state.setTheme)
+  const setToYear = useAppStore((state) => state.setToYear)
+  const setYearRange = useAppStore((state) => state.setYearRange)
+  const theme = useAppStore((state) => state.theme)
+  const toYear = useAppStore((state) => state.toYear)
+  const toggleTagState = useAppStore((state) => state.toggleTag)
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
   const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
-  const [selectedEntryId, setSelectedEntryId] = useState(fallbackEntries[0].id)
-  const [isEntryDetailOpen, setEntryDetailOpen] = useState(false)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
-  const [searchText, setSearchText] = useState('')
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
-  const [fromYear, setFromYear] = useState('')
-  const [toYear, setToYear] = useState('')
-  const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
-  const [isAdminOpen, setAdminOpen] = useState(false)
-  const [adminPage, setAdminPage] = useState<AdminPage>('import')
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
   const [adminEmail, setAdminEmail] = useState('')
@@ -903,7 +917,7 @@ function App() {
         ? current
         : roundedViewport,
     )
-  }, [])
+  }, [setMapViewport])
 
   useEffect(() => {
     let isActive = true
@@ -1005,7 +1019,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, toYear])
+  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setSelectedEntryId, toYear])
 
   useEffect(() => {
     let isActive = true
@@ -1090,8 +1104,48 @@ function App() {
   }, [adminSession])
 
   useEffect(() => {
-    persistTheme(theme)
-  }, [theme])
+    setOfflineCacheAvailable('serviceWorker' in navigator && 'caches' in window)
+  }, [setOfflineCacheAvailable])
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) {
+      return
+    }
+
+    function handleServiceWorkerMessage(event: MessageEvent) {
+      if (event.data?.type === 'HDWGH_PREFETCH_PROGRESS') {
+        const progress = event.data as MediaCacheProgress
+        setMediaCacheProgress({
+          completed: progress.completed,
+          failed: progress.failed,
+          total: progress.total,
+        })
+        setMediaCacheStatus(`Caching media ${progress.completed}/${progress.total}.`)
+      }
+
+      if (event.data?.type === 'HDWGH_PREFETCH_DONE') {
+        const progress = event.data as MediaCacheProgress
+        setMediaPrefetching(false)
+        setMediaCacheProgress({
+          completed: progress.completed,
+          failed: progress.failed,
+          total: progress.total,
+        })
+        setMediaCacheStatus(
+          progress.failed > 0
+            ? `Cached ${progress.completed}/${progress.total} media files. ${progress.failed} failed.`
+            : `Cached ${progress.completed} media files for offline browsing.`,
+        )
+      }
+
+      if (event.data?.type === 'HDWGH_CACHE_CLEARED') {
+        clearRuntimeCacheState()
+      }
+    }
+
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage)
+  }, [clearRuntimeCacheState, setMediaCacheProgress, setMediaCacheStatus, setMediaPrefetching])
 
   useEffect(() => {
     if (!adminSession?.refreshToken) {
@@ -1195,29 +1249,89 @@ function App() {
       })
   }, [tags])
 
+  const visibleMediaUrls = useMemo(() => {
+    const urls = new Set<string>()
+
+    for (const entry of entries) {
+      const imageUrl = mediaUrlToAbsolute(entry.primaryImageUrl)
+      const audioUrl = mediaUrlToAbsolute(entry.primaryAudioUrl)
+      if (imageUrl) {
+        urls.add(imageUrl)
+      }
+      if (audioUrl) {
+        urls.add(audioUrl)
+      }
+    }
+
+    for (const image of selectedEntryDetail?.images ?? []) {
+      const imageUrl = mediaUrlToAbsolute(image.url)
+      if (imageUrl) {
+        urls.add(imageUrl)
+      }
+    }
+
+    for (const audio of selectedEntryDetail?.audioTracks ?? []) {
+      const audioUrl = mediaUrlToAbsolute(audio.url)
+      if (audioUrl) {
+        urls.add(audioUrl)
+      }
+    }
+
+    return [...urls]
+  }, [entries, selectedEntryDetail])
+
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
     setEntryDetailOpen(true)
-  }, [])
+  }, [setEntryDetailOpen, setSelectedEntryId])
 
   function toggleTag(tag: string) {
-    setSelectedTags((current) =>
-      current.includes(tag)
-        ? current.filter((selectedTag) => selectedTag !== tag)
-        : [...current, tag],
-    )
+    toggleTagState(tag)
   }
 
   function selectPeriodFilter(period: TimePeriodListItem) {
-    setSelectedPeriodId(period.id)
-    setFromYear(period.startYear?.toString() ?? '')
-    setToYear(period.endYear?.toString() ?? '')
+    setYearRange(period.id, period.startYear?.toString() ?? '', period.endYear?.toString() ?? '')
   }
 
   function clearTimeFilter() {
-    setSelectedPeriodId(null)
-    setFromYear('')
-    setToYear('')
+    clearTimeFilterState()
+  }
+
+  async function prefetchVisibleMedia() {
+    if (!isOfflineCacheAvailable) {
+      setMediaCacheStatus('This browser does not support offline media cache.')
+      return
+    }
+
+    if (visibleMediaUrls.length === 0) {
+      setMediaCacheStatus('No media URLs are attached to the current results.')
+      return
+    }
+
+    const registration = await navigator.serviceWorker.ready
+    const worker = navigator.serviceWorker.controller ?? registration.active
+    if (!worker) {
+      setMediaCacheStatus('Offline cache is starting. Reload the app once and try again.')
+      return
+    }
+
+    setMediaPrefetching(true)
+    setMediaCacheProgress({ completed: 0, failed: 0, total: visibleMediaUrls.length })
+    setMediaCacheStatus(`Caching 0/${visibleMediaUrls.length} media files.`)
+    worker.postMessage({
+      type: 'HDWGH_PREFETCH_URLS',
+      urls: visibleMediaUrls,
+    })
+  }
+
+  async function clearRuntimeCache() {
+    if (!isOfflineCacheAvailable) {
+      return
+    }
+
+    const registration = await navigator.serviceWorker.ready
+    const worker = navigator.serviceWorker.controller ?? registration.active
+    worker?.postMessage({ type: 'HDWGH_CLEAR_RUNTIME_CACHE' })
   }
 
   function authHeaders() {
@@ -2919,6 +3033,32 @@ function App() {
           <div className="status-pill">
             {isLoadingMap ? <Filter aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
             <span>{mapStatus}</span>
+          </div>
+
+          <div className="cache-panel">
+            <div>
+              <strong>Offline media</strong>
+              <span>{mediaCacheStatus}</span>
+              {mediaCacheProgress && (
+                <progress
+                  max={mediaCacheProgress.total || 1}
+                  value={mediaCacheProgress.completed + mediaCacheProgress.failed}
+                />
+              )}
+            </div>
+            <div className="cache-actions">
+              <button
+                type="button"
+                disabled={!isOfflineCacheAvailable || isMediaPrefetching || visibleMediaUrls.length === 0}
+                onClick={prefetchVisibleMedia}
+              >
+                <Download aria-hidden="true" />
+                {isMediaPrefetching ? 'Caching...' : `Download ${visibleMediaUrls.length}`}
+              </button>
+              <button type="button" disabled={!isOfflineCacheAvailable || isMediaPrefetching} onClick={clearRuntimeCache}>
+                Clear
+              </button>
+            </div>
           </div>
 
           <div className="search-box">
