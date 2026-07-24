@@ -34,6 +34,187 @@ ERA_RANGES = {
     "contemporary": (1945, 2026),
 }
 
+CS_LABELS = {
+    "africa": "Afrika",
+    "agriculture": "Zemědělství",
+    "ambiguous god": "Nejednoznačné božstvo",
+    "americas": "Ameriky",
+    "america": "Ameriky",
+    "anatolia": "Anatolie",
+    "ancient": "Starověk",
+    "andes": "Andy",
+    "antarctica": "Antarktida",
+    "arabia": "Arábie",
+    "architecture": "Architektura",
+    "asia": "Asie",
+    "atlantic": "Atlantik",
+    "atlantic ocean": "Atlantský oceán",
+    "auspicious chimera": "Příznivá chiméra",
+    "australia": "Austrálie",
+    "britain": "Británie",
+    "cat": "Kočka",
+    "cattle god": "Dobytčí bůh",
+    "celtic": "Keltská",
+    "central and western europe": "Střední a západní Evropa",
+    "chaos serpent": "Had chaosu",
+    "chief god": "Hlavní bůh",
+    "china": "Čína",
+    "chinese": "Čínská",
+    "civilization": "Civilizace",
+    "conquest": "Dobývání",
+    "contemporary": "Současnost",
+    "creator goddess": "Stvořitelská bohyně",
+    "creator kami": "Stvořitelské kami",
+    "culture": "Kultura",
+    "culture hero": "Kulturní hrdina",
+    "deity": "Božstvo",
+    "demon": "Démon",
+    "desert, storm and disorder god": "Bůh pouště, bouře a nepořádku",
+    "early modern": "Raný novověk",
+    "earth goddess": "Bohyně země",
+    "eastern mediterranean": "Východní Středomoří",
+    "economy": "Ekonomika",
+    "egypt": "Egypt",
+    "egyptian": "Egyptská",
+    "eight-headed serpent": "Osmihlavý had",
+    "empire": "Říše",
+    "end and renewal of the world": "Konec a obnova světa",
+    "england": "Anglie",
+    "environment": "Životní prostředí",
+    "eurasia": "Eurasie",
+    "europe": "Evropa",
+    "exploration": "Objevování",
+    "female death omen spirit": "Ženský duch věštící smrt",
+    "fire deity": "Ohnivé božstvo",
+    "folklore witch": "Folklorní čarodějnice",
+    "forest spirit": "Lesní duch",
+    "fox spirit": "Liščí duch",
+    "france": "Francie",
+    "funerary and embalming god": "Bůh pohřbívání a balzamování",
+    "global": "Globální",
+    "global oceans": "Světové oceány",
+    "god": "Bůh",
+    "god of death and rebirth": "Bůh smrti a znovuzrození",
+    "goddess": "Bohyně",
+    "goddess of magic and motherhood": "Bohyně magie a mateřství",
+    "gorgon monster": "Gorgonská příšera",
+    "greece": "Řecko",
+    "greek": "Řecká",
+    "hero": "Hrdina",
+    "heroic king": "Hrdinský král",
+    "high god": "Nejvyšší bůh",
+    "historical event": "Historická událost",
+    "horned god": "Rohatý bůh",
+    "house spirit": "Domácí duch",
+    "human history": "Dějiny lidstva",
+    "human-horse hybrid": "Kříženec člověka a koně",
+    "hunt and wilderness goddess": "Bohyně lovu a divočiny",
+    "hybrid guardian": "Hybridní strážce",
+    "hybrid monster": "Hybridní příšera",
+    "iceland": "Island",
+    "india": "Indie",
+    "industrial age": "Průmyslový věk",
+    "industrialization": "Industrializace",
+    "infrastructure": "Infrastruktura",
+    "international relations": "Mezinárodní vztahy",
+    "invention": "Vynález",
+    "ireland": "Irsko",
+    "italy": "Itálie",
+    "japan": "Japonsko",
+    "japanese": "Japonská",
+    "late antiquity": "Pozdní antika",
+    "levant": "Levant",
+    "lioness goddess": "Lví bohyně",
+    "literature": "Literatura",
+    "love goddess": "Bohyně lásky",
+    "marriage and queenship goddess": "Bohyně manželství a královské moci",
+    "medicine": "Medicína",
+    "mediterranean": "Středomoří",
+    "mesopotamia": "Mezopotámie",
+    "mexico": "Mexiko",
+    "middle ages": "Středověk",
+    "middle east": "Blízký východ",
+    "modern": "Moderní doba",
+    "monkey king": "Opičí král",
+    "monstrous wolf": "Obludný vlk",
+    "moon": "Měsíc",
+    "mountain spirit": "Horský duch",
+    "mythic animal": "Mýtické zvíře",
+    "mythic fox": "Mýtická liška",
+    "mythology": "Mytologie",
+    "nature spirit": "Přírodní duch",
+    "neolithic": "Neolit",
+    "nine-tailed fox": "Devítiocasá liška",
+    "norse": "Severská",
+    "north africa": "Severní Afrika",
+    "north america": "Severní Amerika",
+    "northern europe": "Severní Evropa",
+    "ogre": "Zlobr",
+    "one-eyed giants": "Jednoocí obři",
+    "pacific": "Pacifik",
+    "pacific ocean": "Tichý oceán",
+    "pandemic": "Pandemie",
+    "persia": "Persie",
+    "philosophy": "Filozofie",
+    "policy": "Veřejná politika",
+    "political history": "Politické dějiny",
+    "politics": "Politika",
+    "prehistory": "Pravěk",
+    "present day": "Současnost",
+    "primordial state": "Prvotní stav",
+    "prophecy, music and plague god": "Bůh proroctví, hudby a moru",
+    "reborn bird": "Znovuzrozený pták",
+    "religion": "Náboženství",
+    "revolution": "Revoluce",
+    "roman empire": "Římská říše",
+    "roman judea": "Římská Judea",
+    "rome": "Řím",
+    "russia": "Rusko",
+    "sacred bird": "Posvátný pták",
+    "science": "Věda",
+    "sea and earthquake god": "Bůh moře a zemětřesení",
+    "sea kami": "Mořské kami",
+    "sky": "Nebe",
+    "sky and kingship god": "Bůh nebe a královské moci",
+    "sky and thunder god": "Bůh nebe a hromu",
+    "sky god": "Bůh nebe",
+    "slavic": "Slovanská",
+    "slavic europe": "Slovanská Evropa",
+    "south asia": "Jižní Asie",
+    "southwest asia": "Jihozápadní Asie",
+    "southwest asia and other regions": "Jihozápadní Asie a další regiony",
+    "sovereignty goddess": "Bohyně svrchovanosti",
+    "space": "Vesmír",
+    "storm": "Bouře",
+    "sun god": "Bůh slunce",
+    "sun goddess": "Bohyně slunce",
+    "supernatural being": "Nadpřirozená bytost",
+    "supernatural warrior women": "Nadpřirozené bojovnice",
+    "technology": "Technologie",
+    "terrorism": "Terorismus",
+    "thunder god": "Bůh hromu",
+    "titan ruler": "Vládce Titánů",
+    "traditional history": "Tradiční dějiny",
+    "transport": "Doprava",
+    "trickster": "Šibal",
+    "ukraine": "Ukrajina",
+    "underworld": "Podsvětí",
+    "underworld god": "Bůh podsvětí",
+    "underworld queen": "Královna podsvětí",
+    "united states": "Spojené státy",
+    "vegetation goddess": "Bohyně vegetace",
+    "wales": "Wales",
+    "war": "Válka",
+    "war and law god": "Bůh války a práva",
+    "water": "Voda",
+    "water horse spirit": "Vodní koňský duch",
+    "western europe": "Západní Evropa",
+    "wisdom and war goddess": "Bohyně moudrosti a války",
+    "world serpent": "Světový had",
+    "world tree": "Světový strom",
+    "yōkai": "Jókai",
+}
+
 PLACE_SEEDS = {
     "africa": ("import-region-africa", "Africa", 20.0, 0.0, "Region", "Regional"),
     "america": ("import-region-americas", "Americas", -75.0, 10.0, "Region", "Regional"),
@@ -126,6 +307,21 @@ def slugify(value: str) -> str:
     return re.sub("-+", "-", "".join(chars)).strip("-") or "entry"
 
 
+def translation_key(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def cs_label(value: str) -> str:
+    return CS_LABELS.get(translation_key(value), value)
+
+
+def label_translations(value: str) -> dict[str, str]:
+    return {
+        "en": value,
+        "cs": cs_label(value),
+    }
+
+
 def value(row: tuple[object, ...], index: dict[str, int], header: str) -> str:
     offset = index.get(header)
     if offset is None or offset >= len(row) or row[offset] is None:
@@ -152,13 +348,19 @@ def infer_kind(category: str) -> str:
     return "Event"
 
 
-def tags_from_value(raw: str, group: str) -> list[dict[str, str]]:
+def tags_from_value(raw: str, group: str) -> list[dict[str, object]]:
     tags = []
     for part in raw.split("/"):
         name = part.strip()
         if not name:
             continue
-        tags.append({"slug": slugify(f"{group}-{name}"), "name": name, "group": group})
+        tags.append({
+            "slug": slugify(f"{group}-{name}"),
+            "name": name,
+            "group": group,
+            "languageCode": "en",
+            "translations": label_translations(name),
+        })
     return tags
 
 
@@ -176,6 +378,8 @@ def places_from_value(raw: str, source_type: str) -> list[dict[str, object]]:
             {
                 "slug": seed_slug,
                 "name": name,
+                "languageCode": "en",
+                "translations": label_translations(name),
                 "role": "Region",
                 "placeType": place_type,
                 "spatialConfidence": confidence,
@@ -246,6 +450,8 @@ def time_period_from_era(era: str) -> dict[str, object] | None:
     return {
         "slug": slug,
         "name": era,
+        "languageCode": "en",
+        "translations": label_translations(era),
         "periodType": "Era",
         "relationType": "Primary",
         "startYear": start_year,
@@ -326,7 +532,7 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                             "datingNote": dating_note,
                         }
                     },
-                    "tags": [{"slug": "category-mythology", "name": "Mythology", "group": "category"}]
+                    "tags": [{"slug": "category-mythology", "name": "Mythology", "group": "category", "languageCode": "en", "translations": label_translations("Mythology")}]
                     + tags_from_value(tradition, "tradition")
                     + tags_from_value(mythology_type, "mythology-type"),
                     "timePeriods": [],

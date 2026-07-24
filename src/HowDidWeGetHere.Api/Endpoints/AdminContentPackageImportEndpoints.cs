@@ -496,17 +496,14 @@ public static class AdminContentPackageImportEndpoints
             {
                 Slug = slug,
                 TagGroup = group,
-                Translations =
-                [
-                    new TagTranslation
-                    {
-                        LanguageCode = NormalizeLanguage(packageTag.LanguageCode),
-                        Name = name
-                    }
-                ]
+                Translations = CreateTagTranslations(packageTag, name)
             };
             tagCache[slug] = tag;
             dbContext.Tags.Add(tag);
+        }
+        else
+        {
+            UpsertTagTranslations(tag, packageTag, name);
         }
 
         if (entry.Tags.Any(entryTag => entryTag.Tag == tag || entryTag.TagId == tag.Id))
@@ -520,6 +517,39 @@ public static class AdminContentPackageImportEndpoints
             Tag = tag
         });
         return 1;
+    }
+
+    private static List<TagTranslation> CreateTagTranslations(ContentPackageTag packageTag, string fallbackName)
+    {
+        var translations = packageTag.Translations.Count > 0
+            ? packageTag.Translations
+            : new Dictionary<string, string> { [NormalizeLanguage(packageTag.LanguageCode)] = fallbackName };
+
+        return translations
+            .Where(translation => !string.IsNullOrWhiteSpace(translation.Value))
+            .GroupBy(translation => NormalizeLanguage(translation.Key))
+            .Select(group => new TagTranslation
+            {
+                LanguageCode = group.Key,
+                Name = group.First().Value.Trim()
+            })
+            .ToList();
+    }
+
+    private static void UpsertTagTranslations(Tag tag, ContentPackageTag packageTag, string fallbackName)
+    {
+        foreach (var importedTranslation in CreateTagTranslations(packageTag, fallbackName))
+        {
+            var translation = tag.Translations.FirstOrDefault(item => item.LanguageCode == importedTranslation.LanguageCode);
+            if (translation is null)
+            {
+                tag.Translations.Add(importedTranslation);
+            }
+            else
+            {
+                translation.Name = importedTranslation.Name;
+            }
+        }
     }
 
     private static int AttachTimePeriod(
@@ -546,14 +576,7 @@ public static class AdminContentPackageImportEndpoints
                 PeriodType = ParseEnum(packagePeriod.PeriodType, TimePeriodType.Era),
                 StartYear = startYear,
                 EndYear = endYear,
-                Translations =
-                [
-                    new TimePeriodTranslation
-                    {
-                        LanguageCode = NormalizeLanguage(packagePeriod.LanguageCode),
-                        Name = name
-                    }
-                ]
+                Translations = CreateTimePeriodTranslations(packagePeriod, name)
             };
             periodCache[slug] = period;
             dbContext.TimePeriods.Add(period);
@@ -563,6 +586,7 @@ public static class AdminContentPackageImportEndpoints
             period.PeriodType = ParseEnum(packagePeriod.PeriodType, period.PeriodType);
             period.StartYear ??= startYear;
             period.EndYear ??= endYear;
+            UpsertTimePeriodTranslations(period, packagePeriod, name);
         }
 
         var relationType = ParseEnum(packagePeriod.RelationType, PeriodMembershipType.Primary);
@@ -585,6 +609,39 @@ public static class AdminContentPackageImportEndpoints
             RelationType = relationType
         });
         return 1;
+    }
+
+    private static List<TimePeriodTranslation> CreateTimePeriodTranslations(ContentPackageTimePeriod packagePeriod, string fallbackName)
+    {
+        var translations = packagePeriod.Translations.Count > 0
+            ? packagePeriod.Translations
+            : new Dictionary<string, string> { [NormalizeLanguage(packagePeriod.LanguageCode)] = fallbackName };
+
+        return translations
+            .Where(translation => !string.IsNullOrWhiteSpace(translation.Value))
+            .GroupBy(translation => NormalizeLanguage(translation.Key))
+            .Select(group => new TimePeriodTranslation
+            {
+                LanguageCode = group.Key,
+                Name = group.First().Value.Trim()
+            })
+            .ToList();
+    }
+
+    private static void UpsertTimePeriodTranslations(TimePeriod period, ContentPackageTimePeriod packagePeriod, string fallbackName)
+    {
+        foreach (var importedTranslation in CreateTimePeriodTranslations(packagePeriod, fallbackName))
+        {
+            var translation = period.Translations.FirstOrDefault(item => item.LanguageCode == importedTranslation.LanguageCode);
+            if (translation is null)
+            {
+                period.Translations.Add(importedTranslation);
+            }
+            else
+            {
+                translation.Name = importedTranslation.Name;
+            }
+        }
     }
 
     private static (long? StartYear, long? EndYear) ResolveKnownPeriodRange(string slug) =>
@@ -671,18 +728,14 @@ public static class AdminContentPackageImportEndpoints
                 WikidataId = EmptyToNull(packagePlace.WikidataId),
                 GeoNamesId = packagePlace.GeoNamesId,
                 Geometry = new Point(packagePlace.Longitude.Value, packagePlace.Latitude.Value) { SRID = Wgs84Srid },
-                Translations =
-                [
-                    new PlaceTranslation
-                    {
-                        LanguageCode = NormalizeLanguage(packagePlace.LanguageCode),
-                        Name = name,
-                        Description = EmptyToNull(packagePlace.Note)
-                    }
-                ]
+                Translations = CreatePlaceTranslations(packagePlace, name)
             };
             placeCache[slug] = place;
             dbContext.Places.Add(place);
+        }
+        else
+        {
+            UpsertPlaceTranslations(place, packagePlace, name);
         }
 
         var role = ParseEnum(packagePlace.Role, EntryPlaceRole.Region);
@@ -702,6 +755,42 @@ public static class AdminContentPackageImportEndpoints
             Note = EmptyToNull(packagePlace.Note)
         });
         return 1;
+    }
+
+    private static List<PlaceTranslation> CreatePlaceTranslations(ContentPackagePlace packagePlace, string fallbackName)
+    {
+        var translations = packagePlace.Translations.Count > 0
+            ? packagePlace.Translations
+            : new Dictionary<string, string> { [NormalizeLanguage(packagePlace.LanguageCode)] = fallbackName };
+        var description = EmptyToNull(packagePlace.Note);
+
+        return translations
+            .Where(translation => !string.IsNullOrWhiteSpace(translation.Value))
+            .GroupBy(translation => NormalizeLanguage(translation.Key))
+            .Select(group => new PlaceTranslation
+            {
+                LanguageCode = group.Key,
+                Name = group.First().Value.Trim(),
+                Description = description
+            })
+            .ToList();
+    }
+
+    private static void UpsertPlaceTranslations(Place place, ContentPackagePlace packagePlace, string fallbackName)
+    {
+        foreach (var importedTranslation in CreatePlaceTranslations(packagePlace, fallbackName))
+        {
+            var translation = place.Translations.FirstOrDefault(item => item.LanguageCode == importedTranslation.LanguageCode);
+            if (translation is null)
+            {
+                place.Translations.Add(importedTranslation);
+            }
+            else
+            {
+                translation.Name = importedTranslation.Name;
+                translation.Description = importedTranslation.Description;
+            }
+        }
     }
 
     private static bool UpsertAudio(
@@ -1224,6 +1313,7 @@ public static class AdminContentPackageImportEndpoints
         public string? Name { get; set; }
         public string? Group { get; set; }
         public string? LanguageCode { get; set; }
+        public Dictionary<string, string> Translations { get; set; } = [];
     }
 
     private sealed class ContentPackageTimePeriod
@@ -1231,6 +1321,7 @@ public static class AdminContentPackageImportEndpoints
         public string? Slug { get; set; }
         public string? Name { get; set; }
         public string? LanguageCode { get; set; }
+        public Dictionary<string, string> Translations { get; set; } = [];
         public string? PeriodType { get; set; }
         public string? RelationType { get; set; }
         public long? StartYear { get; set; }
@@ -1252,6 +1343,7 @@ public static class AdminContentPackageImportEndpoints
         public string? Slug { get; set; }
         public string? Name { get; set; }
         public string? LanguageCode { get; set; }
+        public Dictionary<string, string> Translations { get; set; } = [];
         public string? Role { get; set; }
         public string? PlaceType { get; set; }
         public string? SpatialConfidence { get; set; }

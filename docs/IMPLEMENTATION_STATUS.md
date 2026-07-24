@@ -49,6 +49,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Changed mobile filters into a full-screen closeable overlay so tags, time periods and offline media controls no longer consume map viewport height.
 - 2026-07-24: Made public filter clear reset tags/search/year filters and hid empty route/audio placeholder sections from entry detail.
 - 2026-07-24: Reduced public tag filter clutter by showing the most-used tags per group and moving the full group list into a modal.
+- 2026-07-24: Added EN/CS taxonomy translations to generated content packages and content-package import upsert for tags, places and time periods.
 
 ## Goal
 
@@ -199,6 +200,7 @@ Build a mobile-first historical world map app with:
 - workbook preview from frontend before saving import rows
 - content package ZIP upload/import from frontend
 - content package ZIP preview from frontend before saving entries and media
+- generated content package ZIPs include EN/CS translations for imported tags, places and time periods
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list
@@ -257,7 +259,7 @@ Admin can sign in, import, list entries, create/edit basic content and EN/CS/ES 
 
 ### Multilingual support
 
-The schema supports translations and the UI can request EN/CS/ES. Admins can now switch an entry editor between EN/CS/ES, see which translations exist and save localized title/body fields. The imported workbook currently creates EN text only unless admins add translations through the admin editor later.
+The schema supports translations and the UI can request EN/CS/ES. Admins can now switch an entry editor between EN/CS/ES, see which translations exist and save localized title/body fields. Generated content packages now include EN/CS translations for imported tags, time periods and places, and content-package reimport updates missing existing translations. Entry body content currently still imports EN text only unless a package supplies CS translations or admins add translations through the admin editor later.
 
 ## Not implemented yet
 
@@ -295,7 +297,8 @@ The schema supports translations and the UI can request EN/CS/ES. Admins can now
 ### Import workflow
 
 - mapping workbook columns to precise places/routes/relationships
-- import CS/ES translations
+- import or generate CS entry translations for title, summary, description, why-it-matters and dating notes
+- localize remaining static public/admin UI text through a frontend message catalog
 
 ### Testing
 
