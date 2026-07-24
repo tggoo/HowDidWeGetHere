@@ -1,3 +1,4 @@
+import { Icon } from '@iconify/react'
 import {
   AlertCircle,
   CalendarRange,
@@ -59,6 +60,7 @@ type EntryListItem = {
   id: string
   slug: string
   kind: string
+  iconKey?: string | null
   title: string
   dateLabel?: string | null
   startYear?: number | null
@@ -330,6 +332,7 @@ type AdminEntryListItem = {
   slug: string
   status: string
   kind: string
+  iconKey?: string | null
   title: string
   sourceSheet?: string | null
   sourceRow?: number | string | null
@@ -375,6 +378,7 @@ type EntryFormState = {
   whyItMatters: string
   datingNote: string
   kind: EntryKind
+  iconKey: string
   status: ContentStatus
   realityStatus: RealityStatus
   dateLabel: string
@@ -411,6 +415,7 @@ const defaultEntryForm: EntryFormState = {
   whyItMatters: '',
   datingNote: '',
   kind: 'Event',
+  iconKey: '',
   status: 'Published',
   realityStatus: 'Historical',
   dateLabel: '',
@@ -681,6 +686,7 @@ const uiCopy = {
     language: 'Language',
     loadingInitial: 'Loading published map data.',
     moreCount: (count: number) => `More ${count}`,
+    noTimelineEntries: 'No dated entries',
     noMediaUrls: 'No media URLs are attached to the current results.',
     noResults: 'No map points match the current filters.',
     offlineCacheStarting: 'Offline cache is starting. Reload the app once and try again.',
@@ -698,6 +704,7 @@ const uiCopy = {
     switchToDarkMode: 'Switch to dark mode',
     switchToLightMode: 'Switch to light mode',
     tags: 'Tags',
+    timeline: 'Timeline',
     timePeriod: 'Time period',
     unsupportedCache: 'This browser does not support offline media cache.',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
@@ -731,6 +738,7 @@ const uiCopy = {
     language: 'Jazyk',
     loadingInitial: 'Načítám publikovaná mapová data.',
     moreCount: (count: number) => `Další ${count}`,
+    noTimelineEntries: 'Žádné datované záznamy',
     noMediaUrls: 'Aktuální výsledky nemají připojená žádná média.',
     noResults: 'Pro dané filtry nebyly vybrány žádné body.',
     offlineCacheStarting: 'Offline cache se spouští. Načti aplikaci znovu a zkus to ještě jednou.',
@@ -748,6 +756,7 @@ const uiCopy = {
     switchToDarkMode: 'Přepnout do tmavého režimu',
     switchToLightMode: 'Přepnout do světlého režimu',
     tags: 'Tagy',
+    timeline: 'Časová osa',
     timePeriod: 'Časové období',
     unsupportedCache: 'Tento prohlížeč nepodporuje offline cache médií.',
     unreachableApi: 'API není dostupné. Zkontroluj Render API URL a CORS nastavení.',
@@ -794,6 +803,146 @@ function tagGroupLabel(group: string, language: keyof typeof uiCopy) {
 function tagEntryCount(tag: TagListItem) {
   const count = Number(tag.entryCount)
   return Number.isFinite(count) ? count : 0
+}
+
+function entryIconKey(entry: Pick<EntryListItem, 'iconKey' | 'kind'>) {
+  if (entry.iconKey?.trim()) {
+    return entry.iconKey.trim()
+  }
+
+  const kind = entry.kind.toLowerCase()
+  if (kind.includes('mythology')) {
+    return 'game-icons:greek-temple'
+  }
+  if (kind.includes('war')) {
+    return 'game-icons:crossed-swords'
+  }
+  if (kind.includes('exploration')) {
+    return 'mdi:compass-outline'
+  }
+  if (kind.includes('invention')) {
+    return 'mdi:lightbulb-on-outline'
+  }
+  if (kind.includes('technology')) {
+    return 'mdi:chip'
+  }
+  if (kind.includes('science')) {
+    return 'mdi:atom'
+  }
+  if (kind.includes('civilization')) {
+    return 'mdi:city-variant-outline'
+  }
+
+  return 'mdi:timeline-clock-outline'
+}
+
+function entryTimelineYear(entry: EntryListItem) {
+  const startYear = Number(entry.startYear)
+  if (Number.isFinite(startYear)) {
+    return startYear
+  }
+
+  const endYear = Number(entry.endYear)
+  return Number.isFinite(endYear) ? endYear : null
+}
+
+function timelineScale(year: number) {
+  return Math.sign(year) * Math.log10(Math.abs(year) + 1)
+}
+
+function timelineInvert(value: number) {
+  return Math.sign(value) * (10 ** Math.abs(value) - 1)
+}
+
+function timelineYearLabel(year: number) {
+  const rounded = Math.abs(year) >= 1000 ? Math.round(year / 100) * 100 : Math.round(year)
+  return rounded < 0 ? `${Math.abs(rounded)} BCE` : `${rounded}`
+}
+
+function sampleTimelineEntries(entries: Array<{ entry: EntryListItem; year: number }>, selectedEntryId: string) {
+  const limit = 64
+  if (entries.length <= limit) {
+    return entries
+  }
+
+  const selected = entries.find((item) => item.entry.id === selectedEntryId)
+  const sampled = new Map<string, { entry: EntryListItem; year: number }>()
+  const slots = selected ? limit - 1 : limit
+  for (let index = 0; index < slots; index++) {
+    const sourceIndex = Math.round((index / Math.max(slots - 1, 1)) * (entries.length - 1))
+    const item = entries[sourceIndex]
+    sampled.set(item.entry.id, item)
+  }
+
+  if (selected) {
+    sampled.set(selected.entry.id, selected)
+  }
+
+  return [...sampled.values()].sort((left, right) => left.year - right.year || left.entry.title.localeCompare(right.entry.title))
+}
+
+function TimelineRuler({
+  entries,
+  selectedEntryId,
+  labels,
+  onSelectEntry,
+}: {
+  entries: EntryListItem[]
+  selectedEntryId: string
+  labels: { timeline: string; noTimelineEntries: string }
+  onSelectEntry: (entryId: string) => void
+}) {
+  const datedEntries = entries
+    .map((entry) => ({ entry, year: entryTimelineYear(entry) }))
+    .filter((item): item is { entry: EntryListItem; year: number } => item.year !== null)
+    .sort((left, right) => left.year - right.year || left.entry.title.localeCompare(right.entry.title))
+
+  if (datedEntries.length === 0) {
+    return (
+      <section className="timeline-ruler" aria-label={labels.timeline}>
+        <div className="timeline-ruler-empty">{labels.noTimelineEntries}</div>
+      </section>
+    )
+  }
+
+  const minValue = timelineScale(datedEntries[0].year)
+  const maxValue = timelineScale(datedEntries[datedEntries.length - 1].year)
+  const range = Math.max(maxValue - minValue, 1)
+  const positionForYear = (year: number) => ((timelineScale(year) - minValue) / range) * 100
+  const ticks = Array.from({ length: 7 }, (_, index) => {
+    const value = minValue + (range * index) / 6
+    const year = timelineInvert(value)
+    return {
+      label: timelineYearLabel(year),
+      left: ((value - minValue) / range) * 100,
+    }
+  })
+  const visibleEntries = sampleTimelineEntries(datedEntries, selectedEntryId)
+
+  return (
+    <section className="timeline-ruler" aria-label={labels.timeline}>
+      <div className="timeline-ruler-title">{labels.timeline}</div>
+      <div className="timeline-track">
+        {ticks.map((tick) => (
+          <div className="timeline-tick" key={`${tick.left}-${tick.label}`} style={{ left: `${tick.left}%` }}>
+            <span>{tick.label}</span>
+          </div>
+        ))}
+        {visibleEntries.map(({ entry, year }) => (
+          <button
+            className={entry.id === selectedEntryId ? 'timeline-event active' : 'timeline-event'}
+            key={entry.id}
+            style={{ left: `${positionForYear(year)}%` }}
+            title={`${entry.title} (${entry.dateLabel ?? timelineYearLabel(year)})`}
+            type="button"
+            onClick={() => onSelectEntry(entry.id)}
+          >
+            <Icon icon={entryIconKey(entry)} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 type AdminAuthSession = {
@@ -1878,6 +2027,7 @@ function App() {
       whyItMatters: detail.whyItMatters ?? '',
       datingNote: detail.datingNote ?? '',
       kind: detail.kind as EntryKind,
+      iconKey: detail.iconKey ?? '',
       status: detail.status as ContentStatus,
       realityStatus: detail.realityStatus as RealityStatus,
       dateLabel: detail.dateLabel ?? '',
@@ -2237,6 +2387,7 @@ function App() {
       kind: entryForm.kind,
       status: entryForm.status,
       realityStatus: entryForm.realityStatus,
+      iconKey: entryForm.iconKey.trim() || null,
       dateLabel: entryForm.dateLabel.trim() || null,
       startYear: numberOrNull(entryForm.startYear),
       startMonth: null,
@@ -3390,16 +3541,24 @@ function App() {
           </div>
         </aside>
 
-        <HistoryMap
-          autoFitKey={mapAutoFitKey}
-          entries={mapEntries}
-          fallbackEntryIds={entries.map((entry) => entry.id)}
-          language={language}
-          showFallback={!mapViewport}
-          selectedEntryId={selectedEntryId}
-          onViewportChange={handleMapViewportChange}
-          onSelectEntry={selectEntry}
-        />
+        <div className="map-main">
+          <TimelineRuler
+            entries={entries}
+            labels={{ timeline: ui.timeline, noTimelineEntries: ui.noTimelineEntries }}
+            selectedEntryId={selectedEntryId}
+            onSelectEntry={selectEntry}
+          />
+          <HistoryMap
+            autoFitKey={mapAutoFitKey}
+            entries={mapEntries}
+            fallbackEntryIds={entries.map((entry) => entry.id)}
+            language={language}
+            showFallback={!mapViewport}
+            selectedEntryId={selectedEntryId}
+            onViewportChange={handleMapViewportChange}
+            onSelectEntry={selectEntry}
+          />
+        </div>
 
         {expandedTagGroupModel && (
           <div className="modal-backdrop" role="presentation" onClick={() => setExpandedTagGroup(null)}>
@@ -4152,6 +4311,17 @@ function App() {
                   value={entryForm.slug}
                   onChange={(event) => patchEntryForm({ slug: event.target.value })}
                 />
+              </label>
+              <label>
+                Iconify icon
+                <div className="icon-key-input">
+                  <Icon icon={entryIconKey({ iconKey: entryForm.iconKey, kind: entryForm.kind })} aria-hidden="true" />
+                  <input
+                    placeholder="mdi:compass-outline"
+                    value={entryForm.iconKey}
+                    onChange={(event) => patchEntryForm({ iconKey: event.target.value })}
+                  />
+                </div>
               </label>
               <div className="admin-field-row">
                 <label>

@@ -14,6 +14,7 @@ public sealed class Entry : AuditableEntity
     public RealityStatus RealityStatus { get; set; } = RealityStatus.Historical;
 
     public string DefaultTitle { get; set; } = string.Empty;
+    public string? IconKey { get; set; }
     public string? DateLabel { get; set; }
     public long? StartYear { get; set; }
     public byte? StartMonth { get; set; }

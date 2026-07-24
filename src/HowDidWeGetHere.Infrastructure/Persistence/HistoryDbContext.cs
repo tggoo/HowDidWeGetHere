@@ -90,6 +90,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
             entity.HasIndex(entry => new { entry.Status, entry.StartYear, entry.EndYear });
             entity.Property(entry => entry.Slug).HasMaxLength(180);
             entity.Property(entry => entry.DefaultTitle).HasMaxLength(300);
+            entity.Property(entry => entry.IconKey).HasMaxLength(120);
             entity.Property(entry => entry.SourceSheet).HasMaxLength(120);
             entity.Property(entry => entry.TimeConfidence).HasMaxLength(300);
             entity.HasOne(entry => entry.PrimaryTimePeriod)

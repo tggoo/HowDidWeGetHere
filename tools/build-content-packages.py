@@ -348,6 +348,31 @@ def infer_kind(category: str) -> str:
     return "Event"
 
 
+def infer_icon_key(kind: str, *labels: str) -> str:
+    text = " ".join(labels).lower()
+    if "mythology" in text or kind in {"MythologyStory", "MythologyEntity"}:
+        return "game-icons:greek-temple"
+    if "war" in text or kind == "War":
+        return "game-icons:crossed-swords"
+    if "exploration" in text or kind == "Exploration":
+        return "mdi:compass-outline"
+    if "invention" in text or kind == "Invention":
+        return "mdi:lightbulb-on-outline"
+    if "technology" in text or kind == "Technology":
+        return "mdi:chip"
+    if "science" in text or kind == "ScientificConcept":
+        return "mdi:atom"
+    if "civilization" in text or kind == "Civilization":
+        return "mdi:city-variant-outline"
+    if "religion" in text:
+        return "mdi:book-cross"
+    if "space" in text:
+        return "mdi:rocket-launch-outline"
+    if "politics" in text:
+        return "mdi:account-group-outline"
+    return "mdi:timeline-clock-outline"
+
+
 def tags_from_value(raw: str, group: str) -> list[dict[str, object]]:
     tags = []
     for part in raw.split("/"):
@@ -471,6 +496,7 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                 slug = slugify(title)
                 category = value(row, index, "Category")
                 region = value(row, index, "Region")
+                kind = infer_kind(category)
                 era = value(row, index, "Era")
                 date_label = value(row, index, "Approx. date")
                 dating_note = value(row, index, "Dating confidence")
@@ -480,7 +506,8 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                     "slug": slug,
                     "sourceSheet": sheet_name,
                     "sourceRow": row_number,
-                    "kind": infer_kind(category),
+                    "kind": kind,
+                    "iconKey": infer_icon_key(kind, category, region),
                     "status": "Published",
                     "realityStatus": "Mythological" if "mythology" in category.lower() else "Historical",
                     "title": title,
@@ -513,6 +540,7 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
                     "sourceSheet": sheet_name,
                     "sourceRow": row_number,
                     "kind": "MythologyEntity",
+                    "iconKey": infer_icon_key("MythologyEntity", tradition, mythology_type),
                     "status": "Published",
                     "realityStatus": "Mythological",
                     "title": title,

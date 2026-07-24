@@ -407,6 +407,7 @@ public static class AdminContentPackageImportEndpoints
                 : ParseEnum(packageEntry.Status, ContentStatus.Draft),
             RealityStatus = ParseEnum(packageEntry.RealityStatus, RealityStatus.Historical),
             DefaultTitle = title,
+            IconKey = EmptyToNull(packageEntry.IconKey),
             DateLabel = packageEntry.DateLabel,
             StartYear = packageEntry.StartYear ?? parsedDate.StartYear,
             StartMonth = packageEntry.StartMonth ?? parsedDate.StartMonth,
@@ -455,6 +456,7 @@ public static class AdminContentPackageImportEndpoints
         target.Status = imported.Status;
         target.RealityStatus = imported.RealityStatus;
         target.DefaultTitle = imported.DefaultTitle;
+        target.IconKey = imported.IconKey;
         target.DateLabel = imported.DateLabel;
         target.StartYear = imported.StartYear;
         target.StartMonth = imported.StartMonth;
@@ -1359,6 +1361,7 @@ public static class AdminContentPackageImportEndpoints
         public string? Kind { get; set; }
         public string? Status { get; set; }
         public string? RealityStatus { get; set; }
+        public string? IconKey { get; set; }
         public string? Title { get; set; }
         public string? DateLabel { get; set; }
         public long? StartYear { get; set; }

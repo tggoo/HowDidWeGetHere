@@ -573,6 +573,130 @@
   cursor: pointer;
 }
 
+.map-main {
+  display: grid;
+  grid-template-rows: 96px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.timeline-ruler {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 7px;
+  padding: 10px 16px 12px;
+}
+
+.timeline-ruler-title {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.timeline-ruler-empty {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  height: 100%;
+}
+
+.timeline-track {
+  background:
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), var(--border) calc(100% - 1px)),
+    repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 8.333%);
+  border-bottom: 2px solid var(--border-strong);
+  height: 58px;
+  position: relative;
+}
+
+.timeline-tick {
+  bottom: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 54px;
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.timeline-tick::before {
+  background: var(--border-strong);
+  bottom: 18px;
+  content: '';
+  height: 18px;
+  left: 50%;
+  position: absolute;
+  width: 2px;
+}
+
+.timeline-tick span {
+  display: block;
+  padding-top: 36px;
+  text-align: center;
+}
+
+.timeline-event {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  box-shadow: 0 5px 12px var(--shadow);
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  width: 30px;
+  z-index: 2;
+}
+
+.timeline-event svg {
+  height: 18px;
+  width: 18px;
+}
+
+.timeline-event.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  height: 34px;
+  top: 1px;
+  width: 34px;
+  z-index: 3;
+}
+
+.icon-key-input {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  display: flex;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 9px;
+}
+
+.icon-key-input svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+  height: 20px;
+  width: 20px;
+}
+
+.icon-key-input input {
+  background: transparent;
+  border: 0;
+  min-height: 34px;
+  padding: 0;
+}
+
 .map-canvas {
   background: var(--map-bg);
   min-height: 0;
@@ -1279,6 +1403,25 @@
   .map-canvas {
     flex: 1;
     min-height: 58svh;
+  }
+
+  .map-main {
+    flex: 1;
+    grid-template-rows: 88px minmax(0, 1fr);
+  }
+
+  .timeline-ruler {
+    padding: 9px 12px 10px;
+  }
+
+  .timeline-event {
+    height: 28px;
+    width: 28px;
+  }
+
+  .timeline-tick {
+    font-size: 10px;
+    min-width: 48px;
   }
 
   .leaflet-map {

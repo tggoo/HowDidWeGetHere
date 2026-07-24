@@ -54,6 +54,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Localized the public map/filter/detail/cache UI to EN/CS and reworked desktop layout to remove the top menu, use full viewport height and keep scrolling inside panels.
 - 2026-07-24: Fixed public audio playback by falling back from the selected language to EN audio tracks and resolving media URLs against the API host.
 - 2026-07-24: Added PostgreSQL-backed media blob fallback for `/media/*` so imported/uploaded audio and images survive Render's ephemeral filesystem after re-import.
+- 2026-07-24: Added per-entry Iconify icon keys and a map-top timeline ruler that visualizes filtered entries across time.
 
 ## Goal
 
@@ -211,6 +212,8 @@ Build a mobile-first historical world map app with:
 - desktop viewport does not scroll as a whole; long lists scroll inside their panels
 - public audio playback prefers the selected language, falls back to EN and uses API-hosted media URLs for Render frontend/API split hosting
 - imported and uploaded media is stored both as local files and as PostgreSQL `media_blobs`; `/media/*` falls back to DB bytes if the local file is missing
+- entries can store an `iconKey` such as `mdi:compass-outline`; content packages can import it and the admin entry form can edit it
+- the public map workspace includes a top timeline ruler with year ticks and clickable Iconify event icons synchronized with the current filters
 - workbook preview validation summary and row issue display
 - workbook import result displays created and updated entry counts
 - admin entry list

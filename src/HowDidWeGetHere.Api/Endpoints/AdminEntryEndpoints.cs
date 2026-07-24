@@ -45,6 +45,7 @@ public static class AdminEntryEndpoints
                 entry.Slug,
                 entry.Status.ToString(),
                 entry.Kind.ToString(),
+                entry.IconKey,
                 entry.Translations
                     .Where(translation => translation.LanguageCode == lang)
                     .Select(translation => translation.Title)
@@ -100,6 +101,7 @@ public static class AdminEntryEndpoints
             entry.Slug,
             entry.Status.ToString(),
             entry.Kind.ToString(),
+            entry.IconKey,
             entry.RealityStatus.ToString(),
             translation?.Title ?? entry.DefaultTitle,
             translation?.LanguageCode ?? lang,
@@ -278,6 +280,7 @@ public static class AdminEntryEndpoints
             Kind = request.Kind,
             Status = request.Status,
             RealityStatus = request.RealityStatus,
+            IconKey = EmptyToNull(request.IconKey),
             DefaultTitle = request.Title.Trim(),
             DateLabel = request.DateLabel,
             StartYear = request.StartYear ?? parsedDate.StartYear,
@@ -344,6 +347,7 @@ public static class AdminEntryEndpoints
         entry.Kind = request.Kind;
         entry.Status = request.Status;
         entry.RealityStatus = request.RealityStatus;
+        entry.IconKey = EmptyToNull(request.IconKey);
         if (language.Equals("en", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(entry.DefaultTitle))
         {
             entry.DefaultTitle = request.Title.Trim();
@@ -401,6 +405,9 @@ public static class AdminEntryEndpoints
 
         return uniqueSlug;
     }
+
+    private static string? EmptyToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static IReadOnlyList<GeoCoordinateResponse> Coordinates(Geometry? geometry) =>
         geometry?.Coordinates

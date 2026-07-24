@@ -6,6 +6,7 @@ export type MapEntry = {
   entryId: string
   slug: string
   kind: string
+  iconKey?: string | null
   title: string
   dateLabel?: string | null
   startYear?: number | string | null

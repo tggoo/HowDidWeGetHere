@@ -78,6 +78,7 @@ public static class PublicEndpoints
                 entry.Id,
                 entry.Slug,
                 entry.Kind.ToString(),
+                entry.IconKey,
                 entry.Translations
                     .Where(translation => translation.LanguageCode == lang)
                     .Select(translation => translation.Title)
@@ -152,6 +153,7 @@ public static class PublicEndpoints
                 entry.Id,
                 entry.Slug,
                 entry.Kind.ToString(),
+                entry.IconKey,
                 LocalizedEntryTitle(entry, lang),
                 entry.DateLabel,
                 entry.StartYear,
@@ -247,6 +249,7 @@ public static class PublicEndpoints
             entry.Id,
             entry.Slug,
             entry.Kind.ToString(),
+            entry.IconKey,
             entry.RealityStatus.ToString(),
             translation?.Title ?? entry.DefaultTitle,
             translation?.Summary,

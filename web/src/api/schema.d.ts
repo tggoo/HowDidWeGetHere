@@ -2094,6 +2094,7 @@ export interface components {
             slug: string;
             status: string;
             kind: string;
+            iconKey: null | string;
             realityStatus: string;
             title: string;
             languageCode: null | string;
@@ -2156,6 +2157,7 @@ export interface components {
             slug: string;
             status: string;
             kind: string;
+            iconKey: null | string;
             title: string;
             sourceSheet: null | string;
             /** Format: int32 */
@@ -2257,6 +2259,7 @@ export interface components {
             kind: components["schemas"]["EntryKind"];
             status: components["schemas"]["ContentStatus"];
             realityStatus: components["schemas"]["RealityStatus"];
+            iconKey: null | string;
             dateLabel: null | string;
             /** Format: int64 */
             startYear: null | number | string;
@@ -2327,6 +2330,7 @@ export interface components {
             id: string;
             slug: string;
             kind: string;
+            iconKey: null | string;
             realityStatus: string;
             title: string;
             summary: null | string;
@@ -2380,6 +2384,7 @@ export interface components {
             id: string;
             slug: string;
             kind: string;
+            iconKey: null | string;
             title: string;
             dateLabel: null | string;
             /** Format: int64 */
@@ -2506,6 +2511,7 @@ export interface components {
             entryId: string;
             slug: string;
             kind: string;
+            iconKey: null | string;
             title: string;
             dateLabel: null | string;
             /** Format: int64 */
