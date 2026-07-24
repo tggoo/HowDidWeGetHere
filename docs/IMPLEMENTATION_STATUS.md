@@ -37,6 +37,7 @@ Last updated: 2026-07-24
 - 2026-07-24: Added workbook import mapping from known region/tradition labels to approximate map places.
 - 2026-07-24: Normalized workbook rows so current preview validation reports zero warnings.
 - 2026-07-24: Added bulk audio ZIP upload and workbook-to-TTS narration generation workflow.
+- 2026-07-24: Added bulk audio ZIP preview so admins can validate slug matches before upload.
 
 ## Goal
 
@@ -119,6 +120,7 @@ Build a mobile-first historical world map app with:
 - upload local entry image files
 - upload local entry audio files
 - bulk upload local entry audio files from a slug-named ZIP
+- preview slug matches for bulk audio ZIP uploads
 - update and delete entry images
 - update and delete entry audio tracks
 - add place/coordinate to entry
@@ -202,6 +204,7 @@ Build a mobile-first historical world map app with:
 - primary image file upload
 - primary audio file upload
 - bulk audio ZIP upload from the media admin page
+- bulk audio ZIP preview before upload
 - image/audio URL edit and delete controls
 
 ### Deployment

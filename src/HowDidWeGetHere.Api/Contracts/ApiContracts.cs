@@ -312,6 +312,22 @@ public sealed record BulkAudioUploadResult(
     int EntriesMissing,
     IReadOnlyList<string> Warnings);
 
+public sealed record BulkAudioUploadPreviewResult(
+    int FilesRead,
+    int FilesSupported,
+    int EntriesMatched,
+    int EntriesMissing,
+    IReadOnlyList<BulkAudioUploadPreviewRow> Rows,
+    IReadOnlyList<string> Warnings);
+
+public sealed record BulkAudioUploadPreviewRow(
+    string FileName,
+    string EntrySlug,
+    string LanguageCode,
+    bool IsSupportedAudio,
+    bool EntryExists,
+    string? Warning);
+
 public sealed record AdminEntryPlaceRequest(
     string Name,
     string? Slug,

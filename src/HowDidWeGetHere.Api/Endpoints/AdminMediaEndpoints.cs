@@ -73,6 +73,13 @@ public static class AdminMediaEndpoints
             .DisableAntiforgery()
             .ExcludeFromDescription();
 
+        admin.MapPost("/audio-tracks/bulk-upload/preview", PreviewBulkAudioTracksAsync)
+            .Accepts<IFormFile>("multipart/form-data")
+            .Produces<BulkAudioUploadPreviewResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .DisableAntiforgery()
+            .ExcludeFromDescription();
+
         admin.MapPost("/audio-tracks/bulk-upload", BulkUploadAudioTracksAsync)
             .Accepts<IFormFile>("multipart/form-data")
             .Produces<BulkAudioUploadResult>(StatusCodes.Status200OK)
@@ -321,6 +328,83 @@ public static class AdminMediaEndpoints
         return Results.Created($"/api/admin/entries/{entryId}/audio-tracks/{audioTrack.Id}", new ResourceCreatedResponse(audioTrack.Id, null));
     }
 
+    private static async Task<IResult> PreviewBulkAudioTracksAsync(
+        [FromForm] IFormFile file,
+        [FromForm] string? languageCode,
+        HistoryDbContext dbContext,
+        IConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        var validationError = ValidateAudioZipUpload(file, configuration);
+        if (validationError is not null)
+        {
+            return Results.BadRequest(new { error = validationError });
+        }
+
+        var fallbackLanguage = EndpointHelpers.NormalizeLanguage(languageCode);
+        var entrySlugs = await dbContext.Entries
+            .Select(entry => entry.Slug)
+            .ToHashSetAsync(StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var warnings = new List<string>();
+        var rows = new List<BulkAudioUploadPreviewRow>();
+        var filesRead = 0;
+        var filesSupported = 0;
+        var entriesMatched = 0;
+        var entriesMissing = 0;
+
+        await using var uploadStream = file.OpenReadStream();
+        using var archive = new ZipArchive(uploadStream, ZipArchiveMode.Read, leaveOpen: false);
+        foreach (var archiveEntry in archive.Entries)
+        {
+            if (string.IsNullOrWhiteSpace(archiveEntry.Name))
+            {
+                continue;
+            }
+
+            filesRead++;
+            var extension = Path.GetExtension(archiveEntry.Name);
+            var audioName = ParseBulkAudioFileName(archiveEntry.Name, fallbackLanguage);
+            var warning = ValidateBulkAudioArchiveEntry(archiveEntry, extension, configuration);
+            var isSupported = warning is null;
+            var entryExists = isSupported && entrySlugs.Contains(audioName.EntrySlug);
+
+            if (isSupported)
+            {
+                filesSupported++;
+                if (entryExists)
+                {
+                    entriesMatched++;
+                }
+                else
+                {
+                    entriesMissing++;
+                    warning = $"Entry slug '{audioName.EntrySlug}' was not found.";
+                }
+            }
+
+            if (warning is not null)
+            {
+                warnings.Add($"{archiveEntry.FullName}: {warning}");
+            }
+
+            rows.Add(new BulkAudioUploadPreviewRow(
+                archiveEntry.FullName,
+                audioName.EntrySlug,
+                EndpointHelpers.NormalizeLanguage(audioName.LanguageCode),
+                isSupported,
+                entryExists,
+                warning));
+        }
+
+        return Results.Ok(new BulkAudioUploadPreviewResult(
+            filesRead,
+            filesSupported,
+            entriesMatched,
+            entriesMissing,
+            rows,
+            warnings));
+    }
+
     private static async Task<IResult> BulkUploadAudioTracksAsync(
         [FromForm] IFormFile file,
         [FromForm] string? languageCode,
@@ -359,21 +443,10 @@ public static class AdminMediaEndpoints
 
             filesRead++;
             var extension = Path.GetExtension(archiveEntry.Name);
-            if (string.IsNullOrWhiteSpace(extension) || !AllowedAudioExtensions.Contains(extension))
+            var archiveEntryError = ValidateBulkAudioArchiveEntry(archiveEntry, extension, configuration);
+            if (archiveEntryError is not null)
             {
-                warnings.Add($"{archiveEntry.FullName}: unsupported audio extension '{extension}'.");
-                continue;
-            }
-
-            if (archiveEntry.Length == 0)
-            {
-                warnings.Add($"{archiveEntry.FullName}: file is empty.");
-                continue;
-            }
-
-            if (archiveEntry.Length > GetMaxAudioBytes(configuration))
-            {
-                warnings.Add($"{archiveEntry.FullName}: file exceeds maximum audio size.");
+                warnings.Add($"{archiveEntry.FullName}: {archiveEntryError}");
                 continue;
             }
 
@@ -558,6 +631,23 @@ public static class AdminMediaEndpoints
         }
 
         return null;
+    }
+
+    private static string? ValidateBulkAudioArchiveEntry(ZipArchiveEntry archiveEntry, string extension, IConfiguration configuration)
+    {
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedAudioExtensions.Contains(extension))
+        {
+            return $"Unsupported audio extension '{extension}'.";
+        }
+
+        if (archiveEntry.Length == 0)
+        {
+            return "File is empty.";
+        }
+
+        return archiveEntry.Length > GetMaxAudioBytes(configuration)
+            ? "File exceeds maximum audio size."
+            : null;
     }
 
     private static async Task<StoredMediaFile> SaveUploadAsync(

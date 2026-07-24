@@ -219,6 +219,22 @@ type BulkAudioUploadResult = {
   warnings: string[]
 }
 
+type BulkAudioUploadPreviewResult = {
+  filesRead: number | string
+  filesSupported: number | string
+  entriesMatched: number | string
+  entriesMissing: number | string
+  rows: Array<{
+    fileName: string
+    entrySlug: string
+    languageCode: string
+    isSupportedAudio: boolean
+    entryExists: boolean
+    warning?: string | null
+  }>
+  warnings: string[]
+}
+
 type WorkbookImportPreviewResult = {
   rowsRead: number | string
   entriesToCreate: number | string
@@ -752,7 +768,9 @@ function App() {
   const [adminEntryAudioTracks, setAdminEntryAudioTracks] = useState<EntryDetail['audioTracks']>([])
   const [bulkAudioFile, setBulkAudioFile] = useState<File | null>(null)
   const [bulkAudioLanguage, setBulkAudioLanguage] = useState('en')
+  const [isBulkAudioPreviewing, setBulkAudioPreviewing] = useState(false)
   const [isBulkAudioUploading, setBulkAudioUploading] = useState(false)
+  const [bulkAudioPreview, setBulkAudioPreview] = useState<BulkAudioUploadPreviewResult | null>(null)
   const [bulkAudioResult, setBulkAudioResult] = useState<BulkAudioUploadResult | null>(null)
   const [adminEntryPlaces, setAdminEntryPlaces] = useState<EntryDetail['places']>([])
   const [placeForm, setPlaceForm] = useState({
@@ -2007,6 +2025,49 @@ function App() {
     await loadAdminEntryDetail(entryForm.id)
   }
 
+  async function previewBulkAudioZip() {
+    if (!adminToken) {
+      setAdminStatus('Sign in before previewing bulk audio.')
+      return
+    }
+
+    if (!bulkAudioFile) {
+      setAdminStatus('Choose an audio .zip file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', bulkAudioFile)
+    formData.append('languageCode', bulkAudioLanguage)
+
+    setBulkAudioPreviewing(true)
+    setAdminStatus('Previewing bulk audio zip...')
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/audio-tracks/bulk-upload/preview`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        setAdminStatus(`Bulk audio preview failed with HTTP ${response.status}.`)
+        return
+      }
+
+      const result = (await response.json()) as BulkAudioUploadPreviewResult
+      setBulkAudioPreview(result)
+      setBulkAudioResult(null)
+      setAdminStatus(
+        `Bulk audio preview: ${result.entriesMatched} matched, ${result.entriesMissing} missing entries from ${result.filesRead} files.`,
+      )
+    } catch {
+      setAdminStatus('Bulk audio preview failed. Check API availability and CORS settings.')
+    } finally {
+      setBulkAudioPreviewing(false)
+    }
+  }
+
   async function uploadBulkAudioZip() {
     if (!adminToken) {
       setAdminStatus('Sign in before uploading bulk audio.')
@@ -2039,6 +2100,7 @@ function App() {
 
       const result = (await response.json()) as BulkAudioUploadResult
       setBulkAudioResult(result)
+      setBulkAudioPreview(null)
       setAdminStatus(
         `Bulk audio uploaded: ${result.tracksCreated} created, ${result.tracksUpdated} updated, ${result.entriesMissing} missing entries.`,
       )
@@ -3989,6 +4051,7 @@ function App() {
                         type="file"
                         onChange={(event) => {
                           setBulkAudioFile(event.currentTarget.files?.[0] ?? null)
+                          setBulkAudioPreview(null)
                           setBulkAudioResult(null)
                         }}
                       />
@@ -4002,11 +4065,47 @@ function App() {
                       </select>
                     </label>
                     <div className="admin-field-row">
-                      <button className="admin-action secondary" disabled={isBulkAudioUploading} type="button" onClick={uploadBulkAudioZip}>
+                      <button
+                        className="admin-action secondary"
+                        disabled={isBulkAudioPreviewing || isBulkAudioUploading}
+                        type="button"
+                        onClick={previewBulkAudioZip}
+                      >
+                        <Search aria-hidden="true" />
+                        {isBulkAudioPreviewing ? 'Previewing audio...' : 'Preview audio ZIP'}
+                      </button>
+                      <button
+                        className="admin-action secondary"
+                        disabled={isBulkAudioPreviewing || isBulkAudioUploading}
+                        type="button"
+                        onClick={uploadBulkAudioZip}
+                      >
                         <Upload aria-hidden="true" />
                         {isBulkAudioUploading ? 'Uploading audio...' : 'Upload audio ZIP'}
                       </button>
                     </div>
+                    {bulkAudioPreview && (
+                      <div className="import-result">
+                        <strong>{bulkAudioPreview.filesRead} audio files in preview</strong>
+                        <span>{bulkAudioPreview.filesSupported} supported files</span>
+                        <span>{bulkAudioPreview.entriesMatched} entries matched</span>
+                        <span>{bulkAudioPreview.entriesMissing} entries missing</span>
+                        {bulkAudioPreview.warnings.length > 0 && <span>{bulkAudioPreview.warnings.length} warnings</span>}
+                      </div>
+                    )}
+                    {bulkAudioPreview?.warnings.length ? (
+                      <div className="validation-report">
+                        <strong>Audio ZIP report</strong>
+                        {bulkAudioPreview.rows
+                          .filter((row) => row.warning)
+                          .slice(0, 12)
+                          .map((row) => (
+                            <span className="validation-issue warning" key={row.fileName}>
+                              {row.fileName}: {row.warning}
+                            </span>
+                          ))}
+                      </div>
+                    ) : null}
                     {bulkAudioResult && (
                       <div className="import-result">
                         <strong>{bulkAudioResult.filesRead} audio files read</strong>

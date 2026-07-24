@@ -23,7 +23,8 @@ python tools/generate-entry-audio.py --lang cs --tts-root C:\Users\danie\Documen
 
 ## Bulk upload
 
-In the admin UI open `Media`, choose `Bulk audio ZIP`, select the language, and upload the generated zip.
+In the admin UI open `Media`, choose `Bulk audio ZIP`, select the language, and run `Preview audio ZIP` first.
+If the preview shows the expected matched entries and no unexpected missing slugs, upload the generated zip.
 
 The backend matches audio files by entry slug. Supported names:
 
