@@ -111,6 +111,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         var rowsRead = 0;
         var entriesToCreate = 0;
         var entriesToUpdate = 0;
+        var placesToAttach = 0;
 
         foreach (var duplicateGroup in existingEntriesBySourceRow
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}")
@@ -203,6 +204,9 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     warnings,
                     rowIssues);
 
+                var rowPlaces = ResolvePreviewPlaces(rowValues, worksheet.Name);
+                placesToAttach += rowPlaces.Count;
+
                 previewRows.Add(new WorkbookImportPreviewRow(
                     worksheet.Name,
                     rowNumber,
@@ -215,6 +219,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                     existingEntry?.Slug,
                     ResolveSourceUrl(rowValues),
                     ResolvePreviewTags(rowValues, worksheet.Name),
+                    rowPlaces,
                     rowWarnings,
                     rowIssues));
             }
@@ -236,6 +241,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             rowsRead,
             entriesToCreate,
             entriesToUpdate,
+            placesToAttach,
             previewRows,
             warnings,
             CreateValidationSummary(validationIssues),
@@ -294,6 +300,8 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
 
         var entriesCreated = 0;
         var entriesUpdated = 0;
+        var placesCreated = 0;
+        var placesAttached = 0;
         var rowsRead = 0;
 
         var batch = new ImportBatch
@@ -382,7 +390,9 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 AttachSource(entry, rowValues, sourceCache);
                 AttachImportedTags(entry, rowValues, worksheet.Name, tagCache);
                 AttachTimePeriod(entry, rowValues, periodCache);
-                AttachImportedPlaces(entry, rowValues, worksheet.Name, placeCache);
+                var placeCounts = AttachImportedPlaces(entry, rowValues, worksheet.Name, placeCache);
+                placesCreated += placeCounts.PlacesCreated;
+                placesAttached += placeCounts.PlacesAttached;
             }
         }
 
@@ -393,12 +403,14 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             rowsRead,
             entriesCreated,
             entriesUpdated,
+            placesCreated,
+            placesAttached,
             warnings
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new WorkbookImportResult(batch.Id, rowsRead, entriesCreated, entriesUpdated, warnings);
+        return new WorkbookImportResult(batch.Id, rowsRead, entriesCreated, entriesUpdated, placesCreated, placesAttached, warnings);
     }
 
     private static void UpdateExistingEntry(Entry target, Entry imported)
@@ -790,7 +802,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
         }
     }
 
-    private void AttachImportedPlaces(
+    private ImportedPlaceAttachCounts AttachImportedPlaces(
         Entry entry,
         IReadOnlyDictionary<string, string?> row,
         string sheetName,
@@ -801,9 +813,11 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
             : Value(row, "Tradition");
         if (string.IsNullOrWhiteSpace(sourceValue))
         {
-            return;
+            return new ImportedPlaceAttachCounts(0, 0);
         }
 
+        var placesCreated = 0;
+        var placesAttached = 0;
         var sortOrder = entry.Places.Count == 0 ? 0 : entry.Places.Max(place => place.SortOrder) + 1;
         foreach (var importedPlace in ResolveImportedPlaces(sourceValue, sheetName))
         {
@@ -828,6 +842,7 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 };
                 placeCache[place.Slug] = place;
                 dbContext.Places.Add(place);
+                placesCreated++;
             }
 
             if (entry.Places.Any(entryPlace => entryPlace.Place == place || entryPlace.PlaceId == place.Id))
@@ -843,7 +858,24 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
                 SortOrder = sortOrder++,
                 Note = importedPlace.Description
             });
+            placesAttached++;
         }
+
+        return new ImportedPlaceAttachCounts(placesCreated, placesAttached);
+    }
+
+    private static IReadOnlyList<string> ResolvePreviewPlaces(
+        IReadOnlyDictionary<string, string?> row,
+        string sheetName)
+    {
+        var sourceValue = sheetName.Equals("Master Timeline", StringComparison.OrdinalIgnoreCase)
+            ? Value(row, "Region")
+            : Value(row, "Tradition");
+        return string.IsNullOrWhiteSpace(sourceValue)
+            ? []
+            : ResolveImportedPlaces(sourceValue, sheetName)
+                .Select(place => place.Name)
+                .ToList();
     }
 
     private static IEnumerable<ImportedPlaceSeed> ResolveImportedPlaces(string value, string sheetName)
@@ -1084,6 +1116,8 @@ public sealed partial class WorkbookImportService(HistoryDbContext dbContext) : 
     private static partial Regex CollapseDashesRegex();
 
     private sealed record ExistingImportEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
+
+    private sealed record ImportedPlaceAttachCounts(int PlacesCreated, int PlacesAttached);
 
     private sealed record ImportedPlaceSeed(
         string Slug,

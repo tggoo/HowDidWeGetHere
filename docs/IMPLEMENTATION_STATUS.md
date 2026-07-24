@@ -35,6 +35,8 @@ Last updated: 2026-07-24
 - 2026-07-23: Added admin entry translation overview and EN/CS/ES editing workflow.
 - 2026-07-23: Added persistent light/dark theme toggle with dark styling for app panels, admin UI and map tiles.
 - 2026-07-24: Added workbook import mapping from known region/tradition labels to approximate map places.
+- 2026-07-24: Normalized workbook rows so current preview validation reports zero warnings.
+- 2026-07-24: Added bulk audio ZIP upload and workbook-to-TTS narration generation workflow.
 
 ## Goal
 
@@ -116,6 +118,7 @@ Build a mobile-first historical world map app with:
 - add entry audio URL
 - upload local entry image files
 - upload local entry audio files
+- bulk upload local entry audio files from a slug-named ZIP
 - update and delete entry images
 - update and delete entry audio tracks
 - add place/coordinate to entry
@@ -142,6 +145,7 @@ Build a mobile-first historical world map app with:
 - imported workbook rows can update existing entries by source sheet and row instead of creating duplicates
 - imported workbook rows can also update existing entries by slug when source row metadata is missing or changed
 - imported workbook rows can attach approximate regional map places from known Region/Tradition labels
+- workbook date/source rows are normalized to avoid current preview warnings
 
 ### Frontend
 
@@ -197,6 +201,7 @@ Build a mobile-first historical world map app with:
 - primary audio URL attachment
 - primary image file upload
 - primary audio file upload
+- bulk audio ZIP upload from the media admin page
 - image/audio URL edit and delete controls
 
 ### Deployment
@@ -222,7 +227,7 @@ The importer reads the current workbook sheets, previews create/update counts an
 
 ### Admin UI
 
-Admin can sign in, import, list entries, create/edit basic content and EN/CS/ES entry translations, add/edit/delete media URLs, upload local image/audio files, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. Admin tools are now separated into single-page sections with table views for non-entry entities. It is not yet a complete CMS. Missing pieces include richer validation and cloud/object media storage.
+Admin can sign in, import, list entries, create/edit basic content and EN/CS/ES entry translations, add/edit/delete media URLs, upload local image/audio files, bulk upload slug-named audio ZIP files, attach point places with coordinates, create/edit/delete basic routes, create/edit/delete outgoing relationships by target slug, attach/edit/delete source links by URL, create/update/delete unused time periods and create/update/attach/detach/delete tags. Admin tools are now separated into single-page sections with table views for non-entry entities. It is not yet a complete CMS. Missing pieces include richer validation and cloud/object media storage.
 
 ### Multilingual support
 

@@ -205,6 +205,17 @@ type WorkbookImportResult = {
   rowsRead: number | string
   entriesCreated: number | string
   entriesUpdated: number | string
+  placesCreated: number | string
+  placesAttached: number | string
+  warnings: string[]
+}
+
+type BulkAudioUploadResult = {
+  filesRead: number | string
+  tracksCreated: number | string
+  tracksUpdated: number | string
+  entriesMatched: number | string
+  entriesMissing: number | string
   warnings: string[]
 }
 
@@ -212,6 +223,7 @@ type WorkbookImportPreviewResult = {
   rowsRead: number | string
   entriesToCreate: number | string
   entriesToUpdate: number | string
+  placesToAttach: number | string
   validationSummary: {
     errors: number | string
     warnings: number | string
@@ -229,6 +241,7 @@ type WorkbookImportPreviewResult = {
     existingEntrySlug?: string | null
     sourceUrl?: string | null
     tags: string[]
+    places: string[]
     warnings: string[]
     validationIssues: Array<{
       severity: string
@@ -737,6 +750,10 @@ function App() {
   const [mediaInputResetKey, setMediaInputResetKey] = useState(0)
   const [adminEntryImages, setAdminEntryImages] = useState<EntryDetail['images']>([])
   const [adminEntryAudioTracks, setAdminEntryAudioTracks] = useState<EntryDetail['audioTracks']>([])
+  const [bulkAudioFile, setBulkAudioFile] = useState<File | null>(null)
+  const [bulkAudioLanguage, setBulkAudioLanguage] = useState('en')
+  const [isBulkAudioUploading, setBulkAudioUploading] = useState(false)
+  const [bulkAudioResult, setBulkAudioResult] = useState<BulkAudioUploadResult | null>(null)
   const [adminEntryPlaces, setAdminEntryPlaces] = useState<EntryDetail['places']>([])
   const [placeForm, setPlaceForm] = useState({
     name: '',
@@ -1646,7 +1663,7 @@ function App() {
       setImportPreview(result)
       setImportResult(null)
       setAdminStatus(
-        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new and ${result.entriesToUpdate} updates.`,
+        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new, ${result.entriesToUpdate} updates and ${result.placesToAttach} map places.`,
       )
     } catch {
       setAdminStatus('Preview failed. Check API availability and CORS settings.')
@@ -1689,7 +1706,9 @@ function App() {
       const result = (await response.json()) as WorkbookImportResult
       setImportResult(result)
       setImportPreview(null)
-      setAdminStatus(`Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows.`)
+      setAdminStatus(
+        `Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows. Attached ${result.placesAttached} map places.`,
+      )
       setReloadKey((value) => value + 1)
     } catch {
       setAdminStatus('Import failed. Check API availability and CORS settings.')
@@ -1986,6 +2005,52 @@ function App() {
     setAdminStatus('Audio uploaded.')
     setReloadKey((value) => value + 1)
     await loadAdminEntryDetail(entryForm.id)
+  }
+
+  async function uploadBulkAudioZip() {
+    if (!adminToken) {
+      setAdminStatus('Sign in before uploading bulk audio.')
+      return
+    }
+
+    if (!bulkAudioFile) {
+      setAdminStatus('Choose an audio .zip file first.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', bulkAudioFile)
+    formData.append('languageCode', bulkAudioLanguage)
+
+    setBulkAudioUploading(true)
+    setAdminStatus('Uploading bulk audio zip...')
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/audio-tracks/bulk-upload`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        setAdminStatus(`Bulk audio upload failed with HTTP ${response.status}.`)
+        return
+      }
+
+      const result = (await response.json()) as BulkAudioUploadResult
+      setBulkAudioResult(result)
+      setAdminStatus(
+        `Bulk audio uploaded: ${result.tracksCreated} created, ${result.tracksUpdated} updated, ${result.entriesMissing} missing entries.`,
+      )
+      setReloadKey((value) => value + 1)
+      if (entryForm.id) {
+        await loadAdminEntryDetail(entryForm.id)
+      }
+    } catch {
+      setAdminStatus('Bulk audio upload failed. Check API availability and CORS settings.')
+    } finally {
+      setBulkAudioUploading(false)
+    }
   }
 
   async function deleteEntryAudioTrack(audioTrackId: string) {
@@ -2936,6 +3001,7 @@ function App() {
                       <strong>{importPreview.rowsRead} rows in preview</strong>
                       <span>{importPreview.entriesToCreate} entries would be created</span>
                       <span>{importPreview.entriesToUpdate} entries would be updated</span>
+                      <span>{importPreview.placesToAttach} map places would be attached</span>
                       <span>
                         {importPreview.validationSummary.errors} errors / {importPreview.validationSummary.warnings} warnings /{' '}
                         {importPreview.validationSummary.info} info
@@ -2960,6 +3026,7 @@ function App() {
                             <th>Title</th>
                             <th>Action</th>
                             <th>Tags</th>
+                            <th>Places</th>
                             <th>Validation</th>
                           </tr>
                         </thead>
@@ -2975,6 +3042,7 @@ function App() {
                               </td>
                               <td>{row.willUpdateExistingEntry ? `Update ${row.existingEntrySlug ?? ''}` : 'Create'}</td>
                               <td>{row.tags.slice(0, 4).join(', ') || '-'}</td>
+                              <td>{row.places.slice(0, 4).join(', ') || '-'}</td>
                               <td>
                                 {row.validationIssues.length > 0
                                   ? row.validationIssues.map((issue) => issue.code).join(', ')
@@ -2991,6 +3059,8 @@ function App() {
                   <div className="import-result">
                     <strong>{importResult.entriesCreated} entries imported</strong>
                     <span>{importResult.entriesUpdated} entries updated</span>
+                    <span>{importResult.placesCreated} map places created</span>
+                    <span>{importResult.placesAttached} map places attached</span>
                     <span>{importResult.rowsRead} rows read</span>
                     {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
                   </div>
@@ -3910,6 +3980,43 @@ function App() {
                 <>
                   <div className="admin-section-title">
                     <span>Media</span>
+                  </div>
+                  <div className="admin-form">
+                    <label>
+                      Bulk audio ZIP
+                      <input
+                        accept=".zip,application/zip"
+                        type="file"
+                        onChange={(event) => {
+                          setBulkAudioFile(event.currentTarget.files?.[0] ?? null)
+                          setBulkAudioResult(null)
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Default language
+                      <select value={bulkAudioLanguage} onChange={(event) => setBulkAudioLanguage(event.target.value)}>
+                        <option value="en">English</option>
+                        <option value="cs">Czech</option>
+                        <option value="es">Spanish</option>
+                      </select>
+                    </label>
+                    <div className="admin-field-row">
+                      <button className="admin-action secondary" disabled={isBulkAudioUploading} type="button" onClick={uploadBulkAudioZip}>
+                        <Upload aria-hidden="true" />
+                        {isBulkAudioUploading ? 'Uploading audio...' : 'Upload audio ZIP'}
+                      </button>
+                    </div>
+                    {bulkAudioResult && (
+                      <div className="import-result">
+                        <strong>{bulkAudioResult.filesRead} audio files read</strong>
+                        <span>{bulkAudioResult.tracksCreated} tracks created</span>
+                        <span>{bulkAudioResult.tracksUpdated} tracks updated</span>
+                        <span>{bulkAudioResult.entriesMatched} entries matched</span>
+                        <span>{bulkAudioResult.entriesMissing} entries missing</span>
+                        {bulkAudioResult.warnings.length > 0 && <span>{bulkAudioResult.warnings.length} warnings</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="admin-table-scroll">
                     <table className="admin-table">

@@ -304,6 +304,14 @@ public sealed record AdminEntryAudioTrackRequest(
     string? License,
     string? SourceUrl);
 
+public sealed record BulkAudioUploadResult(
+    int FilesRead,
+    int TracksCreated,
+    int TracksUpdated,
+    int EntriesMatched,
+    int EntriesMissing,
+    IReadOnlyList<string> Warnings);
+
 public sealed record AdminEntryPlaceRequest(
     string Name,
     string? Slug,

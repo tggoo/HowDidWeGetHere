@@ -5,12 +5,15 @@ public sealed record WorkbookImportResult(
     int RowsRead,
     int EntriesCreated,
     int EntriesUpdated,
+    int PlacesCreated,
+    int PlacesAttached,
     IReadOnlyList<string> Warnings);
 
 public sealed record WorkbookImportPreviewResult(
     int RowsRead,
     int EntriesToCreate,
     int EntriesToUpdate,
+    int PlacesToAttach,
     IReadOnlyList<WorkbookImportPreviewRow> Rows,
     IReadOnlyList<string> Warnings,
     WorkbookImportValidationSummary ValidationSummary,
@@ -28,6 +31,7 @@ public sealed record WorkbookImportPreviewRow(
     string? ExistingEntrySlug,
     string? SourceUrl,
     IReadOnlyList<string> Tags,
+    IReadOnlyList<string> Places,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<WorkbookImportValidationIssue> ValidationIssues);
 

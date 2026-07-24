@@ -16,7 +16,9 @@ public static partial class HistoricalDateParser
         var normalized = label.Trim()
             .Replace('–', '-')
             .Replace('—', '-')
-            .Replace(",", string.Empty);
+            .Replace(",", string.Empty)
+            .Replace('–', '-')
+            .Replace('—', '-');
 
         if (DateOnly.TryParseExact(normalized, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
@@ -36,9 +38,18 @@ public static partial class HistoricalDateParser
         var range = RangeRegex().Match(normalized);
         if (range.Success)
         {
-            var isBce = range.Groups["era"].Value.Equals("BCE", StringComparison.OrdinalIgnoreCase);
-            var start = ParseYearToken(range.Groups["start"].Value, range.Groups["startScale"].Value, isBce);
-            var end = ParseYearToken(range.Groups["end"].Value, range.Groups["endScale"].Value, isBce);
+            var startEra = range.Groups["startEra"].Value;
+            var endEra = range.Groups["endEra"].Value;
+            var inferredStartEra = string.IsNullOrWhiteSpace(startEra) ? endEra : startEra;
+            var inferredEndEra = string.IsNullOrWhiteSpace(endEra) ? startEra : endEra;
+            var start = ParseYearToken(
+                range.Groups["start"].Value,
+                range.Groups["startScale"].Value,
+                inferredStartEra.Equals("BCE", StringComparison.OrdinalIgnoreCase));
+            var end = ParseYearToken(
+                range.Groups["end"].Value,
+                range.Groups["endScale"].Value,
+                inferredEndEra.Equals("BCE", StringComparison.OrdinalIgnoreCase));
             return new HistoricalDateRange(start, null, null, end, null, null, IsApproximate(normalized) ? TimePrecision.Approximate : TimePrecision.Range);
         }
 
@@ -72,10 +83,9 @@ public static partial class HistoricalDateParser
     [GeneratedRegex(@"(?<value>\d+)(st|nd|rd|th)\s+century\s+(?<era>BCE|CE)", RegexOptions.IgnoreCase)]
     private static partial Regex CenturyRegex();
 
-    [GeneratedRegex(@"(?<start>\d+(\.\d+)?)\s*(?<startScale>million)?\s*-\s*(?<end>\d+(\.\d+)?)\s*(?<endScale>million)?\s*(?<era>BCE|CE)?", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<start>\d+(\.\d+)?)\s*(?<startScale>million)?\s*(?<startEra>BCE|CE)?\s*-\s*(?<end>\d+(\.\d+)?)\s*(?<endScale>million)?\s*(?<endEra>BCE|CE)?", RegexOptions.IgnoreCase)]
     private static partial Regex RangeRegex();
 
     [GeneratedRegex(@"(?<value>\d+(\.\d+)?)\s*(?<scale>million)?\s*(?<era>BCE|CE)?", RegexOptions.IgnoreCase)]
     private static partial Regex SingleYearRegex();
 }
-

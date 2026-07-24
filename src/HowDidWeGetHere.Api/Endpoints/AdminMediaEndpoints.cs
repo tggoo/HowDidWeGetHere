@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.IO.Compression;
 using HowDidWeGetHere.Api.Contracts;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
@@ -12,6 +13,7 @@ public static class AdminMediaEndpoints
 {
     private const long DefaultMaxImageBytes = 10 * 1024 * 1024;
     private const long DefaultMaxAudioBytes = 50 * 1024 * 1024;
+    private const long DefaultMaxAudioZipBytes = 512 * 1024 * 1024;
 
     private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -68,6 +70,13 @@ public static class AdminMediaEndpoints
             .Produces<ResourceCreatedResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
+            .DisableAntiforgery()
+            .ExcludeFromDescription();
+
+        admin.MapPost("/audio-tracks/bulk-upload", BulkUploadAudioTracksAsync)
+            .Accepts<IFormFile>("multipart/form-data")
+            .Produces<BulkAudioUploadResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
             .DisableAntiforgery()
             .ExcludeFromDescription();
 
@@ -312,6 +321,141 @@ public static class AdminMediaEndpoints
         return Results.Created($"/api/admin/entries/{entryId}/audio-tracks/{audioTrack.Id}", new ResourceCreatedResponse(audioTrack.Id, null));
     }
 
+    private static async Task<IResult> BulkUploadAudioTracksAsync(
+        [FromForm] IFormFile file,
+        [FromForm] string? languageCode,
+        HistoryDbContext dbContext,
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        HttpRequest httpRequest,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var validationError = ValidateAudioZipUpload(file, configuration);
+        if (validationError is not null)
+        {
+            return Results.BadRequest(new { error = validationError });
+        }
+
+        var fallbackLanguage = EndpointHelpers.NormalizeLanguage(languageCode);
+        var entriesBySlug = await dbContext.Entries
+            .Include(entry => entry.AudioTracks)
+            .ToDictionaryAsync(entry => entry.Slug, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var warnings = new List<string>();
+        var filesRead = 0;
+        var tracksCreated = 0;
+        var tracksUpdated = 0;
+        var entriesMatched = 0;
+        var entriesMissing = 0;
+
+        await using var uploadStream = file.OpenReadStream();
+        using var archive = new ZipArchive(uploadStream, ZipArchiveMode.Read, leaveOpen: false);
+        foreach (var archiveEntry in archive.Entries)
+        {
+            if (string.IsNullOrWhiteSpace(archiveEntry.Name))
+            {
+                continue;
+            }
+
+            filesRead++;
+            var extension = Path.GetExtension(archiveEntry.Name);
+            if (string.IsNullOrWhiteSpace(extension) || !AllowedAudioExtensions.Contains(extension))
+            {
+                warnings.Add($"{archiveEntry.FullName}: unsupported audio extension '{extension}'.");
+                continue;
+            }
+
+            if (archiveEntry.Length == 0)
+            {
+                warnings.Add($"{archiveEntry.FullName}: file is empty.");
+                continue;
+            }
+
+            if (archiveEntry.Length > GetMaxAudioBytes(configuration))
+            {
+                warnings.Add($"{archiveEntry.FullName}: file exceeds maximum audio size.");
+                continue;
+            }
+
+            var audioName = ParseBulkAudioFileName(archiveEntry.Name, fallbackLanguage);
+            if (!entriesBySlug.TryGetValue(audioName.EntrySlug, out var entry))
+            {
+                entriesMissing++;
+                warnings.Add($"{archiveEntry.FullName}: entry slug '{audioName.EntrySlug}' was not found.");
+                continue;
+            }
+
+            entriesMatched++;
+            var language = EndpointHelpers.NormalizeLanguage(audioName.LanguageCode);
+            var existingPrimary = entry.AudioTracks
+                .Where(track => track.LanguageCode == language)
+                .OrderByDescending(track => track.IsPrimary)
+                .ThenBy(track => track.SortOrder)
+                .FirstOrDefault();
+            foreach (var track in entry.AudioTracks.Where(track => track.LanguageCode == language))
+            {
+                track.IsPrimary = false;
+            }
+
+            await using var entryStream = archiveEntry.Open();
+            var storedFile = await SaveUploadStreamAsync(
+                entryStream,
+                archiveEntry.Name,
+                ResolveAudioMediaType(extension),
+                "audio",
+                environment,
+                configuration,
+                httpRequest,
+                cancellationToken);
+
+            if (existingPrimary is null)
+            {
+                entry.AudioTracks.Add(new EntryAudioTrack
+                {
+                    Entry = entry,
+                    LanguageCode = language,
+                    Kind = AudioKind.Narration,
+                    StorageProvider = StorageProvider.Local,
+                    StorageKey = storedFile.StorageKey,
+                    PublicUrl = storedFile.PublicUrl,
+                    MediaType = storedFile.MediaType,
+                    SortOrder = 0,
+                    IsPrimary = true,
+                    Title = $"{entry.DefaultTitle} narration",
+                    CreatedByUserId = user.FindFirstValue(ClaimTypes.NameIdentifier)
+                });
+                tracksCreated++;
+            }
+            else
+            {
+                TryDeleteLocalFile(existingPrimary.StorageProvider, existingPrimary.StorageKey, environment, configuration);
+                existingPrimary.Kind = AudioKind.Narration;
+                existingPrimary.StorageProvider = StorageProvider.Local;
+                existingPrimary.StorageKey = storedFile.StorageKey;
+                existingPrimary.PublicUrl = storedFile.PublicUrl;
+                existingPrimary.MediaType = storedFile.MediaType;
+                existingPrimary.SortOrder = 0;
+                existingPrimary.IsPrimary = true;
+                existingPrimary.Title = string.IsNullOrWhiteSpace(existingPrimary.Title)
+                    ? $"{entry.DefaultTitle} narration"
+                    : existingPrimary.Title;
+                existingPrimary.UpdatedAt = DateTimeOffset.UtcNow;
+                existingPrimary.UpdatedByUserId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                tracksUpdated++;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new BulkAudioUploadResult(
+            filesRead,
+            tracksCreated,
+            tracksUpdated,
+            entriesMatched,
+            entriesMissing,
+            warnings));
+    }
+
     private static async Task<IResult> UpdateAudioTrackAsync(
         Guid entryId,
         Guid audioTrackId,
@@ -395,6 +539,27 @@ public static class AdminMediaEndpoints
         return null;
     }
 
+    private static string? ValidateAudioZipUpload(IFormFile file, IConfiguration configuration)
+    {
+        if (file.Length == 0)
+        {
+            return "Uploaded zip file is empty.";
+        }
+
+        if (file.Length > GetMaxAudioZipBytes(configuration))
+        {
+            return $"Uploaded zip file is too large. Maximum size is {GetMaxAudioZipBytes(configuration) / 1024 / 1024} MB.";
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Bulk audio upload must be a .zip file.";
+        }
+
+        return null;
+    }
+
     private static async Task<StoredMediaFile> SaveUploadAsync(
         IFormFile file,
         string mediaFolder,
@@ -403,7 +568,29 @@ public static class AdminMediaEndpoints
         HttpRequest httpRequest,
         CancellationToken cancellationToken)
     {
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        await using var stream = file.OpenReadStream();
+        return await SaveUploadStreamAsync(
+            stream,
+            file.FileName,
+            file.ContentType,
+            mediaFolder,
+            environment,
+            configuration,
+            httpRequest,
+            cancellationToken);
+    }
+
+    private static async Task<StoredMediaFile> SaveUploadStreamAsync(
+        Stream sourceStream,
+        string fileName,
+        string? contentType,
+        string mediaFolder,
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        HttpRequest httpRequest,
+        CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
         var storageKey = Path.Combine(
                 "media",
                 mediaFolder,
@@ -419,11 +606,11 @@ public static class AdminMediaEndpoints
 
         await using (var stream = File.Create(fullPath))
         {
-            await file.CopyToAsync(stream, cancellationToken);
+            await sourceStream.CopyToAsync(stream, cancellationToken);
         }
 
         var publicPath = "/" + storageKey;
-        return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), file.ContentType);
+        return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), contentType);
     }
 
     private static string GetStaticRoot(IWebHostEnvironment environment, IConfiguration configuration)
@@ -468,6 +655,43 @@ public static class AdminMediaEndpoints
 
     private static long GetMaxAudioBytes(IConfiguration configuration) =>
         configuration.GetValue<long?>("Media:MaxAudioBytes") ?? DefaultMaxAudioBytes;
+
+    private static long GetMaxAudioZipBytes(IConfiguration configuration) =>
+        configuration.GetValue<long?>("Media:MaxAudioZipBytes") ?? DefaultMaxAudioZipBytes;
+
+    private static BulkAudioFileName ParseBulkAudioFileName(string fileName, string fallbackLanguage)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        var language = fallbackLanguage;
+        foreach (var supportedLanguage in new[] { "en", "cs", "es" })
+        {
+            foreach (var separator in new[] { ".", "_", "-" })
+            {
+                var suffix = $"{separator}{supportedLanguage}";
+                if (!baseName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return new BulkAudioFileName(
+                    baseName[..^suffix.Length],
+                    supportedLanguage);
+            }
+        }
+
+        return new BulkAudioFileName(baseName, language);
+    }
+
+    private static string ResolveAudioMediaType(string extension) =>
+        extension.ToLowerInvariant() switch
+        {
+            ".mp3" => "audio/mpeg",
+            ".m4a" or ".mp4" => "audio/mp4",
+            ".ogg" or ".opus" => "audio/ogg",
+            ".wav" => "audio/wav",
+            ".webm" => "audio/webm",
+            _ => "application/octet-stream"
+        };
 
     private static void TryDeleteLocalFile(
         StorageProvider storageProvider,
@@ -541,4 +765,6 @@ public static class AdminMediaEndpoints
     }
 
     private sealed record StoredMediaFile(string StorageKey, string PublicUrl, string? MediaType);
+
+    private sealed record BulkAudioFileName(string EntrySlug, string LanguageCode);
 }
