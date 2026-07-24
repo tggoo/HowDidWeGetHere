@@ -657,23 +657,138 @@ function relationshipDirectionLabel(direction: string, language: string) {
   return relationshipDirectionLabels[direction]?.[language] ?? relationshipDirectionLabels[direction]?.en ?? direction
 }
 
-function periodYearLabel(period: TimePeriodListItem) {
+const uiCopy = {
+  en: {
+    appName: 'HowDidWeGetHere',
+    audio: 'Audio',
+    cacheCleared: 'Cached map data and media were cleared.',
+    cacheDone: (completed: number) => `Cached ${completed} media files for offline browsing.`,
+    cacheDoneWithFailures: (completed: number, total: number, failed: number) =>
+      `Cached ${completed}/${total} media files. ${failed} failed.`,
+    cacheProgress: (completed: number, total: number) => `Caching media ${completed}/${total}.`,
+    caching: 'Caching...',
+    clear: 'Clear',
+    closeEntryDetail: 'Close entry detail',
+    closeFilters: 'Close filters',
+    closeTags: 'Close tags',
+    dateUnknown: 'Date unknown',
+    downloadCount: (count: number) => `Download ${count}`,
+    entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
+      `Loaded ${entryCount} published entries and ${mapPointCount} map points${yearRange}${viewport}.`,
+    entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
+      `Loaded ${entryCount} published entries${yearRange}${viewport}. Add places or move the map to show points.`,
+    filters: 'Filters',
+    language: 'Language',
+    loadingInitial: 'Loading published map data.',
+    moreCount: (count: number) => `More ${count}`,
+    noMediaUrls: 'No media URLs are attached to the current results.',
+    noResults: 'No map points match the current filters.',
+    offlineCacheStarting: 'Offline cache is starting. Reload the app once and try again.',
+    offlineMedia: 'Offline media',
+    openAdminPanel: 'Open admin panel',
+    openFilters: 'Open filters',
+    places: 'Places',
+    queryFailed: 'API responded, but one of the map queries failed.',
+    relatedTopics: 'Related topics',
+    resetFilters: 'reset filters',
+    routeRecords: (count: number) => `${count} route records`,
+    searchEntries: 'Search entries',
+    selectedEntry: 'Selected entry',
+    sources: 'Sources',
+    switchToDarkMode: 'Switch to dark mode',
+    switchToLightMode: 'Switch to light mode',
+    tags: 'Tags',
+    timePeriod: 'Time period',
+    unsupportedCache: 'This browser does not support offline media cache.',
+    unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
+    viewportSuffix: ' in the visible map area',
+    whyItMatters: 'Why it matters',
+    yearFrom: 'From',
+    yearRangeSuffix: (from: string, to: string) => ` in ${from || '?'}-${to || '?'}`,
+    yearTo: 'To',
+    knownPoints: (count: number) => `${count} known points.`,
+  },
+  cs: {
+    appName: 'HowDidWeGetHere',
+    audio: 'Audio',
+    cacheCleared: 'Cache mapových dat a médií byla vymazána.',
+    cacheDone: (completed: number) => `Uloženo ${completed} mediálních souborů pro offline prohlížení.`,
+    cacheDoneWithFailures: (completed: number, total: number, failed: number) =>
+      `Uloženo ${completed}/${total} mediálních souborů. ${failed} selhalo.`,
+    cacheProgress: (completed: number, total: number) => `Ukládám média ${completed}/${total}.`,
+    caching: 'Ukládám...',
+    clear: 'Vyčistit',
+    closeEntryDetail: 'Zavřít detail záznamu',
+    closeFilters: 'Zavřít filtry',
+    closeTags: 'Zavřít tagy',
+    dateUnknown: 'Datum není známé',
+    downloadCount: (count: number) => `Stáhnout ${count}`,
+    entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
+      `Načteno ${entryCount} publikovaných záznamů a ${mapPointCount} bodů na mapě${yearRange}${viewport}.`,
+    entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
+      `Načteno ${entryCount} publikovaných záznamů${yearRange}${viewport}. Posuň mapu nebo doplň místa, aby se zobrazily body.`,
+    filters: 'Filtry',
+    language: 'Jazyk',
+    loadingInitial: 'Načítám publikovaná mapová data.',
+    moreCount: (count: number) => `Další ${count}`,
+    noMediaUrls: 'Aktuální výsledky nemají připojená žádná média.',
+    noResults: 'Pro dané filtry nebyly vybrány žádné body.',
+    offlineCacheStarting: 'Offline cache se spouští. Načti aplikaci znovu a zkus to ještě jednou.',
+    offlineMedia: 'Offline média',
+    openAdminPanel: 'Otevřít administraci',
+    openFilters: 'Otevřít filtry',
+    places: 'Místa',
+    queryFailed: 'API odpovědělo, ale jeden z dotazů na mapu selhal.',
+    relatedTopics: 'Související témata',
+    resetFilters: 'resetovat filtr',
+    routeRecords: (count: number) => `${count} záznamů trasy`,
+    searchEntries: 'Hledat záznamy',
+    selectedEntry: 'Vybraný záznam',
+    sources: 'Zdroje',
+    switchToDarkMode: 'Přepnout do tmavého režimu',
+    switchToLightMode: 'Přepnout do světlého režimu',
+    tags: 'Tagy',
+    timePeriod: 'Časové období',
+    unsupportedCache: 'Tento prohlížeč nepodporuje offline cache médií.',
+    unreachableApi: 'API není dostupné. Zkontroluj Render API URL a CORS nastavení.',
+    viewportSuffix: ' ve viditelné oblasti mapy',
+    whyItMatters: 'Proč je to důležité',
+    yearFrom: 'Od',
+    yearRangeSuffix: (from: string, to: string) => ` v období ${from || '?'}-${to || '?'}`,
+    yearTo: 'Do',
+    knownPoints: (count: number) => `${count} známých bodů.`,
+  },
+} as const
+
+function normalizeUiLanguage(language: string): keyof typeof uiCopy {
+  return language === 'cs' ? 'cs' : 'en'
+}
+
+function periodYearLabel(period: TimePeriodListItem, dateUnknown: string) {
   if (period.startYear == null && period.endYear == null) {
-    return 'Date unknown'
+    return dateUnknown
   }
 
   return `${period.startYear ?? '?'}-${period.endYear ?? '?'}`
 }
 
-function tagGroupLabel(group: string) {
-  const labels: Record<string, string> = {
-    category: 'Topics',
-    tradition: 'Traditions and countries',
-    'legacy-region-label': 'Places and regions',
-    'mythology-type': 'Mythology types',
+function tagGroupLabel(group: string, language: keyof typeof uiCopy) {
+  const labels: Record<keyof typeof uiCopy, Record<string, string>> = {
+    en: {
+      category: 'Topics',
+      tradition: 'Traditions and countries',
+      'legacy-region-label': 'Places and regions',
+      'mythology-type': 'Mythology types',
+    },
+    cs: {
+      category: 'Témata',
+      tradition: 'Tradice a země',
+      'legacy-region-label': 'Místa a regiony',
+      'mythology-type': 'Typy mytologie',
+    },
   }
 
-  return labels[group] ?? group.replaceAll('-', ' ')
+  return labels[language][group] ?? group.replaceAll('-', ' ')
 }
 
 function tagEntryCount(tag: TagListItem) {
@@ -810,6 +925,8 @@ function App() {
   const theme = useAppStore((state) => state.theme)
   const toYear = useAppStore((state) => state.toYear)
   const toggleTagState = useAppStore((state) => state.toggleTag)
+  const uiLanguage = normalizeUiLanguage(language)
+  const ui = uiCopy[uiLanguage]
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
   const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
@@ -817,7 +934,8 @@ function App() {
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
-  const [mapStatus, setMapStatus] = useState('Showing starter data until published entries are loaded.')
+  const [mapStatus, setMapStatus] = useState<string>(ui.loadingInitial)
+  const [isMapEmptyResult, setMapEmptyResult] = useState(false)
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminSession, setAdminSession] = useState<AdminAuthSession | null>(() => readStoredAdminSession())
@@ -986,22 +1104,28 @@ function App() {
         const mapPointCount = mapPayload.reduce((count, entry) => count + entry.points.length, 0)
 
         if (entriesResult.error || periodsResult.error || tagsResult.error || mapResult.error) {
-          setMapStatus('API responded, but one of the map queries failed.')
+          setMapEmptyResult(false)
+          setMapStatus(ui.queryFailed)
           return
         }
 
         if (entriesResult.data && entriesResult.data.length > 0) {
           setEntries(entriesResult.data as EntryListItem[])
           setSelectedEntryId(entriesResult.data[0].id)
-          const yearRangeLabel = fromYear || toYear ? ` in ${fromYear || '?'}-${toYear || '?'}` : ''
-          const viewportLabel = mapViewport ? ' in the visible map area' : ''
+          setMapEmptyResult(false)
+          const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
+          const viewportLabel = mapViewport ? ui.viewportSuffix : ''
           setMapStatus(
             mapPointCount > 0
-              ? `Loaded ${entriesResult.data.length} published entries and ${mapPointCount} map points${yearRangeLabel}${viewportLabel}.`
-              : `Loaded ${entriesResult.data.length} published entries${yearRangeLabel}${viewportLabel}. Add places or move the map to show points.`,
+              ? ui.entriesLoaded(entriesResult.data.length, mapPointCount, yearRangeLabel, viewportLabel)
+              : ui.entriesLoadedNoPoints(entriesResult.data.length, yearRangeLabel, viewportLabel),
           )
         } else {
-          setMapStatus('API is reachable, but no published entries matched the current filters.')
+          setEntries([])
+          setSelectedEntryId('')
+          setSelectedEntryDetail(null)
+          setMapEmptyResult(true)
+          setMapStatus(ui.noResults)
         }
 
         if (periodsResult.data && periodsResult.data.length > 0) {
@@ -1015,7 +1139,8 @@ function App() {
         setMapEntries(mapPayload)
       } catch {
         if (isActive) {
-          setMapStatus('Unable to reach the API. Check Render API URL and CORS settings.')
+          setMapEmptyResult(false)
+          setMapStatus(ui.unreachableApi)
         }
       } finally {
         if (isActive) {
@@ -1029,7 +1154,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setSelectedEntryId, toYear])
+  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setSelectedEntryId, toYear, ui])
 
   useEffect(() => {
     let isActive = true
@@ -1130,7 +1255,7 @@ function App() {
           failed: progress.failed,
           total: progress.total,
         })
-        setMediaCacheStatus(`Caching media ${progress.completed}/${progress.total}.`)
+        setMediaCacheStatus(ui.cacheProgress(progress.completed, progress.total))
       }
 
       if (event.data?.type === 'HDWGH_PREFETCH_DONE') {
@@ -1143,19 +1268,20 @@ function App() {
         })
         setMediaCacheStatus(
           progress.failed > 0
-            ? `Cached ${progress.completed}/${progress.total} media files. ${progress.failed} failed.`
-            : `Cached ${progress.completed} media files for offline browsing.`,
+            ? ui.cacheDoneWithFailures(progress.completed, progress.total, progress.failed)
+            : ui.cacheDone(progress.completed),
         )
       }
 
       if (event.data?.type === 'HDWGH_CACHE_CLEARED') {
         clearRuntimeCacheState()
+        setMediaCacheStatus(ui.cacheCleared)
       }
     }
 
     navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage)
     return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage)
-  }, [clearRuntimeCacheState, setMediaCacheProgress, setMediaCacheStatus, setMediaPrefetching])
+  }, [clearRuntimeCacheState, setMediaCacheProgress, setMediaCacheStatus, setMediaPrefetching, ui])
 
   useEffect(() => {
     if (!adminSession?.refreshToken) {
@@ -1280,7 +1406,7 @@ function App() {
         return {
           group,
           hiddenCount: Math.max(sortedItems.length - visibleItemsById.size, 0),
-          label: tagGroupLabel(group),
+          label: tagGroupLabel(group, uiLanguage),
           items: sortedItems,
           visibleItems: [...visibleItemsById.values()],
         }
@@ -1295,7 +1421,7 @@ function App() {
 
         return left.label.localeCompare(right.label)
       })
-  }, [selectedTags, tags])
+  }, [selectedTags, tags, uiLanguage])
 
   const expandedTagGroupModel = useMemo(
     () => tagGroups.find((group) => group.group === expandedTagGroup) ?? null,
@@ -1352,25 +1478,25 @@ function App() {
 
   async function prefetchVisibleMedia() {
     if (!isOfflineCacheAvailable) {
-      setMediaCacheStatus('This browser does not support offline media cache.')
+      setMediaCacheStatus(ui.unsupportedCache)
       return
     }
 
     if (visibleMediaUrls.length === 0) {
-      setMediaCacheStatus('No media URLs are attached to the current results.')
+      setMediaCacheStatus(ui.noMediaUrls)
       return
     }
 
     const registration = await navigator.serviceWorker.ready
     const worker = navigator.serviceWorker.controller ?? registration.active
     if (!worker) {
-      setMediaCacheStatus('Offline cache is starting. Reload the app once and try again.')
+      setMediaCacheStatus(ui.offlineCacheStarting)
       return
     }
 
     setMediaPrefetching(true)
     setMediaCacheProgress({ completed: 0, failed: 0, total: visibleMediaUrls.length })
-    setMediaCacheStatus(`Caching 0/${visibleMediaUrls.length} media files.`)
+    setMediaCacheStatus(ui.cacheProgress(0, visibleMediaUrls.length))
     worker.postMessage({
       type: 'HDWGH_PREFETCH_URLS',
       urls: visibleMediaUrls,
@@ -3041,19 +3167,21 @@ function App() {
     setReloadKey((value) => value + 1)
   }
 
-  return (
-    <main className="app-shell" data-theme={theme}>
-      <header className="topbar">
-        <div className="brand">
-          <Globe2 aria-hidden="true" />
-          <span>HowDidWeGetHere</span>
-        </div>
-        <div className="topbar-actions">
+  function openAdminPanel() {
+    setEntryDetailOpen(false)
+    setFilterPanelOpen(false)
+    setAdminOpen((value) => !value)
+  }
+
+  function renderShellControls(includeFilterButton: boolean) {
+    return (
+      <div className={includeFilterButton ? 'topbar-actions' : 'desktop-panel-actions'}>
+        {includeFilterButton && (
           <button
             className="icon-button mobile-only"
             type="button"
-            aria-label="Open filters"
-            title="Open filters"
+            aria-label={ui.openFilters}
+            title={ui.openFilters}
             onClick={() => {
               setAdminOpen(false)
               setEntryDetailOpen(false)
@@ -3062,51 +3190,56 @@ function App() {
           >
             <Filter aria-hidden="true" />
           </button>
-          <label className="language-select">
-            <Languages aria-hidden="true" />
-            <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              <option value="en">EN</option>
-              <option value="cs">CS</option>
-              <option value="es">ES</option>
-            </select>
-          </label>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-          >
-            {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Open admin panel"
-            title="Open admin panel"
-            onClick={() => {
-              setEntryDetailOpen(false)
-              setFilterPanelOpen(false)
-              setAdminOpen((value) => !value)
-            }}
-          >
-            <Lock aria-hidden="true" />
-          </button>
+        )}
+        <label className="language-select" aria-label={ui.language}>
+          <Languages aria-hidden="true" />
+          <select value={language} onChange={(event) => setLanguage(event.target.value)}>
+            <option value="en">EN</option>
+            <option value="cs">CS</option>
+          </select>
+        </label>
+        <button
+          className="icon-button"
+          type="button"
+          aria-label={theme === 'dark' ? ui.switchToLightMode : ui.switchToDarkMode}
+          title={theme === 'dark' ? ui.switchToLightMode : ui.switchToDarkMode}
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+        >
+          {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        </button>
+        <button className="icon-button" type="button" aria-label={ui.openAdminPanel} title={ui.openAdminPanel} onClick={openAdminPanel}>
+          <Lock aria-hidden="true" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <main className="app-shell" data-theme={theme}>
+      <header className="topbar">
+        <div className="brand">
+          <Globe2 aria-hidden="true" />
+          <span>{ui.appName}</span>
         </div>
+        {renderShellControls(true)}
       </header>
 
       <section className="map-workspace">
         <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label="Map filters">
+          <div className="filter-brand">
+            <Globe2 aria-hidden="true" />
+            <span>{ui.appName}</span>
+          </div>
           <div className="panel-header filter-panel-header">
             <span>
               <Filter aria-hidden="true" />
-              Filters
+              {ui.filters}
             </span>
             <button
               className="panel-close"
               type="button"
-              aria-label="Close filters"
-              title="Close filters"
+              aria-label={ui.closeFilters}
+              title={ui.closeFilters}
               onClick={() => setFilterPanelOpen(false)}
             >
               <X aria-hidden="true" />
@@ -3115,12 +3248,17 @@ function App() {
           <div className="status-pill">
             {isLoadingMap ? <Filter aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
             <span>{mapStatus}</span>
+            {isMapEmptyResult && (
+              <button type="button" onClick={clearFilters}>
+                {ui.resetFilters}
+              </button>
+            )}
           </div>
 
           <div className="cache-panel">
             <div>
-              <strong>Offline media</strong>
-              <span>{mediaCacheStatus}</span>
+              <strong>{ui.offlineMedia}</strong>
+              {mediaCacheStatus && <span>{mediaCacheStatus}</span>}
               {mediaCacheProgress && (
                 <progress
                   max={mediaCacheProgress.total || 1}
@@ -3135,10 +3273,10 @@ function App() {
                 onClick={prefetchVisibleMedia}
               >
                 <Download aria-hidden="true" />
-                {isMediaPrefetching ? 'Caching...' : `Download ${visibleMediaUrls.length}`}
+                {isMediaPrefetching ? ui.caching : ui.downloadCount(visibleMediaUrls.length)}
               </button>
               <button type="button" disabled={!isOfflineCacheAvailable || isMediaPrefetching} onClick={clearRuntimeCache}>
-                Clear
+                {ui.clear}
               </button>
             </div>
           </div>
@@ -3146,7 +3284,7 @@ function App() {
           <div className="search-box">
             <Search aria-hidden="true" />
             <input
-              placeholder="Search entries"
+              placeholder={ui.searchEntries}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
@@ -3155,7 +3293,7 @@ function App() {
           <div className="filter-block">
             <div className="filter-title">
               <Tags aria-hidden="true" />
-              <span>Tags</span>
+              <span>{ui.tags}</span>
             </div>
             <div className="tag-filter-groups">
               {tagGroups.map((group) => (
@@ -3164,7 +3302,7 @@ function App() {
                     <span>{group.label}</span>
                     {group.hiddenCount > 0 && (
                       <button type="button" onClick={() => setExpandedTagGroup(group.group)}>
-                        More {group.hiddenCount}
+                        {ui.moreCount(group.hiddenCount)}
                       </button>
                     )}
                   </div>
@@ -3189,7 +3327,7 @@ function App() {
           <div className="filter-block">
             <div className="filter-title">
               <CalendarRange aria-hidden="true" />
-              <span>Time period</span>
+              <span>{ui.timePeriod}</span>
             </div>
             <div className="period-tree">
               {periodHierarchy.map(({ period, children }) => (
@@ -3200,7 +3338,7 @@ function App() {
                     onClick={() => selectPeriodFilter(period)}
                   >
                     <span>{period.name}</span>
-                    <small>{periodYearLabel(period)}</small>
+                    <small>{periodYearLabel(period, ui.dateUnknown)}</small>
                   </button>
                   {children.length > 0 && (
                     <div className="period-children">
@@ -3212,7 +3350,7 @@ function App() {
                           onClick={() => selectPeriodFilter(child)}
                         >
                           <span>{child.name}</span>
-                          <small>{periodYearLabel(child)}</small>
+                          <small>{periodYearLabel(child, ui.dateUnknown)}</small>
                         </button>
                       ))}
                     </div>
@@ -3223,7 +3361,7 @@ function App() {
             <div className="year-filter-row">
               <input
                 inputMode="numeric"
-                placeholder="From"
+                placeholder={ui.yearFrom}
                 value={fromYear}
                 onChange={(event) => {
                   setSelectedPeriodId(null)
@@ -3232,7 +3370,7 @@ function App() {
               />
               <input
                 inputMode="numeric"
-                placeholder="To"
+                placeholder={ui.yearTo}
                 value={toYear}
                 onChange={(event) => {
                   setSelectedPeriodId(null)
@@ -3240,7 +3378,7 @@ function App() {
                 }}
               />
               <button type="button" onClick={clearFilters}>
-                Clear
+                {ui.clear}
               </button>
             </div>
           </div>
@@ -3260,7 +3398,7 @@ function App() {
         {expandedTagGroupModel && (
           <div className="modal-backdrop" role="presentation" onClick={() => setExpandedTagGroup(null)}>
             <section
-              aria-label={`${expandedTagGroupModel.label} tags`}
+              aria-label={`${expandedTagGroupModel.label} ${ui.tags}`}
               aria-modal="true"
               className="tag-modal"
               role="dialog"
@@ -3274,8 +3412,8 @@ function App() {
                 <button
                   className="panel-close"
                   type="button"
-                  aria-label="Close tags"
-                  title="Close tags"
+                  aria-label={ui.closeTags}
+                  title={ui.closeTags}
                   onClick={() => setExpandedTagGroup(null)}
                 >
                   <X aria-hidden="true" />
@@ -3299,16 +3437,17 @@ function App() {
         )}
 
         <aside className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}>
+          {renderShellControls(false)}
           <div className="panel-header">
             <span>
               <PanelRight aria-hidden="true" />
-              Selected entry
+              {ui.selectedEntry}
             </span>
             <button
               className="panel-close"
               type="button"
-              aria-label="Close entry detail"
-              title="Close entry detail"
+              aria-label={ui.closeEntryDetail}
+              title={ui.closeEntryDetail}
               onClick={() => setEntryDetailOpen(false)}
             >
               <X aria-hidden="true" />
@@ -3317,7 +3456,7 @@ function App() {
           <h1>{selectedEntry?.title}</h1>
           <div className="entry-meta">
             <span>{selectedEntry?.kind}</span>
-            <span>{selectedEntry?.dateLabel ?? 'Date unknown'}</span>
+            <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
           {selectedEntryDetail?.images[0]?.url && (
@@ -3332,7 +3471,7 @@ function App() {
             <div className="route-card">
               <CheckCircle2 aria-hidden="true" />
               <div>
-                <strong>Why it matters</strong>
+                <strong>{ui.whyItMatters}</strong>
                 <p>{selectedEntryDetail.whyItMatters}</p>
               </div>
             </div>
@@ -3341,11 +3480,11 @@ function App() {
             <div className="route-card">
               <Route aria-hidden="true" />
               <div>
-                <strong>{selectedEntryDetail.routes.length} route records</strong>
+                <strong>{ui.routeRecords(selectedEntryDetail.routes.length)}</strong>
                 {selectedEntryDetail.routes[0] && (
                   <p>
                     {selectedEntryDetail.routes[0].name || selectedEntryDetail.routes[0].routeType}: {' '}
-                    {selectedEntryDetail.routes[0].points.length} known points.
+                    {ui.knownPoints(selectedEntryDetail.routes[0].points.length)}
                   </p>
                 )}
               </div>
@@ -3353,7 +3492,7 @@ function App() {
           ) : null}
           {selectedEntryDetail?.places.length ? (
             <div className="detail-list">
-              <strong>Places</strong>
+              <strong>{ui.places}</strong>
               {selectedEntryDetail.places.map((place) => (
                 <span key={`${place.placeId}-${place.role}`}>
                   {place.role}: {place.name}
@@ -3372,7 +3511,7 @@ function App() {
             <div className="route-card">
               <PlayCircle aria-hidden="true" />
               <div>
-                <strong>Audio</strong>
+                <strong>{ui.audio}</strong>
                 <audio controls src={selectedEntryDetail?.audioTracks[0]?.url ?? selectedEntry?.primaryAudioUrl ?? undefined}>
                   <track kind="captions" />
                 </audio>
@@ -3381,7 +3520,7 @@ function App() {
           )}
           {relatedEntryGroups.length ? (
             <div className="detail-list">
-              <strong>Related topics</strong>
+              <strong>{ui.relatedTopics}</strong>
               {relatedEntryGroups.map((group) => (
                 <div className="relationship-group" key={group.direction}>
                   <span>{relationshipDirectionLabel(group.direction, language)}</span>
@@ -3401,7 +3540,7 @@ function App() {
           ) : null}
           {selectedEntryDetail?.sources.length ? (
             <div className="detail-list">
-              <strong>Sources</strong>
+              <strong>{ui.sources}</strong>
               {selectedEntryDetail.sources.slice(0, 4).map((source) => (
                 <a href={source.url} key={`${source.sourceId}-${source.supportsField}`} rel="noreferrer" target="_blank">
                   {source.title ?? source.publisher ?? source.url}
@@ -3719,7 +3858,7 @@ function App() {
                     >
                       <td>{period.name}</td>
                       <td>{period.periodType}</td>
-                      <td>{periodYearLabel(period)}</td>
+                      <td>{periodYearLabel(period, ui.dateUnknown)}</td>
                     </tr>
                   ))}
                 </tbody>

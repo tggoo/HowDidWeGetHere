@@ -72,7 +72,7 @@ export const useAppStore = create<AppState>()(
       language: 'en',
       mapViewport: null,
       mediaCacheProgress: null,
-      mediaCacheStatus: 'JSON data is cached automatically. Media downloads only when opened.',
+      mediaCacheStatus: '',
       searchText: '',
       selectedEntryId: 'draft-columbus',
       selectedPeriodId: null,
@@ -90,7 +90,7 @@ export const useAppStore = create<AppState>()(
       clearRuntimeCacheState: () =>
         set({
           mediaCacheProgress: null,
-          mediaCacheStatus: 'Cached map data and media were cleared.',
+          mediaCacheStatus: '',
         }),
       setAdminOpen: (isOpen) =>
         set((state) => ({
