@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CalendarRange,
   CheckCircle2,
+  ChevronDown,
   Download,
   Filter,
   Globe2,
@@ -199,6 +200,24 @@ type ActiveAudio = {
   title: string
   subtitle?: string | null
   url: string
+}
+
+type UploadProgressPhase = 'uploading' | 'processing' | 'complete' | 'error'
+
+type UploadProgressState = {
+  phase: UploadProgressPhase
+  loadedBytes: number
+  totalBytes: number | null
+  percent: number | null
+  message: string
+}
+
+type ContentPackageBatchItemStatus = 'pending' | 'uploading' | 'processing' | 'done' | 'error'
+
+type ContentPackageBatchItem = {
+  name: string
+  status: ContentPackageBatchItemStatus
+  message?: string
 }
 
 type AdminEntryRelationshipDetail = {
@@ -656,6 +675,8 @@ const uiCopy = {
     openAdminPanel: 'Open admin panel',
     openFilters: 'Open filters',
     openPlayingEntry: 'Open playing entry',
+    minimizeAudio: 'Minimize player',
+    restoreAudio: 'Show player',
     places: 'Places',
     queryFailed: 'API responded, but one of the map queries failed.',
     relatedTopics: 'Related topics',
@@ -704,6 +725,8 @@ const uiCopy = {
     language: 'Jazyk',
     nowPlaying: 'Prehrava se',
     openPlayingEntry: 'Otevrit prehravany zaznam',
+    minimizeAudio: 'Skryt prehravac',
+    restoreAudio: 'Zobrazit prehravac',
     loadingInitial: 'Načítám publikovaná mapová data.',
     moreCount: (count: number) => `Další ${count}`,
     noTimelineEntries: 'Žádné datované záznamy',
@@ -1175,6 +1198,96 @@ function mediaUrlToAbsolute(url: string | null | undefined) {
   return `${base}/${trimmed.replace(/^\//, '')}`
 }
 
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B'
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function createUploadProgressState(
+  phase: UploadProgressPhase,
+  loadedBytes: number,
+  totalBytes: number | null,
+  message: string,
+): UploadProgressState {
+  const percent =
+    totalBytes && totalBytes > 0 ? Math.min(100, Math.max(0, Math.round((loadedBytes / totalBytes) * 100))) : null
+
+  return {
+    phase,
+    loadedBytes,
+    totalBytes,
+    percent,
+    message,
+  }
+}
+
+function describeBatchProgress(items: ContentPackageBatchItem[]) {
+  const total = items.length
+  if (total === 0) {
+    return ''
+  }
+
+  const finishedCount = items.filter((item) => item.status === 'done' || item.status === 'error').length
+  const currentIndex = Math.min(finishedCount + 1, total)
+  return `${currentIndex} of ${total}`
+}
+
+function uploadContentPackageWithProgress(
+  formData: FormData,
+  headers: Record<string, string> | undefined,
+  onProgress: (progress: UploadProgressState) => void,
+  processingMessage: string,
+): Promise<ContentPackageImportResult> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', `${apiBaseUrl}/api/admin/imports/content-package`)
+    request.withCredentials = true
+
+    for (const [key, value] of Object.entries(headers ?? {})) {
+      request.setRequestHeader(key, value)
+    }
+
+    request.upload.onprogress = (event) => {
+      const totalBytes = event.lengthComputable ? event.total : null
+      onProgress(createUploadProgressState('uploading', event.loaded, totalBytes, 'Uploading content package...'))
+    }
+
+    request.upload.onload = () => {
+      const file = formData.get('file')
+      const fileSize = file instanceof File ? file.size : null
+      onProgress(createUploadProgressState('processing', fileSize ?? 0, fileSize, processingMessage))
+    }
+
+    request.onerror = () => reject(new Error('network'))
+    request.onabort = () => reject(new Error('aborted'))
+    request.onload = () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(`HTTP ${request.status}`))
+        return
+      }
+
+      try {
+        resolve(JSON.parse(request.responseText) as ContentPackageImportResult)
+      } catch {
+        reject(new Error('invalid-json'))
+      }
+    }
+
+    request.send(formData)
+  })
+}
+
 function App() {
   const adminPage = useAppStore((state) => state.adminPage)
   const clearFiltersState = useAppStore((state) => state.clearFilters)
@@ -1222,6 +1335,7 @@ function App() {
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
+  const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState<string>(ui.loadingInitial)
@@ -1233,10 +1347,12 @@ function App() {
   const [adminStatus, setAdminStatus] = useState(() =>
     adminSession ? 'Signed in from saved session.' : 'Sign in with the Render admin account.',
   )
-  const [contentPackageFile, setContentPackageFile] = useState<File | null>(null)
+  const [contentPackageFiles, setContentPackageFiles] = useState<File[]>([])
   const [isPreviewingContentPackage, setPreviewingContentPackage] = useState(false)
   const [isImportingContentPackage, setImportingContentPackage] = useState(false)
   const [clearContentPackageBeforeImport, setClearContentPackageBeforeImport] = useState(false)
+  const [contentPackageUploadProgress, setContentPackageUploadProgress] = useState<UploadProgressState | null>(null)
+  const [contentPackageBatchItems, setContentPackageBatchItems] = useState<ContentPackageBatchItem[]>([])
   const [contentPackagePreview, setContentPackagePreview] = useState<ContentPackageImportPreviewResult | null>(null)
   const [contentPackageResult, setContentPackageResult] = useState<ContentPackageImportResult | null>(null)
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
@@ -1806,6 +1922,7 @@ function App() {
       player.load()
     }
     setActiveAudio(null)
+    setAudioPlayerMinimized(false)
   }
 
   function openActiveAudioEntry() {
@@ -2375,6 +2492,8 @@ function App() {
     resetEntryForm()
     setContentPackagePreview(null)
     setContentPackageResult(null)
+    setContentPackageUploadProgress(null)
+    setContentPackageBatchItems([])
     setAdminStatus('Signed out.')
   }
 
@@ -2384,18 +2503,19 @@ function App() {
       return
     }
 
-    if (!contentPackageFile) {
+    if (contentPackageFiles.length === 0) {
       setAdminStatus('Choose a content package .zip file first.')
       return
     }
 
     const formData = new FormData()
-    formData.append('file', contentPackageFile)
+    formData.append('file', contentPackageFiles[0])
     formData.append('publishImportedEntries', 'true')
     formData.append('updateExistingRows', clearContentPackageBeforeImport ? 'false' : 'true')
     formData.append('clearExistingData', clearContentPackageBeforeImport ? 'true' : 'false')
 
     setPreviewingContentPackage(true)
+    setContentPackageUploadProgress(null)
     setAdminStatus('Reading content package preview...')
     try {
       const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package/preview`, {
@@ -2416,8 +2536,10 @@ function App() {
       const cleanImportStatus = result.willClearExistingData
         ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries first.`
         : ''
+      const multiFileNote =
+        contentPackageFiles.length > 1 ? ` Showing preview for the first of ${contentPackageFiles.length} selected files.` : ''
       setAdminStatus(
-        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.${cleanImportStatus}`,
+        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.${cleanImportStatus}${multiFileNote}`,
       )
     } catch {
       setAdminStatus('Content package preview failed. Check API availability and CORS settings.')
@@ -2432,55 +2554,108 @@ function App() {
       return
     }
 
-    if (!contentPackageFile) {
-      setAdminStatus('Choose a content package .zip file first.')
+    if (contentPackageFiles.length === 0) {
+      setAdminStatus('Choose at least one content package .zip file first.')
       return
     }
 
     if (
       clearContentPackageBeforeImport &&
-      !window.confirm('Clean import will delete all existing content data before importing this package. Continue?')
+      !window.confirm('Clean import will delete all existing content data before importing the first package. Continue?')
     ) {
       setAdminStatus('Content package import cancelled.')
       return
     }
 
-    const formData = new FormData()
-    formData.append('file', contentPackageFile)
-    formData.append('publishImportedEntries', 'true')
-    formData.append('updateExistingRows', clearContentPackageBeforeImport ? 'false' : 'true')
-    formData.append('clearExistingData', clearContentPackageBeforeImport ? 'true' : 'false')
+    const files = contentPackageFiles
+    // Only the first request in the batch may clear existing data, otherwise it would wipe out
+    // the packages already imported earlier in this same run.
+    const shouldClearBeforeFirstFile = clearContentPackageBeforeImport
 
     setImportingContentPackage(true)
-    setAdminStatus(clearContentPackageBeforeImport ? 'Clearing content data and importing package...' : 'Importing content package...')
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package`, {
-        method: 'POST',
-        headers: authHeaders(),
-        credentials: 'include',
-        body: formData,
-      })
+    setContentPackageResult(null)
+    setContentPackagePreview(null)
+    setContentPackageBatchItems(files.map((file) => ({ name: file.name, status: 'pending' })))
+    setClearContentPackageBeforeImport(false)
 
-      if (!response.ok) {
-        setAdminStatus(`Content package import failed with HTTP ${response.status}.`)
-        return
-      }
+    let lastResult: ContentPackageImportResult | null = null
+    let importedCount = 0
+    let failedCount = 0
 
-      const result = (await response.json()) as ContentPackageImportResult
-      setContentPackageResult(result)
-      setContentPackagePreview(null)
-      const cleanImportStatus = result.clearedExistingData
-        ? ` Clean import deleted ${result.entriesDeletedBeforeImport} existing entries first.`
-        : ''
-      setAdminStatus(
-        `Imported package: ${result.entriesCreated} entries created, ${result.entriesUpdated} updated, ${result.audioTracksCreated} audio created, ${result.audioTracksUpdated} audio updated.${cleanImportStatus}`,
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index]
+      const clearBeforeThisFile = index === 0 && shouldClearBeforeFirstFile
+
+      setContentPackageBatchItems((items) =>
+        items.map((item, itemIndex) => (itemIndex === index ? { ...item, status: 'uploading' } : item)),
       )
-      setReloadKey((value) => value + 1)
-    } catch {
-      setAdminStatus('Content package import failed. Check API availability and CORS settings.')
-    } finally {
-      setImportingContentPackage(false)
+      setContentPackageUploadProgress(
+        createUploadProgressState('uploading', 0, file.size || null, `Preparing upload for ${file.name}...`),
+      )
+      setAdminStatus(`Importing package ${index + 1} of ${files.length}: ${file.name}...`)
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('publishImportedEntries', 'true')
+      formData.append('updateExistingRows', clearBeforeThisFile ? 'false' : 'true')
+      formData.append('clearExistingData', clearBeforeThisFile ? 'true' : 'false')
+
+      try {
+        const result = await uploadContentPackageWithProgress(
+          formData,
+          authHeaders(),
+          (progress) => {
+            setContentPackageUploadProgress(progress)
+            if (progress.phase === 'processing') {
+              setContentPackageBatchItems((items) =>
+                items.map((item, itemIndex) => (itemIndex === index ? { ...item, status: 'processing' } : item)),
+              )
+            }
+          },
+          clearBeforeThisFile
+            ? 'Upload complete. Clearing current content and importing package...'
+            : 'Upload complete. Importing package on server...',
+        )
+
+        lastResult = result
+        importedCount += 1
+        const cleanImportStatus = result.clearedExistingData
+          ? ` Deleted ${result.entriesDeletedBeforeImport} existing entries first.`
+          : ''
+        setContentPackageBatchItems((items) =>
+          items.map((item, itemIndex) =>
+            itemIndex === index
+              ? {
+                  ...item,
+                  status: 'done',
+                  message: `${result.entriesCreated} created, ${result.entriesUpdated} updated.${cleanImportStatus}`,
+                }
+              : item,
+          ),
+        )
+        setReloadKey((value) => value + 1)
+      } catch (error) {
+        failedCount += 1
+        const message =
+          error instanceof Error && error.message.startsWith('HTTP ') ? `Import failed (${error.message}).` : 'Import failed.'
+        setContentPackageBatchItems((items) =>
+          items.map((item, itemIndex) => (itemIndex === index ? { ...item, status: 'error', message } : item)),
+        )
+      }
     }
+
+    setContentPackageResult(lastResult)
+    setContentPackageUploadProgress(
+      failedCount > 0
+        ? createUploadProgressState('error', 0, null, `${importedCount} of ${files.length} packages imported, ${failedCount} failed.`)
+        : createUploadProgressState('complete', 0, null, `${importedCount} of ${files.length} packages imported.`),
+    )
+    setAdminStatus(
+      failedCount > 0
+        ? `Imported ${importedCount} of ${files.length} packages. ${failedCount} failed - check details below.`
+        : `Imported ${importedCount} of ${files.length} package${files.length === 1 ? '' : 's'} successfully.`,
+    )
+    setImportingContentPackage(false)
   }
 
   async function saveEntry(event: FormEvent<HTMLFormElement>) {
@@ -3495,7 +3670,8 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <Globe2 aria-hidden="true" />
-          <span>{ui.appName}</span>
+          <span className="brand-name-full">{ui.appName}</span>
+          <span className="brand-name-short">HDWGT</span>
         </div>
         {renderShellControls(true)}
       </header>
@@ -3850,7 +4026,19 @@ function App() {
         </aside>
 
         {activeAudio && (
-          <aside className="persistent-audio-player" aria-label={ui.nowPlaying}>
+          <aside
+            className={isAudioPlayerMinimized ? 'persistent-audio-player minimized' : 'persistent-audio-player'}
+            aria-label={ui.nowPlaying}
+          >
+            <button
+              className="persistent-audio-restore"
+              type="button"
+              aria-label={ui.restoreAudio}
+              title={activeAudio.title}
+              onClick={() => setAudioPlayerMinimized(false)}
+            >
+              <Music aria-hidden="true" />
+            </button>
             <button
               className="persistent-audio-summary"
               type="button"
@@ -3862,9 +4050,20 @@ function App() {
               <strong>{activeAudio.title}</strong>
               {activeAudio.subtitle && <small>{activeAudio.subtitle}</small>}
             </button>
-            <button className="icon-button subtle" type="button" aria-label={ui.stopAudio} title={ui.stopAudio} onClick={stopAudio}>
-              <X aria-hidden="true" />
-            </button>
+            <div className="persistent-audio-actions">
+              <button
+                className="icon-button subtle"
+                type="button"
+                aria-label={ui.minimizeAudio}
+                title={ui.minimizeAudio}
+                onClick={() => setAudioPlayerMinimized(true)}
+              >
+                <ChevronDown aria-hidden="true" />
+              </button>
+              <button className="icon-button subtle" type="button" aria-label={ui.stopAudio} title={ui.stopAudio} onClick={stopAudio}>
+                <X aria-hidden="true" />
+              </button>
+            </div>
             <audio ref={persistentAudioRef} controls src={activeAudio.url}>
               <track kind="captions" />
             </audio>
@@ -3941,17 +4140,25 @@ function App() {
                 {adminPage === 'import' && (
                   <div className="admin-form">
                     <label>
-                      Content package ZIP
+                      Content package ZIP(s)
                       <input
                         accept=".zip,application/zip"
+                        multiple
                         type="file"
                         onChange={(event) => {
-                          setContentPackageFile(event.target.files?.[0] ?? null)
+                          setContentPackageFiles(Array.from(event.target.files ?? []))
                           setContentPackagePreview(null)
                           setContentPackageResult(null)
+                          setContentPackageUploadProgress(null)
+                          setContentPackageBatchItems([])
                         }}
                       />
                     </label>
+                    {contentPackageFiles.length > 1 && (
+                      <small>
+                        {contentPackageFiles.length} files selected. They will be imported one after another.
+                      </small>
+                    )}
                     <label className="admin-checkbox danger">
                       <input
                         checked={clearContentPackageBeforeImport}
@@ -3960,9 +4167,13 @@ function App() {
                           setClearContentPackageBeforeImport(event.target.checked)
                           setContentPackagePreview(null)
                           setContentPackageResult(null)
+                          setContentPackageUploadProgress(null)
                         }}
                       />
-                      <span>Clean import: delete current content data first</span>
+                      <span>
+                        Clean import: delete current content data first
+                        {contentPackageFiles.length > 1 ? ' (applies only to the first selected file)' : ''}
+                      </span>
                     </label>
                     <div className="admin-field-row">
                       <button
@@ -3971,19 +4182,60 @@ function App() {
                         type="button"
                         onClick={previewContentPackage}
                       >
-                        <Search aria-hidden="true" />
+                        {isPreviewingContentPackage ? <RefreshCw aria-hidden="true" className="spin-icon" /> : <Search aria-hidden="true" />}
                         {isPreviewingContentPackage ? 'Previewing package...' : 'Preview package'}
                       </button>
                       <button
                         className="admin-action"
+                        aria-busy={isImportingContentPackage}
                         disabled={isPreviewingContentPackage || isImportingContentPackage}
                         type="button"
                         onClick={importContentPackage}
                       >
-                        <Upload aria-hidden="true" />
-                        {isImportingContentPackage ? 'Importing package...' : 'Import package'}
+                        {isImportingContentPackage ? <RefreshCw aria-hidden="true" className="spin-icon" /> : <Upload aria-hidden="true" />}
+                        {isImportingContentPackage
+                          ? `Importing package ${describeBatchProgress(contentPackageBatchItems)}...`
+                          : contentPackageFiles.length > 1
+                            ? `Import ${contentPackageFiles.length} packages`
+                            : 'Import package'}
                       </button>
                     </div>
+                    {contentPackageUploadProgress && (
+                      <div className={`upload-progress ${contentPackageUploadProgress.phase}`} role="status" aria-live="polite">
+                        <div className="upload-progress-header">
+                          <span>{contentPackageUploadProgress.message}</span>
+                          {contentPackageUploadProgress.percent != null && <strong>{contentPackageUploadProgress.percent}%</strong>}
+                        </div>
+                        {contentPackageUploadProgress.percent == null ? (
+                          <progress />
+                        ) : (
+                          <progress max={100} value={contentPackageUploadProgress.percent} />
+                        )}
+                        <small>
+                          {contentPackageUploadProgress.totalBytes
+                            ? `${formatBytes(contentPackageUploadProgress.loadedBytes)} of ${formatBytes(
+                                contentPackageUploadProgress.totalBytes,
+                              )}`
+                            : `${formatBytes(contentPackageUploadProgress.loadedBytes)} uploaded`}
+                        </small>
+                      </div>
+                    )}
+                    {contentPackageBatchItems.length > 1 && (
+                      <ul className="upload-batch-list">
+                        {contentPackageBatchItems.map((item, index) => (
+                          <li className={`upload-batch-item ${item.status}`} key={`${item.name}-${index}`}>
+                            <span className="upload-batch-item-name">{item.name}</span>
+                            <span className="upload-batch-item-status">
+                              {item.status === 'pending' && 'Waiting'}
+                              {item.status === 'uploading' && 'Uploading...'}
+                              {item.status === 'processing' && 'Importing on server...'}
+                              {item.status === 'done' && (item.message ?? 'Done')}
+                              {item.status === 'error' && (item.message ?? 'Failed')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
                 {adminPage === 'import' && contentPackagePreview && (
