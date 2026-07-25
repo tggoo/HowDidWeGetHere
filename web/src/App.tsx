@@ -693,6 +693,9 @@ const uiCopy = {
     tags: 'Tags',
     timeline: 'Timeline',
     timePeriod: 'Time period',
+    titleAudioLabel: 'Title',
+    playAudio: 'Play audio',
+    playAll: 'Play all',
     stopAudio: 'Stop audio',
     unsupportedCache: 'This browser does not support offline media cache.',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
@@ -752,6 +755,9 @@ const uiCopy = {
     switchToDarkMode: 'Přepnout do tmavého režimu',
     switchToLightMode: 'Přepnout do světlého režimu',
     tags: 'Tagy',
+    titleAudioLabel: 'Nazev',
+    playAudio: 'Prehrat audio',
+    playAll: 'Prehrat vse',
     stopAudio: 'Zastavit audio',
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
@@ -1202,6 +1208,37 @@ function mediaUrlToAbsolute(url: string | null | undefined) {
   return `${base}/${trimmed.replace(/^\//, '')}`
 }
 
+function findEntryAudioTrack(
+  tracks: EntryDetail['audioTracks'],
+  kind: string,
+  language: string,
+): EntryDetail['audioTracks'][number] | null {
+  const matches = tracks.filter((track) => track.kind === kind)
+  return matches.find((track) => track.languageCode === language) ?? matches.find((track) => track.languageCode === 'en') ?? matches[0] ?? null
+}
+
+function buildSectionAudio(
+  entry: EntryListItem | undefined,
+  track: EntryDetail['audioTracks'][number] | null,
+  label: string,
+): ActiveAudio | null {
+  if (!entry || !track) {
+    return null
+  }
+
+  const url = mediaUrlToAbsolute(track.url)
+  if (!url) {
+    return null
+  }
+
+  return {
+    entryId: entry.id,
+    title: entry.title,
+    subtitle: label,
+    url,
+  }
+}
+
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return '0 B'
@@ -1359,6 +1396,7 @@ function App() {
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
+  const [audioQueue, setAudioQueue] = useState<ActiveAudio[]>([])
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
   const [isEntryImageExpanded, setEntryImageExpanded] = useState(false)
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -1924,18 +1962,30 @@ function App() {
 
   const selectedEntryImage = selectedEntryDetail?.images[0]
   const selectedEntryImageUrl = mediaUrlToAbsolute(selectedEntryImage?.url)
-  const selectedEntryAudioTrack = selectedEntryDetail?.audioTracks[0]
-  const selectedEntryAudioUrl = mediaUrlToAbsolute(
-    selectedEntryAudioTrack?.url ?? selectedEntry?.primaryAudioUrl,
+  const selectedEntryAudioTracks = selectedEntryDetail?.audioTracks ?? []
+  const titleAudio = buildSectionAudio(
+    selectedEntry,
+    findEntryAudioTrack(selectedEntryAudioTracks, 'Title', language),
+    ui.titleAudioLabel,
   )
-  const selectedEntryAudio = selectedEntry && selectedEntryAudioUrl
-    ? {
-        entryId: selectedEntry.id,
-        title: selectedEntry.title,
-        subtitle: selectedEntryAudioTrack?.title ?? selectedEntry.dateLabel ?? selectedEntry.kind,
-        url: selectedEntryAudioUrl,
-      }
-    : null
+  const summaryAudio = buildSectionAudio(
+    selectedEntry,
+    findEntryAudioTrack(selectedEntryAudioTracks, 'Summary', language),
+    ui.summary,
+  )
+  const descriptionAudio = buildSectionAudio(
+    selectedEntry,
+    findEntryAudioTrack(selectedEntryAudioTracks, 'Description', language),
+    ui.description,
+  )
+  const whyItMattersAudio = buildSectionAudio(
+    selectedEntry,
+    findEntryAudioTrack(selectedEntryAudioTracks, 'WhyItMatters', language),
+    ui.whyItMatters,
+  )
+  const ultimateAudioSequence = [titleAudio, whyItMattersAudio, descriptionAudio].filter(
+    (item): item is ActiveAudio => item !== null,
+  )
 
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
@@ -1957,6 +2007,31 @@ function App() {
     })
   }
 
+  function playSingleAudio(audio: ActiveAudio) {
+    setAudioQueue([])
+    playAudio(audio)
+  }
+
+  function playAudioSequence(sequence: ActiveAudio[]) {
+    if (sequence.length === 0) {
+      return
+    }
+
+    const [first, ...rest] = sequence
+    setAudioQueue(rest)
+    playAudio(first)
+  }
+
+  function handleAudioEnded() {
+    if (audioQueue.length === 0) {
+      return
+    }
+
+    const [next, ...rest] = audioQueue
+    setAudioQueue(rest)
+    playAudio(next)
+  }
+
   function stopAudio() {
     const player = persistentAudioRef.current
     if (player) {
@@ -1966,6 +2041,7 @@ function App() {
     }
     setActiveAudio(null)
     setAudioPlayerMinimized(false)
+    setAudioQueue([])
   }
 
   function openActiveAudioEntry() {
@@ -1975,6 +2051,25 @@ function App() {
 
     setSelectedEntryId(activeAudio.entryId)
     setEntryDetailOpen(true)
+  }
+
+  function renderSectionPlayButton(audio: ActiveAudio | null) {
+    if (!audio) {
+      return null
+    }
+
+    const isPlaying = activeAudio?.url === audio.url
+    return (
+      <button
+        className={isPlaying ? 'section-play-button active' : 'section-play-button'}
+        type="button"
+        aria-label={ui.playAudio}
+        title={ui.playAudio}
+        onClick={() => playSingleAudio(audio)}
+      >
+        <PlayCircle aria-hidden="true" />
+      </button>
+    )
   }
 
   function toggleTag(tag: string) {
@@ -3957,12 +4052,21 @@ function App() {
               <X aria-hidden="true" />
             </button>
           </div>
-          <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
+          <div className="entry-title-row">
+            <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
+            {renderSectionPlayButton(titleAudio)}
+          </div>
           <div className="entry-meta">
             <span>{selectedEntry?.kind}</span>
             <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
+          {ultimateAudioSequence.length > 0 && (
+            <button className="play-all-button" type="button" onClick={() => playAudioSequence(ultimateAudioSequence)}>
+              <PlayCircle aria-hidden="true" />
+              {ui.playAll}
+            </button>
+          )}
           {selectedEntryImageUrl && (
             <button
               className="entry-image-trigger"
@@ -3980,13 +4084,19 @@ function App() {
           )}
           {selectedEntryDetail?.summary && (
             <div className="entry-text-section entry-summary-section">
-              <strong>{ui.summary}</strong>
+              <div className="entry-section-header">
+                <strong>{ui.summary}</strong>
+                {renderSectionPlayButton(summaryAudio)}
+              </div>
               <MarkdownText markdown={selectedEntryDetail.summary} />
             </div>
           )}
           {selectedEntryDetail?.description && (
             <div className="entry-text-section">
-              <strong>{ui.description}</strong>
+              <div className="entry-section-header">
+                <strong>{ui.description}</strong>
+                {renderSectionPlayButton(descriptionAudio)}
+              </div>
               <MarkdownText markdown={selectedEntryDetail.description} />
             </div>
           )}
@@ -3994,7 +4104,10 @@ function App() {
             <div className="route-card">
               <CheckCircle2 aria-hidden="true" />
               <div>
-                <strong>{ui.whyItMatters}</strong>
+                <div className="entry-section-header">
+                  <strong>{ui.whyItMatters}</strong>
+                  {renderSectionPlayButton(whyItMattersAudio)}
+                </div>
                 <MarkdownText markdown={selectedEntryDetail.whyItMatters} />
               </div>
             </div>
@@ -4030,19 +4143,6 @@ function App() {
               ))}
             </div>
           ) : null}
-          {selectedEntryAudio && (
-            <button
-              className={activeAudio?.entryId === selectedEntryAudio.entryId ? 'route-card audio-start-card active' : 'route-card audio-start-card'}
-              type="button"
-              onClick={() => playAudio(selectedEntryAudio)}
-            >
-              <PlayCircle aria-hidden="true" />
-              <div>
-                <strong>{ui.audio}</strong>
-                <small>{activeAudio?.entryId === selectedEntryAudio.entryId ? ui.nowPlaying : selectedEntryAudio.subtitle}</small>
-              </div>
-            </button>
-          )}
           {relatedEntryGroups.length ? (
             <div className="detail-list">
               <strong>{ui.relatedTopics}</strong>
@@ -4134,7 +4234,7 @@ function App() {
                 <X aria-hidden="true" />
               </button>
             </div>
-            <audio ref={persistentAudioRef} controls src={activeAudio.url}>
+            <audio ref={persistentAudioRef} controls onEnded={handleAudioEnded} src={activeAudio.url}>
               <track kind="captions" />
             </audio>
           </aside>

@@ -902,6 +902,70 @@
   margin: 18px 0 10px;
 }
 
+.entry-title-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.entry-title-row .section-play-button {
+  margin-top: 20px;
+}
+
+.entry-section-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.section-play-button {
+  align-items: center;
+  background: var(--control-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.section-play-button svg {
+  height: 15px;
+  width: 15px;
+}
+
+.section-play-button:hover,
+.section-play-button.active {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-muted));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.play-all-button {
+  align-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: 8px;
+  color: var(--accent-contrast);
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 9px 14px;
+  width: 100%;
+}
+
+.play-all-button:hover {
+  background: color-mix(in srgb, var(--accent) 88%, black);
+}
+
 .entry-image-trigger {
   background: transparent;
   border: 0;
@@ -1108,27 +1172,6 @@
 .route-card p {
   color: var(--text-muted);
   margin: 4px 0 0;
-}
-
-.audio-start-card {
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  width: 100%;
-}
-
-.audio-start-card:hover,
-.audio-start-card.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel-muted));
-  border-color: var(--accent);
-}
-
-.audio-start-card small {
-  color: var(--text-muted);
-  display: block;
-  font-size: 12px;
-  margin-top: 3px;
 }
 
 .route-card audio {
