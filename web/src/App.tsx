@@ -194,6 +194,13 @@ type EntryDetail = EntryListItem & {
 
 type EntryRouteDetail = EntryDetail['routes'][number]
 
+type ActiveAudio = {
+  entryId: string
+  title: string
+  subtitle?: string | null
+  url: string
+}
+
 type AdminEntryRelationshipDetail = {
   id: string
   targetEntryId: string
@@ -643,10 +650,12 @@ const uiCopy = {
     noTimelineEntries: 'No dated entries',
     noMediaUrls: 'No media URLs are attached to the current results.',
     noResults: 'No map points match the current filters.',
+    nowPlaying: 'Now playing',
     offlineCacheStarting: 'Offline cache is starting. Reload the app once and try again.',
     offlineMedia: 'Offline media',
     openAdminPanel: 'Open admin panel',
     openFilters: 'Open filters',
+    openPlayingEntry: 'Open playing entry',
     places: 'Places',
     queryFailed: 'API responded, but one of the map queries failed.',
     relatedTopics: 'Related topics',
@@ -660,6 +669,7 @@ const uiCopy = {
     tags: 'Tags',
     timeline: 'Timeline',
     timePeriod: 'Time period',
+    stopAudio: 'Stop audio',
     unsupportedCache: 'This browser does not support offline media cache.',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
     viewportSuffix: ' in the visible map area',
@@ -691,6 +701,8 @@ const uiCopy = {
       `Načteno ${entryCount} publikovaných záznamů${yearRange}${viewport}. Posuň mapu nebo doplň místa, aby se zobrazily body.`,
     filters: 'Filtry',
     language: 'Jazyk',
+    nowPlaying: 'Prehrava se',
+    openPlayingEntry: 'Otevrit prehravany zaznam',
     loadingInitial: 'Načítám publikovaná mapová data.',
     moreCount: (count: number) => `Další ${count}`,
     noTimelineEntries: 'Žádné datované záznamy',
@@ -711,6 +723,7 @@ const uiCopy = {
     switchToDarkMode: 'Přepnout do tmavého režimu',
     switchToLightMode: 'Přepnout do světlého režimu',
     tags: 'Tagy',
+    stopAudio: 'Zastavit audio',
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
     unsupportedCache: 'Tento prohlížeč nepodporuje offline cache médií.',
@@ -1206,6 +1219,8 @@ function App() {
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
+  const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
+  const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState<string>(ui.loadingInitial)
   const [isMapEmptyResult, setMapEmptyResult] = useState(false)
@@ -1739,19 +1754,66 @@ function App() {
       }
     }
 
+    if (activeAudio?.url) {
+      urls.add(activeAudio.url)
+    }
+
     return [...urls]
-  }, [entries, selectedEntryDetail])
+  }, [activeAudio?.url, entries, selectedEntryDetail])
 
   const selectedEntryImage = selectedEntryDetail?.images[0]
   const selectedEntryImageUrl = mediaUrlToAbsolute(selectedEntryImage?.url)
+  const selectedEntryAudioTrack = selectedEntryDetail?.audioTracks[0]
   const selectedEntryAudioUrl = mediaUrlToAbsolute(
-    selectedEntryDetail?.audioTracks[0]?.url ?? selectedEntry?.primaryAudioUrl,
+    selectedEntryAudioTrack?.url ?? selectedEntry?.primaryAudioUrl,
   )
+  const selectedEntryAudio = selectedEntry && selectedEntryAudioUrl
+    ? {
+        entryId: selectedEntry.id,
+        title: selectedEntry.title,
+        subtitle: selectedEntryAudioTrack?.title ?? selectedEntry.dateLabel ?? selectedEntry.kind,
+        url: selectedEntryAudioUrl,
+      }
+    : null
 
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
     setEntryDetailOpen(true)
   }, [setEntryDetailOpen, setSelectedEntryId])
+
+  function playAudio(audio: ActiveAudio) {
+    setActiveAudio(audio)
+    window.requestAnimationFrame(() => {
+      const player = persistentAudioRef.current
+      if (!player) {
+        return
+      }
+
+      if (player.src !== audio.url) {
+        player.src = audio.url
+      }
+      void player.play().catch(() => undefined)
+    })
+  }
+
+  function stopAudio() {
+    const player = persistentAudioRef.current
+    if (player) {
+      player.pause()
+      player.removeAttribute('src')
+      player.load()
+    }
+    setActiveAudio(null)
+  }
+
+  function openActiveAudioEntry() {
+    if (!activeAudio) {
+      return
+    }
+
+    setSelectedEntryId(activeAudio.entryId)
+    setEntryDetailOpen(true)
+  }
 
   function toggleTag(tag: string) {
     toggleTagState(tag)
@@ -3735,16 +3797,18 @@ function App() {
               ))}
             </div>
           ) : null}
-          {selectedEntryAudioUrl && (
-            <div className="route-card">
+          {selectedEntryAudio && (
+            <button
+              className={activeAudio?.entryId === selectedEntryAudio.entryId ? 'route-card audio-start-card active' : 'route-card audio-start-card'}
+              type="button"
+              onClick={() => playAudio(selectedEntryAudio)}
+            >
               <PlayCircle aria-hidden="true" />
               <div>
                 <strong>{ui.audio}</strong>
-                <audio controls src={selectedEntryAudioUrl}>
-                  <track kind="captions" />
-                </audio>
+                <small>{activeAudio?.entryId === selectedEntryAudio.entryId ? ui.nowPlaying : selectedEntryAudio.subtitle}</small>
               </div>
-            </div>
+            </button>
           )}
           {relatedEntryGroups.length ? (
             <div className="detail-list">
@@ -3777,6 +3841,28 @@ function App() {
             </div>
           ) : null}
         </aside>
+
+        {activeAudio && (
+          <aside className="persistent-audio-player" aria-label={ui.nowPlaying}>
+            <button
+              className="persistent-audio-summary"
+              type="button"
+              aria-label={ui.openPlayingEntry}
+              title={ui.openPlayingEntry}
+              onClick={openActiveAudioEntry}
+            >
+              <span>{ui.nowPlaying}</span>
+              <strong>{activeAudio.title}</strong>
+              {activeAudio.subtitle && <small>{activeAudio.subtitle}</small>}
+            </button>
+            <button className="icon-button subtle" type="button" aria-label={ui.stopAudio} title={ui.stopAudio} onClick={stopAudio}>
+              <X aria-hidden="true" />
+            </button>
+            <audio ref={persistentAudioRef} controls src={activeAudio.url}>
+              <track kind="captions" />
+            </audio>
+          </aside>
+        )}
 
         {isAdminOpen && (
           <aside className="admin-panel" aria-label="Admin tools">
