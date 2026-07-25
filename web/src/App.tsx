@@ -25,10 +25,11 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
 import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
+import { MarkdownText } from './content/MarkdownText'
 import { useAppStore, type AdminPage, type MediaCacheProgress } from './store/appStore'
 import './App.css'
 
@@ -944,6 +945,88 @@ function TimelineRuler({
         ))}
       </div>
     </section>
+  )
+}
+
+type MarkdownEditorProps = {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function MarkdownEditor({ label, value, onChange }: MarkdownEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  function applyMarkdown(before: string, after = '', placeholder = 'text') {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      onChange(`${value}${before}${placeholder}${after}`)
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selected = value.slice(start, end) || placeholder
+    const nextValue = `${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`
+    onChange(nextValue)
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + before.length, start + before.length + selected.length)
+    })
+  }
+
+  function applyList(prefix: string) {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      onChange(`${value}\n${prefix}item`)
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selected = value.slice(start, end) || 'item'
+    const formatted = selected
+      .split(/\r?\n/)
+      .map((line) => `${prefix}${line || 'item'}`)
+      .join('\n')
+    const nextValue = `${value.slice(0, start)}${formatted}${value.slice(end)}`
+    onChange(nextValue)
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start, start + formatted.length)
+    })
+  }
+
+  return (
+    <div className="markdown-editor">
+      <span>{label}</span>
+      <div className="markdown-toolbar" aria-label={`${label} Markdown tools`}>
+        <button type="button" onClick={() => applyMarkdown('**', '**', 'bold')}>
+          B
+        </button>
+        <button type="button" onClick={() => applyMarkdown('*', '*', 'italic')}>
+          I
+        </button>
+        <button type="button" onClick={() => applyList('- ')}>
+          List
+        </button>
+        <button type="button" onClick={() => applyList('1. ')}>
+          1.
+        </button>
+        <button type="button" onClick={() => applyMarkdown('[', '](https://example.com)', 'link')}>
+          Link
+        </button>
+        <button type="button" onClick={() => applyMarkdown('`', '`', 'code')}>
+          Code
+        </button>
+      </div>
+      <div className="markdown-editor-grid">
+        <textarea ref={textareaRef} value={value} onChange={(event) => onChange(event.target.value)} />
+        <div className="markdown-preview" aria-label={`${label} preview`}>
+          <MarkdownText markdown={value || '_Preview_'} />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -3633,11 +3716,11 @@ function App() {
               src={selectedEntryImageUrl}
             />
           )}
-          {selectedEntryDetail?.summary && <p className="entry-summary">{selectedEntryDetail.summary}</p>}
+          <MarkdownText className="entry-summary" markdown={selectedEntryDetail?.summary} />
           {selectedEntryDetail?.description && (
             <div className="entry-description">
               <strong>{ui.description}</strong>
-              <p>{selectedEntryDetail.description}</p>
+              <MarkdownText markdown={selectedEntryDetail.description} />
             </div>
           )}
           {selectedEntryDetail?.whyItMatters && (
@@ -3645,7 +3728,7 @@ function App() {
               <CheckCircle2 aria-hidden="true" />
               <div>
                 <strong>{ui.whyItMatters}</strong>
-                <p>{selectedEntryDetail.whyItMatters}</p>
+                <MarkdownText markdown={selectedEntryDetail.whyItMatters} />
               </div>
             </div>
           )}
@@ -4442,27 +4525,21 @@ function App() {
                   ))}
                 </select>
               </label>
-              <label>
-                Summary
-                <textarea
-                  value={entryForm.summary}
-                  onChange={(event) => patchEntryForm({ summary: event.target.value })}
-                />
-              </label>
-              <label>
-                Description
-                <textarea
-                  value={entryForm.description}
-                  onChange={(event) => patchEntryForm({ description: event.target.value })}
-                />
-              </label>
-              <label>
-                Why it matters
-                <textarea
-                  value={entryForm.whyItMatters}
-                  onChange={(event) => patchEntryForm({ whyItMatters: event.target.value })}
-                />
-              </label>
+              <MarkdownEditor
+                label="Summary"
+                value={entryForm.summary}
+                onChange={(value) => patchEntryForm({ summary: value })}
+              />
+              <MarkdownEditor
+                label="Description"
+                value={entryForm.description}
+                onChange={(value) => patchEntryForm({ description: value })}
+              />
+              <MarkdownEditor
+                label="Why it matters"
+                value={entryForm.whyItMatters}
+                onChange={(value) => patchEntryForm({ whyItMatters: value })}
+              />
               <label>
                 Dating note
                 <textarea

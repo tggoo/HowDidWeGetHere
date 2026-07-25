@@ -2305,7 +2305,7 @@ export interface components {
             sortOrder: number | string;
         };
         /** @enum {unknown} */
-        AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other";
+        AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other" | "Title" | "Description" | "WhyItMatters";
         /** @enum {unknown} */
         ContentStatus: "Draft" | "Published" | "Archived";
         EntryAudioTrackResponse: {

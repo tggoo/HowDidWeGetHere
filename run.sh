@@ -7,6 +7,7 @@ INFRA_PROJECT="src/HowDidWeGetHere.Infrastructure/HowDidWeGetHere.Infrastructure
 FRONTEND_DIR="web"
 CONTEXT="HistoryDbContext"
 PROFILE="${2:-http}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 run_backend() {
   echo "Spoustim backend..."
@@ -132,6 +133,70 @@ push_no_verify() {
   git push --no-verify
 }
 
+contains_entries_json() {
+  local root="$1"
+  local first_match
+
+  if [[ -f "$root/entries.json" ]]; then
+    return 0
+  fi
+
+  first_match="$(find "$root" -mindepth 1 -maxdepth 2 -type f -name entries.json -print -quit 2>/dev/null || true)"
+  [[ -n "$first_match" ]]
+}
+
+resolve_audio_dir() {
+  local path="$1"
+  if [[ ! -d "$path" ]]; then
+    echo "Adresar neexistuje: $path" >&2
+    exit 1
+  fi
+  (cd "$path" && pwd -P)
+}
+
+run_audio_pipeline() {
+  local packages_root="${1:-$PWD}"
+  local python_bin="${PYTHON:-python}"
+  local audio_root="${AUDIO_ROOT:-$SCRIPT_DIR/generated/audio}"
+  local default_packages_root
+  local tts_args=()
+
+  if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+    shift
+  else
+    packages_root="$PWD"
+  fi
+
+  packages_root="$(resolve_audio_dir "$packages_root")"
+  if ! contains_entries_json "$packages_root"; then
+    default_packages_root="$SCRIPT_DIR/generated/packages"
+    if [[ "$packages_root" == "$SCRIPT_DIR" && -d "$default_packages_root" ]] && contains_entries_json "$default_packages_root"; then
+      packages_root="$(resolve_audio_dir "$default_packages_root")"
+      echo "V aktualnim adresari neni entries.json. Pouzivam $packages_root."
+    else
+      echo "V $packages_root ani v jeho primych podadresarich neni entries.json." >&2
+      exit 1
+    fi
+  fi
+
+  if [[ -n "${TTS_ROOT:-}" ]]; then
+    tts_args=(--tts-root "$TTS_ROOT")
+  fi
+
+  echo "Package root: $packages_root"
+  echo "Plaintext/MP3 workspace: $audio_root"
+  echo "Spoustim audio pipeline."
+
+  "$python_bin" "$SCRIPT_DIR/tools/generate-translation-audio.py" \
+    --packages-root "$packages_root" \
+    --out "$audio_root" \
+    --overwrite \
+    --generate \
+    --clean-package-audio \
+    "${tts_args[@]}" \
+    "$@"
+}
+
 case "$1" in
   be)
     run_backend
@@ -153,6 +218,10 @@ case "$1" in
     ;;
   db-down)
     stop_database
+    ;;
+  audio)
+    shift
+    run_audio_pipeline "$@"
     ;;
   install)
     if [ "$2" == "fe-deps" ]; then
@@ -201,6 +270,7 @@ case "$1" in
     echo "  app                   - spusti backend i frontend"
     echo "  db                    - spusti PostgreSQL/PostGIS docker"
     echo "  db-down               - zastavi PostgreSQL/PostGIS docker"
+    echo "  audio [packages-dir]  - vygeneruje plaintext, MP3, audio reference a package ZIPy"
     echo "  install fe-deps       - nainstaluje frontend zavislosti"
     echo "  add migration <jmeno> - prida PostgreSQL migraci"
     echo "  udb                   - aplikuje migrace do PostgreSQL"
@@ -213,4 +283,3 @@ case "$1" in
     exit 1
     ;;
 esac
-

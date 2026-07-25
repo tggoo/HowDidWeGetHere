@@ -1,3 +1,5 @@
+"""Build content package directories and ZIP files from the workbook and generated media."""
+
 import argparse
 import json
 import re
@@ -21,6 +23,13 @@ LANGUAGE_ALIASES = {
     "es": "es",
     "sp": "es",
 }
+
+FIELD_AUDIO_TRACKS = (
+    ("description", "Description", True, 0),
+    ("title", "Title", False, 10),
+    ("summary", "Summary", False, 20),
+    ("whyItMatters", "WhyItMatters", False, 30),
+)
 
 ERA_RANGES = {
     "prehistory": (-3000000, -3000),
@@ -413,29 +422,50 @@ def places_from_value(raw: str, source_type: str) -> list[dict[str, object]]:
 
 
 def audio_for_slug(slug: str, audio_root: Path) -> list[dict[str, object]]:
-    tracks = []
     if not audio_root.exists():
+        return []
+    return slug_first_audio_for_slug(slug, audio_root)
+
+
+def slug_first_audio_for_slug(slug: str, audio_root: Path) -> list[dict[str, object]]:
+    slug_root = audio_root / slug
+    tracks = []
+    if not slug_root.exists():
         return tracks
-    for lang_dir in sorted(path for path in audio_root.iterdir() if path.is_dir()):
+    for lang_dir in sorted(path for path in slug_root.iterdir() if path.is_dir()):
         language = LANGUAGE_ALIASES.get(lang_dir.name.lower())
         if language is None:
             continue
-        mp3_root = lang_dir / "mp3"
-        for candidate in (mp3_root / f"{slug}.{language}.mp3", mp3_root / f"{slug}.mp3"):
-            if candidate.exists() and candidate.stat().st_size > 0:
-                tracks.append(
-                    {
-                        "languageCode": language,
-                        "kind": "Narration",
-                        "isPrimary": True,
-                        "sortOrder": 0,
-                        "title": f"{slug} narration",
-                        "path": f"audio/{language}/{slug}.mp3",
-                        "_sourcePath": str(candidate),
-                    }
-                )
-                break
+        field_tracks = []
+        for track_key, kind, is_primary, sort_order in FIELD_AUDIO_TRACKS:
+            candidate = lang_dir / f"{track_key}.mp3"
+            if not candidate.exists() or candidate.stat().st_size <= 0:
+                continue
+            transcript = audio_transcript_from_candidates((lang_dir / f"{track_key}.txt",))
+            track = {
+                "languageCode": language,
+                "kind": kind,
+                "isPrimary": is_primary,
+                "sortOrder": sort_order,
+                "title": f"{slug} {track_key}",
+                "path": f"audio/{slug}/{language}/{track_key}.mp3",
+                "_sourcePath": str(candidate),
+            }
+            if transcript:
+                track["transcript"] = transcript
+            field_tracks.append(track)
+        if field_tracks:
+            if not any(track["isPrimary"] for track in field_tracks):
+                field_tracks[0]["isPrimary"] = True
+            tracks.extend(field_tracks)
     return tracks
+
+
+def audio_transcript_from_candidates(candidates: tuple[Path, ...]) -> str:
+    for candidate in candidates:
+        if candidate.exists() and candidate.stat().st_size > 0:
+            return candidate.read_text(encoding="utf-8").strip()
+    return ""
 
 
 def images_for_slug(slug: str, images_root: Path) -> list[dict[str, object]]:

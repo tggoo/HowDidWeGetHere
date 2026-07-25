@@ -1,3 +1,5 @@
+"""Generate legacy narration plaintext, MP3 files and upload ZIPs for workbook-derived entries."""
+
 import argparse
 import re
 import subprocess
@@ -7,6 +9,8 @@ import zipfile
 from pathlib import Path
 
 from openpyxl import load_workbook
+
+from markdown_tts import markdown_to_tts
 
 
 SUPPORTED_SHEETS = ("Master Timeline", "Mythology Index")
@@ -72,7 +76,7 @@ def read_rows(workbook_path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def narration_text(row: dict[str, str]) -> str:
+def narration_text(row: dict[str, str], language: str) -> str:
     parts = [row["title"]]
     if row["date_label"]:
         parts.append(f"Approximate date: {row['date_label']}.")
@@ -82,7 +86,7 @@ def narration_text(row: dict[str, str]) -> str:
         parts.append(f"Category: {row['category']}.")
     if row["summary"]:
         parts.append(row["summary"])
-    return "\n\n".join(parts).strip()
+    return markdown_to_tts("\n\n".join(parts), language)
 
 
 def run_tts(tts_root: Path, text_path: Path, mp3_path: Path, lang: str) -> None:
@@ -117,35 +121,36 @@ def main() -> None:
 
     workbook_path = Path(args.workbook)
     tts_root = Path(args.tts_root)
-    out_root = Path(args.out) / args.lang
-    text_root = out_root / "texts"
-    audio_root = out_root / "mp3"
-    text_root.mkdir(parents=True, exist_ok=True)
-    audio_root.mkdir(parents=True, exist_ok=True)
+    out_root = Path(args.out)
+    out_root.mkdir(parents=True, exist_ok=True)
 
     rows = read_rows(workbook_path)
     if args.limit > 0:
         rows = rows[: args.limit]
 
     mp3_paths: list[Path] = []
+    zip_entries: list[tuple[Path, str]] = []
     for row in rows:
-        text_path = text_root / f"{row['slug']}.{args.lang}.txt"
-        mp3_path = audio_root / f"{row['slug']}.{args.lang}.mp3"
-        text_path.write_text(narration_text(row), encoding="utf-8")
+        entry_root = out_root / row["slug"] / args.lang
+        entry_root.mkdir(parents=True, exist_ok=True)
+        text_path = entry_root / "narration.txt"
+        mp3_path = entry_root / "narration.mp3"
+        text_path.write_text(narration_text(row, args.lang), encoding="utf-8")
         if args.generate and (args.overwrite or not mp3_path.exists() or mp3_path.stat().st_size == 0):
             run_tts(tts_root, text_path, mp3_path, args.lang)
         if mp3_path.exists() and mp3_path.stat().st_size > 0:
             mp3_paths.append(mp3_path)
+            zip_entries.append((mp3_path, f"{row['slug']}.{args.lang}.mp3"))
 
     zip_path = out_root / f"entry-audio-{args.lang}.zip"
     if mp3_paths:
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for mp3_path in mp3_paths:
-                archive.write(mp3_path, arcname=mp3_path.name)
+            for mp3_path, archive_name in zip_entries:
+                archive.write(mp3_path, arcname=archive_name)
 
-    print(f"Wrote {len(rows)} text files to {text_root}.")
+    print(f"Wrote {len(rows)} text files under {out_root}.")
     if args.generate:
-        print(f"Generated/found {len(mp3_paths)} mp3 files in {audio_root}.")
+        print(f"Generated/found {len(mp3_paths)} mp3 files under {out_root}.")
     if mp3_paths:
         print(f"Wrote bulk upload zip: {zip_path}")
 

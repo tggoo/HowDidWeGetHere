@@ -50,6 +50,23 @@ public static class AdminContentPackageImportEndpoints
         ".webm"
     };
 
+    private static readonly Dictionary<string, AudioAttributeDefinition> PackageAudioAttributes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["description"] = new(AudioKind.Description, true, 0),
+        ["title"] = new(AudioKind.Title, false, 10),
+        ["summary"] = new(AudioKind.Summary, false, 20),
+        ["whyItMatters"] = new(AudioKind.WhyItMatters, false, 30),
+        ["why-it-matters"] = new(AudioKind.WhyItMatters, false, 30),
+        ["why_it_matters"] = new(AudioKind.WhyItMatters, false, 30)
+    };
+
+    private static readonly HashSet<string> PackageAudioLanguages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "en",
+        "cs",
+        "es"
+    };
+
     public static RouteGroupBuilder MapAdminContentPackageImportEndpoints(this RouteGroupBuilder admin)
     {
         admin.MapPost("/imports/content-package/preview", PreviewContentPackageAsync)
@@ -111,6 +128,7 @@ public static class AdminContentPackageImportEndpoints
         foreach (var entry in document.Entries)
         {
             var rowWarnings = ValidatePackageEntry(entry, archive);
+            var resolvedAudio = ResolvePackageAudioFiles(entry, archive);
             warnings.AddRange(rowWarnings.Select(warning => $"{ResolveSlug(entry)}: {warning}"));
 
             var existing = ResolveExistingEntry(entry, existingEntries, updateExistingRows ?? true);
@@ -127,7 +145,7 @@ public static class AdminContentPackageImportEndpoints
             periodsToAttach += entry.TimePeriods.Count;
             placesToAttach += entry.Places.Count;
             sourcesToAttach += entry.Sources.Count;
-            audioToAttach += entry.Audio.Count(audio => PackageEntryExists(archive, audio.Path));
+            audioToAttach += resolvedAudio.Count;
             imagesToAttach += entry.Images.Count(image => PackageEntryExists(archive, image.Path));
 
             rows.Add(new ContentPackageImportPreviewRow(
@@ -141,7 +159,7 @@ public static class AdminContentPackageImportEndpoints
                 entry.TimePeriods.Count,
                 entry.Places.Count,
                 entry.Sources.Count,
-                entry.Audio.Count,
+                resolvedAudio.Count,
                 entry.Images.Count,
                 rowWarnings));
         }
@@ -301,7 +319,10 @@ public static class AdminContentPackageImportEndpoints
                 placesAttached += AttachPlace(matchedEntry, place, placeCache, dbContext);
             }
 
-            foreach (var audio in packageEntry.Audio)
+            var importedAudioKeys = new HashSet<AudioTrackImportKey>();
+            var authoritativeAudioLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var packageAudioFiles = ResolvePackageAudioFiles(packageEntry, archive);
+            foreach (var audio in packageAudioFiles)
             {
                 var stored = await StorePackageMediaAsync(
                     archive,
@@ -317,6 +338,13 @@ public static class AdminContentPackageImportEndpoints
                     continue;
                 }
 
+                var audioKey = ResolveAudioTrackImportKey(audio);
+                importedAudioKeys.Add(audioKey);
+                if (audioKey.Kind == AudioKind.Description || audio.IsPrimary == true)
+                {
+                    authoritativeAudioLanguages.Add(audioKey.LanguageCode);
+                }
+
                 var wasUpdate = UpsertAudio(matchedEntry, audio, stored, environment, configuration, userId);
                 if (wasUpdate)
                 {
@@ -327,6 +355,13 @@ public static class AdminContentPackageImportEndpoints
                     audioTracksCreated++;
                 }
             }
+            RemoveStaleAudioTracks(
+                matchedEntry,
+                importedAudioKeys,
+                authoritativeAudioLanguages,
+                dbContext,
+                environment,
+                configuration);
 
             foreach (var image in packageEntry.Images)
             {
@@ -817,15 +852,24 @@ public static class AdminContentPackageImportEndpoints
         IConfiguration configuration,
         string? userId)
     {
-        var language = NormalizeLanguage(audio.LanguageCode);
+        var audioKey = ResolveAudioTrackImportKey(audio);
+        var language = audioKey.LanguageCode;
+        var kind = audioKey.Kind;
+        var sortOrder = audioKey.SortOrder;
+        var title = EmptyToNull(audio.Title);
         var existing = entry.AudioTracks
-            .Where(track => track.LanguageCode == language)
-            .OrderByDescending(track => track.IsPrimary)
-            .ThenBy(track => track.SortOrder)
-            .FirstOrDefault();
-        foreach (var track in entry.AudioTracks.Where(track => track.LanguageCode == language))
+            .Where(track => track.LanguageCode == language && track.Kind == kind)
+            .OrderBy(track => track.SortOrder)
+            .FirstOrDefault(track =>
+                track.SortOrder == sortOrder ||
+                (title is not null && string.Equals(track.Title, title, StringComparison.OrdinalIgnoreCase)));
+        var isPrimary = audio.IsPrimary ?? existing?.IsPrimary ?? !entry.AudioTracks.Any(track => track.LanguageCode == language);
+        if (isPrimary)
         {
-            track.IsPrimary = false;
+            foreach (var track in entry.AudioTracks.Where(track => track.LanguageCode == language))
+            {
+                track.IsPrimary = false;
+            }
         }
 
         if (existing is null)
@@ -834,15 +878,15 @@ public static class AdminContentPackageImportEndpoints
             {
                 Entry = entry,
                 LanguageCode = language,
-                Kind = ParseEnum(audio.Kind, AudioKind.Narration),
+                Kind = kind,
                 StorageProvider = StorageProvider.Local,
                 StorageKey = stored.StorageKey,
                 PublicUrl = stored.PublicUrl,
                 MediaType = stored.MediaType,
                 DurationSeconds = audio.DurationSeconds,
-                SortOrder = audio.SortOrder ?? 0,
-                IsPrimary = audio.IsPrimary ?? true,
-                Title = EmptyToNull(audio.Title) ?? $"{entry.DefaultTitle} narration",
+                SortOrder = sortOrder,
+                IsPrimary = isPrimary,
+                Title = title ?? $"{entry.DefaultTitle} narration",
                 Transcript = EmptyToNull(audio.Transcript),
                 Attribution = EmptyToNull(audio.Attribution),
                 License = EmptyToNull(audio.License),
@@ -853,15 +897,15 @@ public static class AdminContentPackageImportEndpoints
         }
 
         TryDeleteLocalFile(existing.StorageProvider, existing.StorageKey, environment, configuration);
-        existing.Kind = ParseEnum(audio.Kind, AudioKind.Narration);
+        existing.Kind = kind;
         existing.StorageProvider = StorageProvider.Local;
         existing.StorageKey = stored.StorageKey;
         existing.PublicUrl = stored.PublicUrl;
         existing.MediaType = stored.MediaType;
         existing.DurationSeconds = audio.DurationSeconds;
-        existing.SortOrder = audio.SortOrder ?? 0;
-        existing.IsPrimary = audio.IsPrimary ?? true;
-        existing.Title = EmptyToNull(audio.Title) ?? existing.Title ?? $"{entry.DefaultTitle} narration";
+        existing.SortOrder = sortOrder;
+        existing.IsPrimary = isPrimary;
+        existing.Title = title ?? existing.Title ?? $"{entry.DefaultTitle} narration";
         existing.Transcript = EmptyToNull(audio.Transcript);
         existing.Attribution = EmptyToNull(audio.Attribution);
         existing.License = EmptyToNull(audio.License);
@@ -870,6 +914,37 @@ public static class AdminContentPackageImportEndpoints
         existing.UpdatedByUserId = userId;
         return true;
     }
+
+    private static void RemoveStaleAudioTracks(
+        Entry entry,
+        ISet<AudioTrackImportKey> importedAudioKeys,
+        ISet<string> authoritativeAudioLanguages,
+        HistoryDbContext dbContext,
+        IWebHostEnvironment environment,
+        IConfiguration configuration)
+    {
+        if (importedAudioKeys.Count == 0 || authoritativeAudioLanguages.Count == 0)
+        {
+            return;
+        }
+
+        var staleTracks = entry.AudioTracks
+            .Where(track =>
+                authoritativeAudioLanguages.Contains(track.LanguageCode) &&
+                !importedAudioKeys.Contains(new AudioTrackImportKey(track.LanguageCode, track.Kind, track.SortOrder)))
+            .ToList();
+        foreach (var staleTrack in staleTracks)
+        {
+            TryDeleteLocalFile(staleTrack.StorageProvider, staleTrack.StorageKey, environment, configuration);
+            dbContext.EntryAudioTracks.Remove(staleTrack);
+        }
+    }
+
+    private static AudioTrackImportKey ResolveAudioTrackImportKey(ContentPackageAudio audio) =>
+        new(
+            NormalizeLanguage(audio.LanguageCode),
+            ParseEnum(audio.Kind, AudioKind.Narration),
+            audio.SortOrder ?? 0);
 
     private static bool UpsertImage(
         Entry entry,
@@ -1093,6 +1168,178 @@ public static class AdminContentPackageImportEndpoints
         return warnings;
     }
 
+    private static IReadOnlyList<ContentPackageAudio> ResolvePackageAudioFiles(ContentPackageEntry entry, ZipArchive archive)
+    {
+        var resolved = new List<ContentPackageAudio>();
+        var resolvedKeys = new HashSet<AudioTrackImportKey>();
+        var explicitPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var audio in entry.Audio)
+        {
+            var normalizedPath = NormalizePackagePath(audio.Path);
+            if (normalizedPath is null)
+            {
+                continue;
+            }
+
+            explicitPaths.Add(normalizedPath);
+            if (!AllowedAudioExtensions.Contains(Path.GetExtension(normalizedPath)) || !PackageEntryExists(archive, normalizedPath))
+            {
+                continue;
+            }
+
+            var resolvedAudio = ResolvePackageAudioMetadata(entry, audio, normalizedPath);
+            if (resolvedKeys.Add(ResolveAudioTrackImportKey(resolvedAudio)))
+            {
+                resolved.Add(resolvedAudio);
+            }
+        }
+
+        foreach (var audio in DiscoverSlugFirstPackageAudio(entry, archive))
+        {
+            var normalizedPath = NormalizePackagePath(audio.Path);
+            if (normalizedPath is null || explicitPaths.Contains(normalizedPath))
+            {
+                continue;
+            }
+
+            if (resolvedKeys.Add(ResolveAudioTrackImportKey(audio)))
+            {
+                resolved.Add(audio);
+            }
+        }
+
+        return resolved;
+    }
+
+    private static IEnumerable<ContentPackageAudio> DiscoverSlugFirstPackageAudio(ContentPackageEntry entry, ZipArchive archive)
+    {
+        var slug = ResolveSlug(entry);
+        var prefix = $"audio/{slug}/";
+        foreach (var archiveEntry in archive.Entries)
+        {
+            var packagePath = NormalizePackagePath(archiveEntry.FullName);
+            if (archiveEntry.Length <= 0 || packagePath is null || !packagePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(packagePath);
+            if (!AllowedAudioExtensions.Contains(extension))
+            {
+                continue;
+            }
+
+            var relativePath = packagePath[prefix.Length..];
+            var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length != 2)
+            {
+                continue;
+            }
+
+            var language = NormalizeLanguage(segments[0]);
+            if (!PackageAudioLanguages.Contains(language))
+            {
+                continue;
+            }
+
+            var attribute = Path.GetFileNameWithoutExtension(segments[1]);
+            if (!PackageAudioAttributes.TryGetValue(attribute, out var definition))
+            {
+                continue;
+            }
+
+            yield return new ContentPackageAudio
+            {
+                Path = packagePath,
+                LanguageCode = language,
+                Kind = definition.Kind.ToString(),
+                IsPrimary = definition.IsPrimary,
+                SortOrder = definition.SortOrder,
+                Title = $"{ResolveTitle(entry)} {attribute}",
+                Transcript = ReadPackageText(archive, $"audio/{slug}/{segments[0]}/{attribute}.txt")
+            };
+        }
+    }
+
+    private static ContentPackageAudio ResolvePackageAudioMetadata(
+        ContentPackageEntry entry,
+        ContentPackageAudio audio,
+        string normalizedPath)
+    {
+        TryResolveSlugFirstAudioPath(entry, normalizedPath, out var inferredLanguage, out var inferredAttribute, out var inferredDefinition);
+        return new ContentPackageAudio
+        {
+            Path = normalizedPath,
+            LanguageCode = EmptyToNull(audio.LanguageCode) ?? inferredLanguage,
+            Kind = EmptyToNull(audio.Kind) ?? inferredDefinition?.Kind.ToString(),
+            IsPrimary = audio.IsPrimary ?? inferredDefinition?.IsPrimary,
+            SortOrder = audio.SortOrder ?? inferredDefinition?.SortOrder,
+            Title = EmptyToNull(audio.Title) ?? (inferredAttribute is null ? null : $"{ResolveTitle(entry)} {inferredAttribute}"),
+            Transcript = EmptyToNull(audio.Transcript),
+            DurationSeconds = audio.DurationSeconds,
+            Attribution = EmptyToNull(audio.Attribution),
+            License = EmptyToNull(audio.License),
+            SourceUrl = EmptyToNull(audio.SourceUrl)
+        };
+    }
+
+    private static bool TryResolveSlugFirstAudioPath(
+        ContentPackageEntry entry,
+        string packagePath,
+        out string? language,
+        out string? attribute,
+        out AudioAttributeDefinition? definition)
+    {
+        language = null;
+        attribute = null;
+        definition = null;
+
+        var slug = ResolveSlug(entry);
+        var prefix = $"audio/{slug}/";
+        if (!packagePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var relativePath = packagePath[prefix.Length..];
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length != 2)
+        {
+            return false;
+        }
+
+        var normalizedLanguage = NormalizeLanguage(segments[0]);
+        if (!PackageAudioLanguages.Contains(normalizedLanguage))
+        {
+            return false;
+        }
+
+        var fileAttribute = Path.GetFileNameWithoutExtension(segments[1]);
+        if (!PackageAudioAttributes.TryGetValue(fileAttribute, out var audioDefinition))
+        {
+            return false;
+        }
+
+        language = normalizedLanguage;
+        attribute = fileAttribute;
+        definition = audioDefinition;
+        return true;
+    }
+
+    private static string? ReadPackageText(ZipArchive archive, string packagePath)
+    {
+        var entry = GetPackageEntry(archive, packagePath);
+        if (entry is not { Length: > 0 })
+        {
+            return null;
+        }
+
+        using var stream = entry.Open();
+        using var reader = new StreamReader(stream);
+        return EmptyToNull(reader.ReadToEnd());
+    }
+
     private static void AddTaxonomyTranslationWarnings(
         ICollection<string> warnings,
         string itemType,
@@ -1185,18 +1432,32 @@ public static class AdminContentPackageImportEndpoints
 
     private static ZipArchiveEntry? GetPackageEntry(ZipArchive archive, string? packagePath)
     {
+        var normalized = NormalizePackagePath(packagePath);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        return archive.GetEntry(normalized) ??
+            archive.Entries.FirstOrDefault(entry =>
+                string.Equals(NormalizePackagePath(entry.FullName), normalized, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? NormalizePackagePath(string? packagePath)
+    {
         if (string.IsNullOrWhiteSpace(packagePath))
         {
             return null;
         }
 
         var normalized = packagePath.Replace('\\', '/').TrimStart('/');
-        if (normalized.Contains("../", StringComparison.Ordinal) || normalized.Contains("/..", StringComparison.Ordinal))
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0 || segments.Any(segment => segment == ".."))
         {
             return null;
         }
 
-        return archive.GetEntry(normalized);
+        return string.Join('/', segments);
     }
 
     private static bool PackageEntryExists(ZipArchive archive, string? packagePath) =>
@@ -1339,6 +1600,10 @@ public static class AdminContentPackageImportEndpoints
     }
 
     private sealed record ExistingPackageEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
+
+    private sealed record AudioTrackImportKey(string LanguageCode, AudioKind Kind, int SortOrder);
+
+    private sealed record AudioAttributeDefinition(AudioKind Kind, bool IsPrimary, int SortOrder);
 
     private sealed record PackageReadResult(ContentPackageDocument? Document, string? Error);
 

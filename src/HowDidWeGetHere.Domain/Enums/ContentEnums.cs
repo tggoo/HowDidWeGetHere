@@ -20,7 +20,10 @@ public enum AudioKind
     Pronunciation,
     Ambience,
     Interview,
-    Other
+    Other,
+    Title,
+    Description,
+    WhyItMatters
 }
 
 public enum ContentStatus

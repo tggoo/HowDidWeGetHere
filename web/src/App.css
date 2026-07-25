@@ -886,9 +886,116 @@
   width: 100%;
 }
 
-.entry-summary {
+.markdown-text {
   color: var(--text);
   line-height: 1.5;
+}
+
+.markdown-text p,
+.markdown-text ul,
+.markdown-text ol,
+.markdown-text blockquote,
+.markdown-text pre {
+  margin: 0;
+}
+
+.markdown-text p + p,
+.markdown-text p + ul,
+.markdown-text p + ol,
+.markdown-text ul + p,
+.markdown-text ol + p,
+.markdown-text blockquote + p {
+  margin-top: 10px;
+}
+
+.markdown-text ul,
+.markdown-text ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.markdown-text .task-list-item {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin-left: -20px;
+}
+
+.markdown-text .task-list-item input {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+.markdown-text blockquote {
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+  padding-left: 10px;
+}
+
+.markdown-text a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-text code {
+  background: var(--control-strong);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.94em;
+  padding: 1px 4px;
+}
+
+.markdown-text pre {
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.markdown-text pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-table-scroll {
+  overflow-x: auto;
+}
+
+.markdown-text table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.markdown-text th,
+.markdown-text td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.markdown-text th {
+  background: var(--panel-muted);
+  color: var(--text-strong);
+  font-weight: 800;
+}
+
+.markdown-text h2,
+.markdown-text h3,
+.markdown-text h4 {
+  color: var(--text-strong);
+  font-size: 15px;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+
+.entry-summary {
   margin: 14px 0 0;
 }
 
@@ -902,12 +1009,6 @@
 
 .entry-description strong {
   color: var(--text-strong);
-}
-
-.entry-description p {
-  color: var(--text);
-  line-height: 1.55;
-  margin: 0;
 }
 
 .entry-meta {
@@ -1151,6 +1252,54 @@
 .entry-editor textarea {
   min-height: 74px;
   resize: vertical;
+}
+
+.markdown-editor {
+  color: var(--text);
+  display: grid;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.markdown-toolbar button {
+  background: var(--control-strong);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.markdown-editor-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.markdown-editor-grid textarea {
+  min-height: 190px;
+}
+
+.markdown-preview {
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-weight: 400;
+  max-height: 260px;
+  overflow: auto;
+  padding: 9px;
 }
 
 .media-editor textarea {
@@ -1499,5 +1648,9 @@
   .route-manager-actions .admin-action {
     flex: 1;
     justify-content: center;
+  }
+
+  .markdown-editor-grid {
+    grid-template-columns: 1fr;
   }
 }
