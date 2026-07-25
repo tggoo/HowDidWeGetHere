@@ -297,7 +297,8 @@ public static class AdminContentPackageImportEndpoints
             };
             batch.Rows.Add(importedRow);
 
-            var importedEntry = CreateEntry(packageEntry, publishImportedEntries ?? true);
+            var packageAudioFiles = ResolvePackageAudioFiles(packageEntry, archive);
+            var importedEntry = CreateEntry(packageEntry, packageAudioFiles, publishImportedEntries ?? true);
             var matchedEntry = ResolveExistingEntry(packageEntry, existingBySourceRow, existingBySlug);
             if (matchedEntry is null)
             {
@@ -339,7 +340,6 @@ public static class AdminContentPackageImportEndpoints
 
             var importedAudioKeys = new HashSet<AudioTrackImportKey>();
             var authoritativeAudioLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var packageAudioFiles = ResolvePackageAudioFiles(packageEntry, archive);
             foreach (var audio in packageAudioFiles)
             {
                 var stored = await StorePackageMediaAsync(
@@ -506,7 +506,10 @@ public static class AdminContentPackageImportEndpoints
             importBatchesDeleted);
     }
 
-    private static Entry CreateEntry(ContentPackageEntry packageEntry, bool publishImportedEntries)
+    private static Entry CreateEntry(
+        ContentPackageEntry packageEntry,
+        IReadOnlyCollection<ContentPackageAudio> packageAudioFiles,
+        bool publishImportedEntries)
     {
         var parsedDate = HistoricalDateParser.Parse(packageEntry.DateLabel);
         var timePrecision = packageEntry.TimePrecision ?? parsedDate.Precision;
@@ -533,35 +536,124 @@ public static class AdminContentPackageImportEndpoints
             TimeConfidence = packageEntry.TimeConfidence,
             SourceSheet = packageEntry.SourceSheet,
             SourceRow = packageEntry.SourceRow,
-            Translations = CreateTranslations(packageEntry, title)
+            Translations = CreateTranslations(packageEntry, packageAudioFiles, title)
         };
     }
 
-    private static List<EntryTranslation> CreateTranslations(ContentPackageEntry packageEntry, string title)
+    private static List<EntryTranslation> CreateTranslations(
+        ContentPackageEntry packageEntry,
+        IReadOnlyCollection<ContentPackageAudio> packageAudioFiles,
+        string title)
     {
-        if (packageEntry.Translations.Count == 0)
+        var translationsByLanguage = new Dictionary<string, EntryTranslation>(StringComparer.OrdinalIgnoreCase);
+        foreach (var packageTranslation in packageEntry.Translations)
         {
-            return
-            [
-                new EntryTranslation
-                {
-                    LanguageCode = "en",
-                    Title = title
-                }
-            ];
+            var language = NormalizeLanguage(packageTranslation.Key);
+            var translation = GetOrCreateTranslation(translationsByLanguage, language, title);
+            ApplyPackageTranslation(translation, packageTranslation.Value, title);
         }
 
-        return packageEntry.Translations
-            .Select(translation => new EntryTranslation
+        foreach (var audio in packageAudioFiles)
+        {
+            var transcript = EmptyToNull(audio.Transcript);
+            if (transcript is null)
             {
-                LanguageCode = NormalizeLanguage(translation.Key),
-                Title = string.IsNullOrWhiteSpace(translation.Value.Title) ? title : translation.Value.Title!,
-                Summary = EmptyToNull(translation.Value.Summary),
-                Description = EmptyToNull(translation.Value.Description),
-                WhyItMatters = EmptyToNull(translation.Value.WhyItMatters),
-                DatingNote = EmptyToNull(translation.Value.DatingNote)
-            })
+                continue;
+            }
+
+            var language = NormalizeLanguage(audio.LanguageCode);
+            var translation = GetOrCreateTranslation(translationsByLanguage, language, title);
+            ApplyAudioTranscriptFallback(translation, ParseEnum(audio.Kind, AudioKind.Narration), transcript, title);
+        }
+
+        if (translationsByLanguage.Count == 0)
+        {
+            translationsByLanguage["en"] = new EntryTranslation
+            {
+                LanguageCode = "en",
+                Title = title
+            };
+        }
+
+        foreach (var translation in translationsByLanguage.Values)
+        {
+            if (string.IsNullOrWhiteSpace(translation.Title))
+            {
+                translation.Title = title;
+            }
+        }
+
+        return translationsByLanguage.Values
+            .OrderBy(translation => translation.LanguageCode == "en" ? 0 : 1)
+            .ThenBy(translation => translation.LanguageCode)
             .ToList();
+    }
+
+    private static EntryTranslation GetOrCreateTranslation(
+        IDictionary<string, EntryTranslation> translationsByLanguage,
+        string language,
+        string title)
+    {
+        if (translationsByLanguage.TryGetValue(language, out var translation))
+        {
+            return translation;
+        }
+
+        translation = new EntryTranslation
+        {
+            LanguageCode = language,
+            Title = title
+        };
+        translationsByLanguage[language] = translation;
+        return translation;
+    }
+
+    private static void ApplyPackageTranslation(
+        EntryTranslation translation,
+        ContentPackageTranslation packageTranslation,
+        string title)
+    {
+        translation.Title = string.IsNullOrWhiteSpace(packageTranslation.Title)
+            ? translation.Title
+            : packageTranslation.Title!.Trim();
+        translation.Summary = EmptyToNull(packageTranslation.Summary) ?? translation.Summary;
+        translation.Description = EmptyToNull(packageTranslation.Description) ?? translation.Description;
+        translation.WhyItMatters = EmptyToNull(packageTranslation.WhyItMatters) ?? translation.WhyItMatters;
+        translation.DatingNote = EmptyToNull(packageTranslation.DatingNote) ?? translation.DatingNote;
+
+        if (string.IsNullOrWhiteSpace(translation.Title))
+        {
+            translation.Title = title;
+        }
+    }
+
+    private static void ApplyAudioTranscriptFallback(
+        EntryTranslation translation,
+        AudioKind audioKind,
+        string transcript,
+        string defaultTitle)
+    {
+        switch (audioKind)
+        {
+            case AudioKind.Title:
+                if (string.IsNullOrWhiteSpace(translation.Title) ||
+                    string.Equals(translation.Title, defaultTitle, StringComparison.Ordinal))
+                {
+                    translation.Title = transcript;
+                }
+
+                break;
+            case AudioKind.Summary:
+                translation.Summary ??= transcript;
+                break;
+            case AudioKind.Description:
+            case AudioKind.Narration:
+                translation.Description ??= transcript;
+                break;
+            case AudioKind.WhyItMatters:
+                translation.WhyItMatters ??= transcript;
+                break;
+        }
     }
 
     private static void ApplyEntryUpdate(Entry target, Entry imported)

@@ -1,4 +1,5 @@
 using HowDidWeGetHere.Api.Contracts;
+using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,10 @@ public static class PublicEndpoints
                 entry.IconKey,
                 entry.Translations
                     .Where(translation => translation.LanguageCode == lang)
+                    .Select(translation => translation.Title)
+                    .FirstOrDefault() ??
+                entry.Translations
+                    .Where(translation => translation.LanguageCode == "en")
                     .Select(translation => translation.Title)
                     .FirstOrDefault() ?? entry.DefaultTitle,
                 entry.DateLabel,
@@ -242,7 +247,8 @@ public static class PublicEndpoints
             return Results.NotFound();
         }
 
-        var translation = entry.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+        var translation = LocalizedEntryTranslation(entry.Translations, lang);
+        var fallbackTranslation = LocalizedEntryTranslation(entry.Translations, "en")
             ?? entry.Translations.FirstOrDefault();
 
         var response = new EntryDetailResponse(
@@ -251,11 +257,11 @@ public static class PublicEndpoints
             entry.Kind.ToString(),
             entry.IconKey,
             entry.RealityStatus.ToString(),
-            translation?.Title ?? entry.DefaultTitle,
-            translation?.Summary,
-            translation?.Description,
-            translation?.WhyItMatters,
-            translation?.DatingNote,
+            LocalizedTranslationValue(translation, fallbackTranslation, item => item.Title) ?? entry.DefaultTitle,
+            LocalizedTranslationValue(translation, fallbackTranslation, item => item.Summary),
+            LocalizedTranslationValue(translation, fallbackTranslation, item => item.Description),
+            LocalizedTranslationValue(translation, fallbackTranslation, item => item.WhyItMatters),
+            LocalizedTranslationValue(translation, fallbackTranslation, item => item.DatingNote),
             entry.DateLabel,
             entry.StartYear,
             entry.StartMonth,
@@ -350,6 +356,7 @@ public static class PublicEndpoints
                 .Select(image =>
                 {
                     var imageTranslation = image.Translations.FirstOrDefault(item => item.LanguageCode == lang)
+                        ?? image.Translations.FirstOrDefault(item => item.LanguageCode == "en")
                         ?? image.Translations.FirstOrDefault();
                     return new EntryImageResponse(
                         image.Id,
@@ -567,9 +574,35 @@ public static class PublicEndpoints
             .Select(translation => translation.Title)
             .FirstOrDefault() ??
         entry.Translations
+            .Where(translation => translation.LanguageCode == "en")
+            .Select(translation => translation.Title)
+            .FirstOrDefault() ??
+        entry.Translations
             .Select(translation => translation.Title)
             .FirstOrDefault() ??
         entry.DefaultTitle;
+
+    private static EntryTranslation? LocalizedEntryTranslation(
+        IEnumerable<EntryTranslation> translations,
+        string language) =>
+        translations.FirstOrDefault(translation => translation.LanguageCode == language);
+
+    private static string? LocalizedTranslationValue(
+        EntryTranslation? translation,
+        EntryTranslation? fallbackTranslation,
+        Func<EntryTranslation, string?> selector)
+    {
+        var value = translation is null ? null : EmptyToNull(selector(translation));
+        if (value is not null)
+        {
+            return value;
+        }
+
+        return fallbackTranslation is null ? null : EmptyToNull(selector(fallbackTranslation));
+    }
+
+    private static string? EmptyToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static EntryRelationshipResponse RelatedEntry(
         Domain.Entries.Entry entry,
@@ -583,6 +616,10 @@ public static class PublicEndpoints
             .Where(translation => translation.LanguageCode == language)
             .Select(translation => translation.Title)
             .FirstOrDefault() ??
+            entry.Translations
+                .Where(translation => translation.LanguageCode == "en")
+                .Select(translation => translation.Title)
+                .FirstOrDefault() ??
             entry.Translations
                 .Select(translation => translation.Title)
                 .FirstOrDefault() ??

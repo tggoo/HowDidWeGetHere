@@ -664,6 +664,7 @@ const uiCopy = {
     searchEntries: 'Search entries',
     selectedEntry: 'Selected entry',
     sources: 'Sources',
+    summary: 'Summary',
     switchToDarkMode: 'Switch to dark mode',
     switchToLightMode: 'Switch to light mode',
     tags: 'Tags',
@@ -720,6 +721,7 @@ const uiCopy = {
     searchEntries: 'Hledat záznamy',
     selectedEntry: 'Vybraný záznam',
     sources: 'Zdroje',
+    summary: 'Shrnutí',
     switchToDarkMode: 'Přepnout do tmavého režimu',
     switchToLightMode: 'Přepnout do světlého režimu',
     tags: 'Tagy',
@@ -3737,7 +3739,7 @@ function App() {
               <X aria-hidden="true" />
             </button>
           </div>
-          <h1>{selectedEntry?.title}</h1>
+          <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
           <div className="entry-meta">
             <span>{selectedEntry?.kind}</span>
             <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
@@ -3750,9 +3752,14 @@ function App() {
               src={selectedEntryImageUrl}
             />
           )}
-          <MarkdownText className="entry-summary" markdown={selectedEntryDetail?.summary} />
+          {selectedEntryDetail?.summary && (
+            <div className="entry-text-section entry-summary-section">
+              <strong>{ui.summary}</strong>
+              <MarkdownText markdown={selectedEntryDetail.summary} />
+            </div>
+          )}
           {selectedEntryDetail?.description && (
-            <div className="entry-description">
+            <div className="entry-text-section">
               <strong>{ui.description}</strong>
               <MarkdownText markdown={selectedEntryDetail.description} />
             </div>

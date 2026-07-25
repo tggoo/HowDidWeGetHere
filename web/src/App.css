@@ -1016,11 +1016,7 @@
   margin: 0 0 6px;
 }
 
-.entry-summary {
-  margin: 14px 0 0;
-}
-
-.entry-description {
+.entry-text-section {
   border-top: 1px solid var(--border);
   display: grid;
   gap: 6px;
@@ -1028,7 +1024,12 @@
   padding-top: 14px;
 }
 
-.entry-description strong {
+.entry-summary-section {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.entry-text-section strong {
   color: var(--text-strong);
 }
 
