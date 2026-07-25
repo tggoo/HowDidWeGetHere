@@ -213,6 +213,7 @@ public static class PublicEndpoints
         var lang = EndpointHelpers.NormalizeLanguage(language);
         var entry = await dbContext.Entries
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(item => item.Translations)
             .Include(item => item.Tags)
                 .ThenInclude(entryTag => entryTag.Tag)
