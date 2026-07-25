@@ -117,8 +117,10 @@ python tools/build-content-packages.py
 
 Generated package files:
 
-- `generated/packages/master-timeline.zip`
-- `generated/packages/mythology.zip`
+- `generated/packages/master-timeline-part-001.zip`, `master-timeline-part-002.zip`, ...
+- `generated/packages/mythology-part-001.zip`, `mythology-part-002.zip`, ...
+
+The package ZIP writer keeps each ZIP at or below 20 MiB by default. If a package is small enough to fit into one ZIP, it keeps the unsuffixed name such as `master-timeline.zip`.
 
 Each package has this structure:
 
@@ -135,8 +137,9 @@ images/<entry-slug>.<ext>
 Admin import order:
 
 1. Open `Admin -> Import`.
-2. Select a generated content package ZIP.
+2. Select a generated content package ZIP part.
 3. Run `Preview package`.
 4. If counts look correct, run `Import package`.
+5. Repeat for each part of the same package.
 
 The package import is idempotent. It updates existing entries by `sourceSheet/sourceRow` first, then by `slug`. Audio tracks are matched by language, kind and sort order; when a package provides a primary `Description` track for a language, stale audio tracks for that same language are removed. Existing primary images are replaced on re-import.

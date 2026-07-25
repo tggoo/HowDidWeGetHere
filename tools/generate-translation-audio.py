@@ -7,11 +7,11 @@ import json
 import shutil
 import subprocess
 import sys
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from content_package_zip import DEFAULT_MAX_ZIP_MIB, write_package_zips
 from markdown_tts import markdown_to_tts
 
 
@@ -83,6 +83,7 @@ def main() -> None:
     parser.add_argument("--generate", action="store_true", help="Call the TTS project and create mp3 files.")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--no-package-update", action="store_true")
+    parser.add_argument("--max-package-zip-mib", type=float, default=DEFAULT_MAX_ZIP_MIB)
     parser.add_argument(
         "--clean-package-audio",
         action="store_true",
@@ -132,6 +133,7 @@ def main() -> None:
             selected_tracks,
             out_root,
             clean_package_audio=args.clean_package_audio,
+            max_zip_bytes=int(args.max_package_zip_mib * 1024 * 1024),
         )
 
     print(f"Wrote {text_count} plaintext TTS file(s).", flush=True)
@@ -312,6 +314,7 @@ def update_packages(
     out_root: Path,
     *,
     clean_package_audio: bool,
+    max_zip_bytes: int,
 ) -> int:
     changed_package_paths: set[Path] = set()
     package_track_count = 0
@@ -350,8 +353,8 @@ def update_packages(
     for package_path in sorted(changed_package_paths):
         document = next(document for current_path, document in packages if current_path == package_path)
         package_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        zip_path = write_package_zip(package_path.parent)
-        print(f"Generated {zip_path.name}.", flush=True)
+        zip_paths = write_package_zips(package_path.parent, max_zip_bytes)
+        print(f"Generated {', '.join(path.name for path in zip_paths)}.", flush=True)
 
     return package_track_count
 
@@ -481,17 +484,6 @@ def format_lang_tracks(tracks_by_language: dict[str, list[str]], verb: str) -> s
         for language, track_keys in sorted(tracks_by_language.items())
     ]
     return f"{verb} " + "; ".join(parts)
-
-
-def write_package_zip(package_dir: Path) -> Path:
-    zip_path = package_dir.with_suffix(".zip")
-    if zip_path.exists():
-        zip_path.unlink()
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(package_dir.rglob("*")):
-            if path.is_file():
-                archive.write(path, path.relative_to(package_dir).as_posix())
-    return zip_path
 
 
 if __name__ == "__main__":

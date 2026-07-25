@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -15,6 +17,7 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from markdown_tts import markdown_to_tts  # noqa: E402
+from content_package_zip import write_package_zips  # noqa: E402
 
 
 class MarkdownToTtsTests(unittest.TestCase):
@@ -206,6 +209,62 @@ class TtsGeneratorTests(unittest.TestCase):
             self.assertFalse(old_audio.exists())
             self.assertTrue((package_dir / "audio" / "edict-of-milan" / "en" / "summary.mp3").exists())
             self.assertTrue((packages_root / "master-timeline.zip").exists())
+
+    def test_content_package_zip_splits_when_package_exceeds_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            package_dir = temp / "packages" / "master-timeline"
+            package_dir.mkdir(parents=True)
+            entries = []
+            for index in range(2):
+                slug = f"entry-{index + 1}"
+                audio_path = f"audio/{slug}/en/description.mp3"
+                media_path = package_dir / audio_path
+                media_path.parent.mkdir(parents=True)
+                media_path.write_bytes(os.urandom(1024))
+                entries.append(
+                    {
+                        "slug": slug,
+                        "title": f"Entry {index + 1}",
+                        "audio": [
+                            {
+                                "languageCode": "en",
+                                "kind": "Description",
+                                "isPrimary": True,
+                                "sortOrder": 0,
+                                "path": audio_path,
+                            }
+                        ],
+                    }
+                )
+
+            (package_dir / "entries.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "packageSlug": "master-timeline",
+                        "title": "Master Timeline",
+                        "defaultLanguage": "en",
+                        "entries": entries,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            zip_paths = write_package_zips(package_dir, max_zip_bytes=2200)
+
+            self.assertEqual([path.name for path in zip_paths], ["master-timeline-part-001.zip", "master-timeline-part-002.zip"])
+            self.assertFalse((package_dir.parent / "master-timeline.zip").exists())
+            for zip_path in zip_paths:
+                self.assertLessEqual(zip_path.stat().st_size, 2200)
+                with zipfile.ZipFile(zip_path) as archive:
+                    names = set(archive.namelist())
+                    document = json.loads(archive.read("entries.json").decode("utf-8"))
+                    self.assertEqual(len(document["entries"]), 1)
+                    self.assertIn(document["entries"][0]["audio"][0]["path"], names)
 
 
 def _read_tree(root: Path) -> dict[str, str]:

@@ -337,6 +337,8 @@ public sealed record BulkAudioUploadPreviewRow(
 public sealed record ContentPackageImportResult(
     Guid ImportBatchId,
     int EntriesRead,
+    bool ClearedExistingData,
+    int EntriesDeletedBeforeImport,
     int EntriesCreated,
     int EntriesUpdated,
     int TagsAttached,
@@ -353,6 +355,8 @@ public sealed record ContentPackageImportPreviewResult(
     string PackageSlug,
     string Title,
     int EntriesRead,
+    bool WillClearExistingData,
+    int ExistingEntriesToDelete,
     int EntriesToCreate,
     int EntriesToUpdate,
     int TagsToAttach,

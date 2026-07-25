@@ -25,7 +25,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
 import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
@@ -205,19 +205,11 @@ type AdminEntryRelationshipDetail = {
   note?: string | null
 }
 
-type WorkbookImportResult = {
-  importBatchId: string
-  rowsRead: number | string
-  entriesCreated: number | string
-  entriesUpdated: number | string
-  placesCreated: number | string
-  placesAttached: number | string
-  warnings: string[]
-}
-
 type ContentPackageImportResult = {
   importBatchId: string
   entriesRead: number | string
+  clearedExistingData: boolean
+  entriesDeletedBeforeImport: number | string
   entriesCreated: number | string
   entriesUpdated: number | string
   tagsAttached: number | string
@@ -235,6 +227,8 @@ type ContentPackageImportPreviewResult = {
   packageSlug: string
   title: string
   entriesRead: number | string
+  willClearExistingData: boolean
+  existingEntriesToDelete: number | string
   entriesToCreate: number | string
   entriesToUpdate: number | string
   tagsToAttach: number | string
@@ -284,48 +278,6 @@ type BulkAudioUploadPreviewResult = {
     warning?: string | null
   }>
   warnings: string[]
-}
-
-type WorkbookImportPreviewResult = {
-  rowsRead: number | string
-  entriesToCreate: number | string
-  entriesToUpdate: number | string
-  placesToAttach: number | string
-  validationSummary: {
-    errors: number | string
-    warnings: number | string
-    info: number | string
-  }
-  rows: Array<{
-    sheetName: string
-    rowNumber: number | string
-    title: string
-    dateLabel?: string | null
-    kind: string
-    status: string
-    willUpdateExistingEntry: boolean
-    existingEntryId?: string | null
-    existingEntrySlug?: string | null
-    sourceUrl?: string | null
-    tags: string[]
-    places: string[]
-    warnings: string[]
-    validationIssues: Array<{
-      severity: string
-      code: string
-      message: string
-      sheetName?: string | null
-      rowNumber?: number | string | null
-    }>
-  }>
-  warnings: string[]
-  validationIssues: Array<{
-    severity: string
-    code: string
-    message: string
-    sheetName?: string | null
-    rowNumber?: number | string | null
-  }>
 }
 
 type AdminEntryListItem = {
@@ -849,55 +801,66 @@ function entryTimelineYear(entry: EntryListItem) {
   return Number.isFinite(endYear) ? endYear : null
 }
 
-function timelineScale(year: number) {
-  return Math.sign(year) * Math.log10(Math.abs(year) + 1)
-}
-
-function timelineInvert(value: number) {
-  return Math.sign(value) * (10 ** Math.abs(value) - 1)
-}
-
 function timelineYearLabel(year: number) {
   const rounded = Math.abs(year) >= 1000 ? Math.round(year / 100) * 100 : Math.round(year)
   return rounded < 0 ? `${Math.abs(rounded)} BCE` : `${rounded}`
 }
 
-function sampleTimelineEntries(entries: Array<{ entry: EntryListItem; year: number }>, selectedEntryId: string) {
-  const limit = 64
-  if (entries.length <= limit) {
-    return entries
+function normalizeTimelineRange(fromYear: number | null, toYear: number | null) {
+  if (fromYear === null && toYear === null) {
+    return { from: null, to: null }
   }
 
-  const selected = entries.find((item) => item.entry.id === selectedEntryId)
-  const sampled = new Map<string, { entry: EntryListItem; year: number }>()
-  const slots = selected ? limit - 1 : limit
-  for (let index = 0; index < slots; index++) {
-    const sourceIndex = Math.round((index / Math.max(slots - 1, 1)) * (entries.length - 1))
-    const item = entries[sourceIndex]
-    sampled.set(item.entry.id, item)
+  if (fromYear !== null && toYear !== null && fromYear > toYear) {
+    return { from: toYear, to: fromYear }
   }
 
-  if (selected) {
-    sampled.set(selected.entry.id, selected)
+  return { from: fromYear, to: toYear }
+}
+
+function createTimelineTicks(startYear: number, endYear: number) {
+  const span = Math.max(endYear - startYear, 1)
+  const roughStep = span / 6
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+  const stepMultiplier = [1, 2, 5, 10].find((multiplier) => roughStep <= magnitude * multiplier) ?? 10
+  const step = magnitude * stepMultiplier
+  const ticks = new Set<number>([startYear, endYear])
+  const firstTick = Math.ceil(startYear / step) * step
+
+  for (let year = firstTick; year <= endYear; year += step) {
+    ticks.add(Math.round(year))
   }
 
-  return [...sampled.values()].sort((left, right) => left.year - right.year || left.entry.title.localeCompare(right.entry.title))
+  return [...ticks].sort((left, right) => left - right)
 }
 
 function TimelineRuler({
   entries,
+  fromYear,
   selectedEntryId,
   labels,
   onSelectEntry,
+  toYear,
 }: {
   entries: EntryListItem[]
+  fromYear: number | null
   selectedEntryId: string
   labels: { timeline: string; noTimelineEntries: string }
   onSelectEntry: (entryId: string) => void
+  toYear: number | null
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const dragStateRef = useRef<{ pointerId: number; startX: number; scrollLeft: number; didDrag: boolean } | null>(null)
+  const recentTimelineDragRef = useRef(false)
+  const [isTimelineDragging, setTimelineDragging] = useState(false)
+  const filteredRange = normalizeTimelineRange(fromYear, toYear)
   const datedEntries = entries
     .map((entry) => ({ entry, year: entryTimelineYear(entry) }))
     .filter((item): item is { entry: EntryListItem; year: number } => item.year !== null)
+    .filter((item) =>
+      (filteredRange.from === null || item.year >= filteredRange.from) &&
+      (filteredRange.to === null || item.year <= filteredRange.to)
+    )
     .sort((left, right) => left.year - right.year || left.entry.title.localeCompare(right.entry.title))
 
   if (datedEntries.length === 0) {
@@ -908,41 +871,117 @@ function TimelineRuler({
     )
   }
 
-  const minValue = timelineScale(datedEntries[0].year)
-  const maxValue = timelineScale(datedEntries[datedEntries.length - 1].year)
-  const range = Math.max(maxValue - minValue, 1)
-  const positionForYear = (year: number) => ((timelineScale(year) - minValue) / range) * 100
-  const ticks = Array.from({ length: 7 }, (_, index) => {
-    const value = minValue + (range * index) / 6
-    const year = timelineInvert(value)
+  const minYear = filteredRange.from ?? datedEntries[0].year
+  const maxYear = filteredRange.to ?? datedEntries[datedEntries.length - 1].year
+  const timelineStart = Math.min(minYear, maxYear)
+  const timelineEnd = Math.max(minYear, maxYear)
+  const range = Math.max(timelineEnd - timelineStart, 1)
+  const pixelsPerYear = range <= 300 ? 10 : range <= 1200 ? 4 : range <= 10000 ? 1.2 : 0.25
+  const trackWidth = Math.min(Math.max(1200, Math.ceil(range * pixelsPerYear), datedEntries.length * 44), 60000)
+  const positionForYear = (year: number) => ((year - timelineStart) / range) * 100
+  const laneLastX = [-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]
+  const placedEntries = datedEntries.map(({ entry, year }) => {
+    const left = positionForYear(year)
+    const x = (left / 100) * trackWidth
+    const lane = laneLastX.findIndex((lastX) => x - lastX >= 34)
+    const resolvedLane = lane === -1
+      ? laneLastX.indexOf(Math.min(...laneLastX))
+      : lane
+    laneLastX[resolvedLane] = x
     return {
-      label: timelineYearLabel(year),
-      left: ((value - minValue) / range) * 100,
+      entry,
+      lane: resolvedLane,
+      left,
+      year,
     }
   })
-  const visibleEntries = sampleTimelineEntries(datedEntries, selectedEntryId)
+  const ticks = createTimelineTicks(timelineStart, timelineEnd)
+
+  function beginTimelineDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !scrollRef.current) {
+      return
+    }
+
+    dragStateRef.current = {
+      didDrag: false,
+      pointerId: event.pointerId,
+      scrollLeft: scrollRef.current.scrollLeft,
+      startX: event.clientX,
+    }
+    scrollRef.current.setPointerCapture(event.pointerId)
+  }
+
+  function moveTimelineDrag(event: PointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current
+    if (!dragState || !scrollRef.current || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    const deltaX = event.clientX - dragState.startX
+    if (Math.abs(deltaX) > 4) {
+      dragState.didDrag = true
+      recentTimelineDragRef.current = true
+      setTimelineDragging(true)
+    }
+    scrollRef.current.scrollLeft = dragState.scrollLeft - deltaX
+  }
+
+  function endTimelineDrag(event: PointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    if (scrollRef.current?.hasPointerCapture(event.pointerId)) {
+      scrollRef.current.releasePointerCapture(event.pointerId)
+    }
+    dragStateRef.current = null
+    setTimelineDragging(false)
+    window.setTimeout(() => {
+      recentTimelineDragRef.current = false
+    }, 0)
+  }
 
   return (
     <section className="timeline-ruler" aria-label={labels.timeline}>
       <div className="timeline-ruler-title">{labels.timeline}</div>
-      <div className="timeline-track">
+      <div
+        className={isTimelineDragging ? 'timeline-scroll dragging' : 'timeline-scroll'}
+        ref={scrollRef}
+        onClickCapture={(event) => {
+          if (recentTimelineDragRef.current) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+        }}
+        onPointerCancel={endTimelineDrag}
+        onPointerDown={beginTimelineDrag}
+        onPointerMove={moveTimelineDrag}
+        onPointerUp={endTimelineDrag}
+      >
+      <div className="timeline-track" style={{ width: `${trackWidth}px` }}>
         {ticks.map((tick) => (
-          <div className="timeline-tick" key={`${tick.left}-${tick.label}`} style={{ left: `${tick.left}%` }}>
-            <span>{tick.label}</span>
+          <div className="timeline-tick" key={tick} style={{ left: `${positionForYear(tick)}%` }}>
+            <span>{timelineYearLabel(tick)}</span>
           </div>
         ))}
-        {visibleEntries.map(({ entry, year }) => (
+        {placedEntries.map(({ entry, lane, left, year }) => (
           <button
             className={entry.id === selectedEntryId ? 'timeline-event active' : 'timeline-event'}
             key={entry.id}
-            style={{ left: `${positionForYear(year)}%` }}
+            style={{ left: `${left}%`, top: `${4 + lane * 25}px` }}
             title={`${entry.title} (${entry.dateLabel ?? timelineYearLabel(year)})`}
             type="button"
-            onClick={() => onSelectEntry(entry.id)}
+            onClick={() => {
+              if (!recentTimelineDragRef.current) {
+                onSelectEntry(entry.id)
+              }
+            }}
           >
             <Icon icon={entryIconKey(entry)} aria-hidden="true" />
           </button>
         ))}
+      </div>
       </div>
     </section>
   )
@@ -1177,14 +1216,10 @@ function App() {
   const [adminStatus, setAdminStatus] = useState(() =>
     adminSession ? 'Signed in from saved session.' : 'Sign in with the Render admin account.',
   )
-  const [importFile, setImportFile] = useState<File | null>(null)
-  const [isImporting, setImporting] = useState(false)
-  const [isPreviewingImport, setPreviewingImport] = useState(false)
-  const [importPreview, setImportPreview] = useState<WorkbookImportPreviewResult | null>(null)
-  const [importResult, setImportResult] = useState<WorkbookImportResult | null>(null)
   const [contentPackageFile, setContentPackageFile] = useState<File | null>(null)
   const [isPreviewingContentPackage, setPreviewingContentPackage] = useState(false)
   const [isImportingContentPackage, setImportingContentPackage] = useState(false)
+  const [clearContentPackageBeforeImport, setClearContentPackageBeforeImport] = useState(false)
   const [contentPackagePreview, setContentPackagePreview] = useState<ContentPackageImportPreviewResult | null>(null)
   const [contentPackageResult, setContentPackageResult] = useState<ContentPackageImportResult | null>(null)
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
@@ -1261,6 +1296,11 @@ function App() {
   })
   const [adminEntryTags, setAdminEntryTags] = useState<EntryDetail['tags']>([])
   const [reloadKey, setReloadKey] = useState(0)
+  const selectedEntryIdRef = useRef(selectedEntryId)
+
+  useEffect(() => {
+    selectedEntryIdRef.current = selectedEntryId
+  }, [selectedEntryId])
 
   const handleMapViewportChange = useCallback((viewport: MapViewport) => {
     const roundedViewport: MapViewport = {
@@ -1343,19 +1383,28 @@ function App() {
           return
         }
 
-        if (entriesResult.data && entriesResult.data.length > 0) {
-          setEntries(entriesResult.data as EntryListItem[])
-          setSelectedEntryId(entriesResult.data[0].id)
+        const loadedEntries = (entriesResult.data as EntryListItem[] | undefined) ?? []
+        if (loadedEntries.length > 0) {
+          setEntries(loadedEntries)
+          const currentSelectedEntryId = selectedEntryIdRef.current
+          const nextSelectedEntryId = loadedEntries.some((entry) => entry.id === currentSelectedEntryId)
+            ? currentSelectedEntryId
+            : loadedEntries[0].id
+          if (nextSelectedEntryId !== currentSelectedEntryId) {
+            selectedEntryIdRef.current = nextSelectedEntryId
+            setSelectedEntryId(nextSelectedEntryId)
+          }
           setMapEmptyResult(false)
           const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
           const viewportLabel = mapViewport ? ui.viewportSuffix : ''
           setMapStatus(
             mapPointCount > 0
-              ? ui.entriesLoaded(entriesResult.data.length, mapPointCount, yearRangeLabel, viewportLabel)
-              : ui.entriesLoadedNoPoints(entriesResult.data.length, yearRangeLabel, viewportLabel),
+              ? ui.entriesLoaded(loadedEntries.length, mapPointCount, yearRangeLabel, viewportLabel)
+              : ui.entriesLoadedNoPoints(loadedEntries.length, yearRangeLabel, viewportLabel),
           )
         } else {
           setEntries([])
+          selectedEntryIdRef.current = ''
           setSelectedEntryId('')
           setSelectedEntryDetail(null)
           setMapEmptyResult(true)
@@ -2260,8 +2309,6 @@ function App() {
     setAdminPassword('')
     setAdminEntries([])
     resetEntryForm()
-    setImportPreview(null)
-    setImportResult(null)
     setContentPackagePreview(null)
     setContentPackageResult(null)
     setAdminStatus('Signed out.')
@@ -2281,7 +2328,8 @@ function App() {
     const formData = new FormData()
     formData.append('file', contentPackageFile)
     formData.append('publishImportedEntries', 'true')
-    formData.append('updateExistingRows', 'true')
+    formData.append('updateExistingRows', clearContentPackageBeforeImport ? 'false' : 'true')
+    formData.append('clearExistingData', clearContentPackageBeforeImport ? 'true' : 'false')
 
     setPreviewingContentPackage(true)
     setAdminStatus('Reading content package preview...')
@@ -2301,8 +2349,11 @@ function App() {
       const result = (await response.json()) as ContentPackageImportPreviewResult
       setContentPackagePreview(result)
       setContentPackageResult(null)
+      const cleanImportStatus = result.willClearExistingData
+        ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries first.`
+        : ''
       setAdminStatus(
-        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.`,
+        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.${cleanImportStatus}`,
       )
     } catch {
       setAdminStatus('Content package preview failed. Check API availability and CORS settings.')
@@ -2322,13 +2373,22 @@ function App() {
       return
     }
 
+    if (
+      clearContentPackageBeforeImport &&
+      !window.confirm('Clean import will delete all existing content data before importing this package. Continue?')
+    ) {
+      setAdminStatus('Content package import cancelled.')
+      return
+    }
+
     const formData = new FormData()
     formData.append('file', contentPackageFile)
     formData.append('publishImportedEntries', 'true')
-    formData.append('updateExistingRows', 'true')
+    formData.append('updateExistingRows', clearContentPackageBeforeImport ? 'false' : 'true')
+    formData.append('clearExistingData', clearContentPackageBeforeImport ? 'true' : 'false')
 
     setImportingContentPackage(true)
-    setAdminStatus('Importing content package...')
+    setAdminStatus(clearContentPackageBeforeImport ? 'Clearing content data and importing package...' : 'Importing content package...')
     try {
       const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package`, {
         method: 'POST',
@@ -2345,107 +2405,17 @@ function App() {
       const result = (await response.json()) as ContentPackageImportResult
       setContentPackageResult(result)
       setContentPackagePreview(null)
+      const cleanImportStatus = result.clearedExistingData
+        ? ` Clean import deleted ${result.entriesDeletedBeforeImport} existing entries first.`
+        : ''
       setAdminStatus(
-        `Imported package: ${result.entriesCreated} entries created, ${result.entriesUpdated} updated, ${result.audioTracksCreated} audio created, ${result.audioTracksUpdated} audio updated.`,
+        `Imported package: ${result.entriesCreated} entries created, ${result.entriesUpdated} updated, ${result.audioTracksCreated} audio created, ${result.audioTracksUpdated} audio updated.${cleanImportStatus}`,
       )
       setReloadKey((value) => value + 1)
     } catch {
       setAdminStatus('Content package import failed. Check API availability and CORS settings.')
     } finally {
       setImportingContentPackage(false)
-    }
-  }
-
-  async function previewWorkbook() {
-    if (!adminToken) {
-      setAdminStatus('Sign in before previewing an import.')
-      return
-    }
-
-    if (!importFile) {
-      setAdminStatus('Choose an .xlsx workbook first.')
-      return
-    }
-
-    setPreviewingImport(true)
-    setAdminStatus('Reading workbook preview...')
-
-    const formData = new FormData()
-    formData.append('file', importFile)
-
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/admin/imports/workbook/preview?publishImportedEntries=true&updateExistingRows=true`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-          body: formData,
-        },
-      )
-
-      if (!response.ok) {
-        setAdminStatus(`Preview failed with HTTP ${response.status}.`)
-        return
-      }
-
-      const result = (await response.json()) as WorkbookImportPreviewResult
-      const rowsWithPlaces = result.rows.filter((row) => row.places.length > 0).length
-      setImportPreview(result)
-      setImportResult(null)
-      setAdminStatus(
-        `Preview found ${result.rowsRead} rows: ${result.entriesToCreate} new, ${result.entriesToUpdate} updates and ${result.placesToAttach} place links across ${rowsWithPlaces} rows.`,
-      )
-    } catch {
-      setAdminStatus('Preview failed. Check API availability and CORS settings.')
-    } finally {
-      setPreviewingImport(false)
-    }
-  }
-
-  async function importWorkbook() {
-    if (!adminToken) {
-      setAdminStatus('Sign in before importing.')
-      return
-    }
-
-    if (!importFile) {
-      setAdminStatus('Choose an .xlsx workbook first.')
-      return
-    }
-
-    setImporting(true)
-    setAdminStatus('Importing workbook...')
-
-    const formData = new FormData()
-    formData.append('file', importFile)
-
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/admin/imports/workbook?publishImportedEntries=true&updateExistingRows=true`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        setAdminStatus(`Import failed with HTTP ${response.status}.`)
-        return
-      }
-
-      const result = (await response.json()) as WorkbookImportResult
-      setImportResult(result)
-      setImportPreview(null)
-      setAdminStatus(
-        `Imported ${result.entriesCreated} new and ${result.entriesUpdated} updated entries from ${result.rowsRead} rows. Attached ${result.placesAttached} place links.`,
-      )
-      setReloadKey((value) => value + 1)
-    } catch {
-      setAdminStatus('Import failed. Check API availability and CORS settings.')
-    } finally {
-      setImporting(false)
     }
   }
 
@@ -3629,9 +3599,11 @@ function App() {
         <div className="map-main">
           <TimelineRuler
             entries={entries}
+            fromYear={numberOrNull(fromYear)}
             labels={{ timeline: ui.timeline, noTimelineEntries: ui.noTimelineEntries }}
             selectedEntryId={selectedEntryId}
             onSelectEntry={selectEntry}
+            toYear={numberOrNull(toYear)}
           />
           <HistoryMap
             autoFitKey={mapAutoFitKey}
@@ -3887,6 +3859,18 @@ function App() {
                         }}
                       />
                     </label>
+                    <label className="admin-checkbox danger">
+                      <input
+                        checked={clearContentPackageBeforeImport}
+                        type="checkbox"
+                        onChange={(event) => {
+                          setClearContentPackageBeforeImport(event.target.checked)
+                          setContentPackagePreview(null)
+                          setContentPackageResult(null)
+                        }}
+                      />
+                      <span>Clean import: delete current content data first</span>
+                    </label>
                     <div className="admin-field-row">
                       <button
                         className="admin-action secondary"
@@ -3907,33 +3891,6 @@ function App() {
                         {isImportingContentPackage ? 'Importing package...' : 'Import package'}
                       </button>
                     </div>
-                    <label>
-                      Workbook legacy import
-                      <input
-                        accept=".xlsx,.xlsm"
-                        type="file"
-                        onChange={(event) => {
-                          setImportFile(event.target.files?.[0] ?? null)
-                          setImportPreview(null)
-                          setImportResult(null)
-                        }}
-                      />
-                    </label>
-                    <div className="admin-field-row">
-                      <button
-                        className="admin-action secondary"
-                        disabled={isPreviewingImport || isImporting}
-                        type="button"
-                        onClick={previewWorkbook}
-                      >
-                        <Search aria-hidden="true" />
-                        {isPreviewingImport ? 'Previewing...' : 'Preview workbook'}
-                      </button>
-                      <button className="admin-action" disabled={isImporting || isPreviewingImport} type="button" onClick={importWorkbook}>
-                        <Upload aria-hidden="true" />
-                        {isImporting ? 'Importing...' : 'Import workbook'}
-                      </button>
-                    </div>
                   </div>
                 )}
                 {adminPage === 'import' && contentPackagePreview && (
@@ -3944,6 +3901,9 @@ function App() {
                       </strong>
                       <span>{contentPackagePreview.entriesToCreate} entries would be created</span>
                       <span>{contentPackagePreview.entriesToUpdate} entries would be updated</span>
+                      {contentPackagePreview.willClearExistingData && (
+                        <span>{contentPackagePreview.existingEntriesToDelete} existing entries would be deleted first</span>
+                      )}
                       <span>{contentPackagePreview.tagsToAttach} tag links</span>
                       <span>{contentPackagePreview.placesToAttach} place links</span>
                       <span>{contentPackagePreview.audioFilesToAttach} audio files</span>
@@ -3998,6 +3958,9 @@ function App() {
                 {adminPage === 'import' && contentPackageResult && (
                   <div className="import-result">
                     <strong>{contentPackageResult.entriesCreated} package entries imported</strong>
+                    {contentPackageResult.clearedExistingData && (
+                      <span>{contentPackageResult.entriesDeletedBeforeImport} existing entries deleted before import</span>
+                    )}
                     <span>{contentPackageResult.entriesUpdated} entries updated</span>
                     <span>{contentPackageResult.tagsAttached} tag links attached</span>
                     <span>{contentPackageResult.placesAttached} place links attached</span>
@@ -4009,79 +3972,6 @@ function App() {
                       {contentPackageResult.imagesCreated} images created / {contentPackageResult.imagesUpdated} updated
                     </span>
                     {contentPackageResult.warnings.length > 0 && <span>{contentPackageResult.warnings.length} warnings</span>}
-                  </div>
-                )}
-                {adminPage === 'import' && importPreview && (
-                  <>
-                    <div className="import-result">
-                      <strong>{importPreview.rowsRead} rows in preview</strong>
-                      <span>{importPreview.entriesToCreate} entries would be created</span>
-                      <span>{importPreview.entriesToUpdate} entries would be updated</span>
-                      <span>
-                        {importPreview.placesToAttach} place links across{' '}
-                        {importPreview.rows.filter((row) => row.places.length > 0).length} rows
-                      </span>
-                      <span>
-                        {importPreview.validationSummary.errors} errors / {importPreview.validationSummary.warnings} warnings /{' '}
-                        {importPreview.validationSummary.info} info
-                      </span>
-                    </div>
-                    {importPreview.validationIssues.length > 0 && (
-                      <div className="validation-report">
-                        <strong>Validation report</strong>
-                        {importPreview.validationIssues.slice(0, 8).map((issue, index) => (
-                          <span className={`validation-issue ${issue.severity.toLowerCase()}`} key={`${issue.code}-${index}`}>
-                            {issue.sheetName && issue.rowNumber ? `${issue.sheetName} #${issue.rowNumber}: ` : ''}
-                            {issue.message}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="admin-table-scroll">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Row</th>
-                            <th>Title</th>
-                            <th>Action</th>
-                            <th>Tags</th>
-                            <th>Places</th>
-                            <th>Validation</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {importPreview.rows.slice(0, 60).map((row) => (
-                            <tr key={`${row.sheetName}-${row.rowNumber}`}>
-                              <td>
-                                {row.sheetName} #{row.rowNumber}
-                              </td>
-                              <td>
-                                {row.title}
-                                <small>{row.dateLabel || row.kind}</small>
-                              </td>
-                              <td>{row.willUpdateExistingEntry ? `Update ${row.existingEntrySlug ?? ''}` : 'Create'}</td>
-                              <td>{row.tags.slice(0, 4).join(', ') || '-'}</td>
-                              <td>{row.places.slice(0, 4).join(', ') || '-'}</td>
-                              <td>
-                                {row.validationIssues.length > 0
-                                  ? row.validationIssues.map((issue) => issue.code).join(', ')
-                                  : 'OK'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-                {adminPage === 'import' && importResult && (
-                  <div className="import-result">
-                    <strong>{importResult.entriesCreated} entries imported</strong>
-                    <span>{importResult.entriesUpdated} entries updated</span>
-                    <span>{importResult.placesCreated} reusable places created</span>
-                    <span>{importResult.placesAttached} entry-place links attached</span>
-                    <span>{importResult.rowsRead} rows read</span>
-                    {importResult.warnings.length > 0 && <span>{importResult.warnings.length} warnings</span>}
                   </div>
                 )}
                 {adminPage === 'periods' && (

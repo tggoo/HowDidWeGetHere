@@ -5,10 +5,11 @@ import json
 import re
 import shutil
 import unicodedata
-import zipfile
 from pathlib import Path
 
 from openpyxl import load_workbook
+
+from content_package_zip import DEFAULT_MAX_ZIP_MIB, write_package_zips
 
 
 SUPPORTED_SHEETS = {
@@ -604,7 +605,12 @@ def read_entries(workbook_path: Path, audio_root: Path, images_root: Path) -> di
     return package_entries
 
 
-def write_package(package_slug: str, entries: list[dict[str, object]], out_root: Path) -> Path:
+def write_package(
+    package_slug: str,
+    entries: list[dict[str, object]],
+    out_root: Path,
+    max_zip_bytes: int,
+) -> list[Path]:
     package_dir = out_root / package_slug
     if package_dir.exists():
         shutil.rmtree(package_dir)
@@ -635,15 +641,7 @@ def write_package(package_slug: str, entries: list[dict[str, object]], out_root:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target_path)
 
-    zip_path = out_root / f"{package_slug}.zip"
-    if zip_path.exists():
-        zip_path.unlink()
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in package_dir.rglob("*"):
-            if path.is_file():
-                archive.write(path, path.relative_to(package_dir).as_posix())
-
-    return zip_path
+    return write_package_zips(package_dir, max_zip_bytes)
 
 
 def main() -> None:
@@ -652,20 +650,26 @@ def main() -> None:
     parser.add_argument("--audio-root", default="generated/audio")
     parser.add_argument("--images-root", default="generated/images")
     parser.add_argument("--out", default="generated/packages")
+    parser.add_argument("--max-zip-mib", type=float, default=DEFAULT_MAX_ZIP_MIB)
     args = parser.parse_args()
 
     workbook_path = Path(args.workbook)
     audio_root = Path(args.audio_root)
     images_root = Path(args.images_root)
     out_root = Path(args.out)
+    max_zip_bytes = int(args.max_zip_mib * 1024 * 1024)
     out_root.mkdir(parents=True, exist_ok=True)
 
     packages = read_entries(workbook_path, audio_root, images_root)
     for package_slug, entries in packages.items():
-        zip_path = write_package(package_slug, entries, out_root)
+        zip_paths = write_package(package_slug, entries, out_root, max_zip_bytes)
         audio_count = sum(len(entry.get("audio", [])) for entry in entries)
         image_count = sum(len(entry.get("images", [])) for entry in entries)
-        print(f"Wrote {zip_path} with {len(entries)} entries, {audio_count} audio files, {image_count} images.")
+        zip_names = ", ".join(path.name for path in zip_paths)
+        print(
+            f"Wrote {zip_names} with {len(entries)} entries, "
+            f"{audio_count} audio files, {image_count} images."
+        )
 
 
 if __name__ == "__main__":

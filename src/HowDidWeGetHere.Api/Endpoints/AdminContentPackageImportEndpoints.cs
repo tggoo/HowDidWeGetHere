@@ -90,6 +90,7 @@ public static class AdminContentPackageImportEndpoints
         [FromForm] IFormFile file,
         [FromForm] bool? publishImportedEntries,
         [FromForm] bool? updateExistingRows,
+        [FromForm] bool? clearExistingData,
         HistoryDbContext dbContext,
         IConfiguration configuration,
         CancellationToken cancellationToken)
@@ -109,10 +110,16 @@ public static class AdminContentPackageImportEndpoints
         }
 
         var document = package.Document;
-        var existingEntries = await dbContext.Entries
-            .AsNoTracking()
-            .Select(entry => new ExistingPackageEntry(entry.Id, entry.Slug, entry.SourceSheet, entry.SourceRow))
-            .ToListAsync(cancellationToken);
+        var shouldClearExistingData = clearExistingData == true;
+        var existingEntriesToDelete = shouldClearExistingData
+            ? await dbContext.Entries.CountAsync(cancellationToken)
+            : 0;
+        List<ExistingPackageEntry> existingEntries = shouldClearExistingData
+            ? []
+            : await dbContext.Entries
+                .AsNoTracking()
+                .Select(entry => new ExistingPackageEntry(entry.Id, entry.Slug, entry.SourceSheet, entry.SourceRow))
+                .ToListAsync(cancellationToken);
 
         var rows = new List<ContentPackageImportPreviewRow>();
         var warnings = new List<string>();
@@ -168,6 +175,8 @@ public static class AdminContentPackageImportEndpoints
             document.PackageSlug ?? Path.GetFileNameWithoutExtension(file.FileName),
             document.Title ?? document.PackageSlug ?? file.FileName,
             document.Entries.Count,
+            shouldClearExistingData,
+            existingEntriesToDelete,
             entriesToCreate,
             entriesToUpdate,
             tagsToAttach,
@@ -184,6 +193,7 @@ public static class AdminContentPackageImportEndpoints
         [FromForm] IFormFile file,
         [FromForm] bool? publishImportedEntries,
         [FromForm] bool? updateExistingRows,
+        [FromForm] bool? clearExistingData,
         HistoryDbContext dbContext,
         IWebHostEnvironment environment,
         IConfiguration configuration,
@@ -206,13 +216,21 @@ public static class AdminContentPackageImportEndpoints
         }
 
         var document = package.Document;
+        var shouldClearExistingData = clearExistingData == true;
         var warnings = new List<string>();
         foreach (var entry in document.Entries)
         {
             warnings.AddRange(ValidatePackageEntry(entry, archive).Select(warning => $"{ResolveSlug(entry)}: {warning}"));
         }
 
-        var existingEntries = updateExistingRows == false
+        await using var transaction = shouldClearExistingData
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var clearResult = shouldClearExistingData
+            ? await ClearContentDataAsync(dbContext, cancellationToken)
+            : ContentDataClearResult.Empty;
+
+        List<Entry> existingEntries = shouldClearExistingData || updateExistingRows == false
             ? []
             : await dbContext.Entries
                 .Include(entry => entry.Translations)
@@ -396,6 +414,8 @@ public static class AdminContentPackageImportEndpoints
         batch.SummaryJson = JsonSerializer.Serialize(new
         {
             entriesRead = document.Entries.Count,
+            clearedExistingData = shouldClearExistingData,
+            contentDataDeleted = shouldClearExistingData ? clearResult : null,
             entriesCreated,
             entriesUpdated,
             tagsAttached,
@@ -410,10 +430,16 @@ public static class AdminContentPackageImportEndpoints
         }, JsonOptions);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         return Results.Ok(new ContentPackageImportResult(
             batch.Id,
             document.Entries.Count,
+            shouldClearExistingData,
+            clearResult.EntriesDeleted,
             entriesCreated,
             entriesUpdated,
             tagsAttached,
@@ -425,6 +451,59 @@ public static class AdminContentPackageImportEndpoints
             imagesCreated,
             imagesUpdated,
             warnings));
+    }
+
+    private static async Task<ContentDataClearResult> ClearContentDataAsync(
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await dbContext.EntryRelationships.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.RoutePoints.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryRoutes.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryActors.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryAudioTracks.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryImageTranslations.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryImages.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryPlaces.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntrySources.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryTags.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.EntryTimePeriods.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.Set<EntryTranslation>().ExecuteDeleteAsync(cancellationToken);
+        await dbContext.ImportedRows.ExecuteDeleteAsync(cancellationToken);
+
+        await dbContext.TimePeriods.ExecuteUpdateAsync(
+            setters => setters
+                .SetProperty(period => period.ParentPeriodId, (Guid?)null)
+                .SetProperty(period => period.ScopePlaceId, (Guid?)null)
+                .SetProperty(period => period.EntryId, (Guid?)null),
+            cancellationToken);
+        await dbContext.Tags.ExecuteUpdateAsync(
+            setters => setters.SetProperty(tag => tag.ParentTagId, (Guid?)null),
+            cancellationToken);
+
+        var entriesDeleted = await dbContext.Entries.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.TimePeriodTranslations.ExecuteDeleteAsync(cancellationToken);
+        var timePeriodsDeleted = await dbContext.TimePeriods.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.PlaceTranslations.ExecuteDeleteAsync(cancellationToken);
+        var placesDeleted = await dbContext.Places.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.TagTranslations.ExecuteDeleteAsync(cancellationToken);
+        var tagsDeleted = await dbContext.Tags.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.ActorTranslations.ExecuteDeleteAsync(cancellationToken);
+        var actorsDeleted = await dbContext.Actors.ExecuteDeleteAsync(cancellationToken);
+        var sourcesDeleted = await dbContext.Sources.ExecuteDeleteAsync(cancellationToken);
+        var mediaBlobsDeleted = await dbContext.MediaBlobs.ExecuteDeleteAsync(cancellationToken);
+        var importBatchesDeleted = await dbContext.ImportBatches.ExecuteDeleteAsync(cancellationToken);
+
+        dbContext.ChangeTracker.Clear();
+        return new ContentDataClearResult(
+            entriesDeleted,
+            tagsDeleted,
+            timePeriodsDeleted,
+            placesDeleted,
+            sourcesDeleted,
+            actorsDeleted,
+            mediaBlobsDeleted,
+            importBatchesDeleted);
     }
 
     private static Entry CreateEntry(ContentPackageEntry packageEntry, bool publishImportedEntries)
@@ -1600,6 +1679,19 @@ public static class AdminContentPackageImportEndpoints
     }
 
     private sealed record ExistingPackageEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
+
+    private sealed record ContentDataClearResult(
+        int EntriesDeleted,
+        int TagsDeleted,
+        int TimePeriodsDeleted,
+        int PlacesDeleted,
+        int SourcesDeleted,
+        int ActorsDeleted,
+        int MediaBlobsDeleted,
+        int ImportBatchesDeleted)
+    {
+        public static ContentDataClearResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
+    }
 
     private sealed record AudioTrackImportKey(string LanguageCode, AudioKind Kind, int SortOrder);
 

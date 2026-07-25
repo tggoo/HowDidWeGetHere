@@ -575,7 +575,7 @@
 
 .map-main {
   display: grid;
-  grid-template-rows: 96px minmax(0, 1fr);
+  grid-template-rows: 130px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -585,7 +585,9 @@
   border-bottom: 1px solid var(--border);
   display: grid;
   gap: 7px;
-  padding: 10px 16px 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  padding: 10px 16px 8px;
 }
 
 .timeline-ruler-title {
@@ -603,12 +605,32 @@
   height: 100%;
 }
 
+.timeline-scroll {
+  cursor: grab;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+
+.timeline-scroll.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.timeline-scroll.dragging .timeline-event {
+  pointer-events: none;
+}
+
 .timeline-track {
   background:
     linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), var(--border) calc(100% - 1px)),
     repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 8.333%);
   border-bottom: 2px solid var(--border-strong);
-  height: 58px;
+  height: 82px;
+  min-width: 100%;
   position: relative;
 }
 
@@ -667,7 +689,6 @@
   border-color: var(--accent);
   color: var(--accent-contrast);
   height: 34px;
-  top: 1px;
   width: 34px;
   z-index: 3;
 }
@@ -1233,6 +1254,21 @@
   gap: 5px;
 }
 
+.admin-form label.admin-checkbox {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.admin-form label.admin-checkbox.danger {
+  color: #b42318;
+}
+
+.admin-form label.admin-checkbox input {
+  min-height: 16px;
+  width: 16px;
+}
+
 .admin-form input,
 .entry-editor input,
 .entry-editor select,
@@ -1574,11 +1610,11 @@
 
   .map-main {
     flex: 1;
-    grid-template-rows: 88px minmax(0, 1fr);
+    grid-template-rows: 120px minmax(0, 1fr);
   }
 
   .timeline-ruler {
-    padding: 9px 12px 10px;
+    padding: 9px 12px 7px;
   }
 
   .timeline-event {
