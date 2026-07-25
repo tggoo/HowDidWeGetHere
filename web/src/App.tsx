@@ -653,6 +653,8 @@ const uiCopy = {
     caching: 'Caching...',
     clear: 'Clear',
     closeEntryDetail: 'Close entry detail',
+    closeImage: 'Close image',
+    expandImage: 'Expand image',
     closeFilters: 'Close filters',
     closeTags: 'Close tags',
     dateUnknown: 'Date unknown',
@@ -712,6 +714,8 @@ const uiCopy = {
     caching: 'Ukládám...',
     clear: 'Vyčistit',
     closeEntryDetail: 'Zavřít detail záznamu',
+    closeImage: 'Zavřít obrázek',
+    expandImage: 'Zvětšit obrázek',
     closeFilters: 'Zavřít filtry',
     closeTags: 'Zavřít tagy',
     dateUnknown: 'Datum není známé',
@@ -1243,6 +1247,26 @@ function describeBatchProgress(items: ContentPackageBatchItem[]) {
   return `${currentIndex} of ${total}`
 }
 
+function describeHttpFailure(request: XMLHttpRequest): string {
+  const bodyText = request.responseText?.trim()
+  if (!bodyText) {
+    return `HTTP ${request.status}`
+  }
+
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: string; title?: string; detail?: string }
+    const detail = parsed.error ?? parsed.detail ?? parsed.title
+    if (detail) {
+      return `HTTP ${request.status}: ${detail}`
+    }
+  } catch {
+    // Response body was not JSON, fall through to the truncated raw text below.
+  }
+
+  const truncated = bodyText.length > 200 ? `${bodyText.slice(0, 200)}...` : bodyText
+  return `HTTP ${request.status}: ${truncated}`
+}
+
 function uploadContentPackageWithProgress(
   formData: FormData,
   headers: Record<string, string> | undefined,
@@ -1269,18 +1293,18 @@ function uploadContentPackageWithProgress(
       onProgress(createUploadProgressState('processing', fileSize ?? 0, fileSize, processingMessage))
     }
 
-    request.onerror = () => reject(new Error('network'))
-    request.onabort = () => reject(new Error('aborted'))
+    request.onerror = () => reject(new Error('Network error - the connection was interrupted during upload.'))
+    request.onabort = () => reject(new Error('Upload was aborted.'))
     request.onload = () => {
       if (request.status < 200 || request.status >= 300) {
-        reject(new Error(`HTTP ${request.status}`))
+        reject(new Error(describeHttpFailure(request)))
         return
       }
 
       try {
         resolve(JSON.parse(request.responseText) as ContentPackageImportResult)
       } catch {
-        reject(new Error('invalid-json'))
+        reject(new Error('Server returned an unexpected (non-JSON) response.'))
       }
     }
 
@@ -1336,6 +1360,7 @@ function App() {
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
+  const [isEntryImageExpanded, setEntryImageExpanded] = useState(false)
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState<string>(ui.loadingInitial)
@@ -1575,6 +1600,7 @@ function App() {
   useEffect(() => {
     let isActive = true
     const selectedEntry = entries.find((entry) => entry.id === selectedEntryId)
+    setEntryImageExpanded(false)
 
     async function loadSelectedEntryDetail() {
       if (!selectedEntry || selectedEntry.id.startsWith('draft-')) {
@@ -1606,6 +1632,23 @@ function App() {
       isActive = false
     }
   }, [entries, language, selectedEntryId])
+
+  useEffect(() => {
+    if (!isEntryImageExpanded) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setEntryImageExpanded(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isEntryImageExpanded])
 
   useEffect(() => {
     if (adminToken) {
@@ -2636,8 +2679,7 @@ function App() {
         setReloadKey((value) => value + 1)
       } catch (error) {
         failedCount += 1
-        const message =
-          error instanceof Error && error.message.startsWith('HTTP ') ? `Import failed (${error.message}).` : 'Import failed.'
+        const message = error instanceof Error ? error.message : 'Import failed.'
         setContentPackageBatchItems((items) =>
           items.map((item, itemIndex) => (itemIndex === index ? { ...item, status: 'error', message } : item)),
         )
@@ -3922,11 +3964,19 @@ function App() {
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
           {selectedEntryImageUrl && (
-            <img
-              alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
-              className="entry-image"
-              src={selectedEntryImageUrl}
-            />
+            <button
+              className="entry-image-trigger"
+              type="button"
+              aria-label={ui.expandImage}
+              title={ui.expandImage}
+              onClick={() => setEntryImageExpanded(true)}
+            >
+              <img
+                alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
+                className="entry-image"
+                src={selectedEntryImageUrl}
+              />
+            </button>
           )}
           {selectedEntryDetail?.summary && (
             <div className="entry-text-section entry-summary-section">
@@ -4024,6 +4074,26 @@ function App() {
             </div>
           ) : null}
         </aside>
+
+        {isEntryImageExpanded && selectedEntryImageUrl && (
+          <div className="image-lightbox" role="dialog" aria-modal="true" onClick={() => setEntryImageExpanded(false)}>
+            <button
+              className="image-lightbox-close"
+              type="button"
+              aria-label={ui.closeImage}
+              title={ui.closeImage}
+              onClick={() => setEntryImageExpanded(false)}
+            >
+              <X aria-hidden="true" />
+            </button>
+            <img
+              alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
+              className="image-lightbox-img"
+              onClick={(event) => event.stopPropagation()}
+              src={selectedEntryImageUrl}
+            />
+          </div>
+        )}
 
         {activeAudio && (
           <aside
