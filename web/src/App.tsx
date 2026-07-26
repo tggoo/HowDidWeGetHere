@@ -20,6 +20,7 @@ import {
   Route,
   Save,
   Search,
+  Shuffle,
   Sun,
   Tags,
   Trash2,
@@ -696,6 +697,7 @@ const uiCopy = {
     titleAudioLabel: 'Title',
     playAudio: 'Play audio',
     playAll: 'Play all',
+    playRandom: 'Play random',
     stopAudio: 'Stop audio',
     unsupportedCache: 'This browser does not support offline media cache.',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
@@ -758,6 +760,7 @@ const uiCopy = {
     titleAudioLabel: 'Nazev',
     playAudio: 'Prehrat audio',
     playAll: 'Prehrat vse',
+    playRandom: 'Prehrat nahodne',
     stopAudio: 'Zastavit audio',
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
@@ -1395,9 +1398,11 @@ function App() {
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
+  const [isLoadingSelectedEntryDetail, setLoadingSelectedEntryDetail] = useState(false)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
   const [audioQueue, setAudioQueue] = useState<ActiveAudio[]>([])
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
+  const [pendingRandomPlayEntryId, setPendingRandomPlayEntryId] = useState<string | null>(null)
   const [isEntryImageExpanded, setEntryImageExpanded] = useState(false)
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
@@ -1643,25 +1648,39 @@ function App() {
     async function loadSelectedEntryDetail() {
       if (!selectedEntry || selectedEntry.id.startsWith('draft-')) {
         setSelectedEntryDetail(null)
+        setLoadingSelectedEntryDetail(false)
         return
       }
 
-      const result = await apiClient.GET('/api/entries/{slug}', {
-        params: {
-          path: {
-            slug: selectedEntry.slug,
-          },
-          query: {
-            language,
-          },
-        },
-      })
+      setSelectedEntryDetail(null)
+      setLoadingSelectedEntryDetail(true)
 
-      if (!isActive) {
-        return
+      try {
+        const result = await apiClient.GET('/api/entries/{slug}', {
+          params: {
+            path: {
+              slug: selectedEntry.slug,
+            },
+            query: {
+              language,
+            },
+          },
+        })
+
+        if (!isActive) {
+          return
+        }
+
+        setSelectedEntryDetail(result.error || !result.data ? null : (result.data as EntryDetail))
+      } catch {
+        if (isActive) {
+          setSelectedEntryDetail(null)
+        }
+      } finally {
+        if (isActive) {
+          setLoadingSelectedEntryDetail(false)
+        }
       }
-
-      setSelectedEntryDetail(result.error || !result.data ? null : (result.data as EntryDetail))
     }
 
     void loadSelectedEntryDetail()
@@ -1839,6 +1858,11 @@ function App() {
     [entries, selectedEntryId],
   )
 
+  const playableRandomEntries = useMemo(
+    () => entries.filter((entry) => !entry.id.startsWith('draft-') && mediaUrlToAbsolute(entry.primaryAudioUrl) !== null),
+    [entries],
+  )
+
   const mapAutoFitKey = useMemo(
     () => JSON.stringify({
       fromYear,
@@ -1983,8 +2007,12 @@ function App() {
     findEntryAudioTrack(selectedEntryAudioTracks, 'WhyItMatters', language),
     ui.whyItMatters,
   )
-  const ultimateAudioSequence = [titleAudio, whyItMattersAudio, descriptionAudio].filter(
-    (item): item is ActiveAudio => item !== null,
+  const ultimateAudioSequence = useMemo(
+    () =>
+      [titleAudio, whyItMattersAudio, descriptionAudio].filter(
+        (item): item is ActiveAudio => item !== null,
+      ),
+    [descriptionAudio, titleAudio, whyItMattersAudio],
   )
 
   const selectEntry = useCallback((entryId: string) => {
@@ -1992,7 +2020,7 @@ function App() {
     setEntryDetailOpen(true)
   }, [setEntryDetailOpen, setSelectedEntryId])
 
-  function playAudio(audio: ActiveAudio) {
+  const playAudio = useCallback((audio: ActiveAudio) => {
     setActiveAudio(audio)
     window.requestAnimationFrame(() => {
       const player = persistentAudioRef.current
@@ -2005,14 +2033,14 @@ function App() {
       }
       void player.play().catch(() => undefined)
     })
-  }
+  }, [])
 
-  function playSingleAudio(audio: ActiveAudio) {
+  const playSingleAudio = useCallback((audio: ActiveAudio) => {
     setAudioQueue([])
     playAudio(audio)
-  }
+  }, [playAudio])
 
-  function playAudioSequence(sequence: ActiveAudio[]) {
+  const playAudioSequence = useCallback((sequence: ActiveAudio[]) => {
     if (sequence.length === 0) {
       return
     }
@@ -2020,7 +2048,48 @@ function App() {
     const [first, ...rest] = sequence
     setAudioQueue(rest)
     playAudio(first)
-  }
+  }, [playAudio])
+
+  const playRandomEntry = useCallback(() => {
+    if (playableRandomEntries.length === 0) {
+      return
+    }
+
+    const randomEntry = playableRandomEntries[Math.floor(Math.random() * playableRandomEntries.length)]
+    if (!randomEntry) {
+      return
+    }
+
+    setPendingRandomPlayEntryId(randomEntry.id)
+    if (randomEntry.id !== selectedEntryId) {
+      setLoadingSelectedEntryDetail(true)
+    }
+    selectEntry(randomEntry.id)
+  }, [playableRandomEntries, selectEntry, selectedEntryId])
+
+  useEffect(() => {
+    if (!pendingRandomPlayEntryId || selectedEntryId !== pendingRandomPlayEntryId || isLoadingSelectedEntryDetail) {
+      return
+    }
+
+    if (selectedEntryDetail?.id !== pendingRandomPlayEntryId) {
+      setPendingRandomPlayEntryId(null)
+      return
+    }
+
+    if (ultimateAudioSequence.length > 0) {
+      playAudioSequence(ultimateAudioSequence)
+    }
+
+    setPendingRandomPlayEntryId(null)
+  }, [
+    isLoadingSelectedEntryDetail,
+    pendingRandomPlayEntryId,
+    playAudioSequence,
+    selectedEntryDetail?.id,
+    selectedEntryId,
+    ultimateAudioSequence,
+  ])
 
   function handleAudioEnded() {
     if (audioQueue.length === 0) {
@@ -4061,11 +4130,27 @@ function App() {
             <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
-          {ultimateAudioSequence.length > 0 && (
-            <button className="play-all-button" type="button" onClick={() => playAudioSequence(ultimateAudioSequence)}>
-              <PlayCircle aria-hidden="true" />
-              {ui.playAll}
-            </button>
+          {(ultimateAudioSequence.length > 0 || playableRandomEntries.length > 0) && (
+            <div className="entry-audio-actions">
+              {ultimateAudioSequence.length > 0 && (
+                <button className="play-all-button" type="button" onClick={() => playAudioSequence(ultimateAudioSequence)}>
+                  <PlayCircle aria-hidden="true" />
+                  {ui.playAll}
+                </button>
+              )}
+              {playableRandomEntries.length > 0 && (
+                <button
+                  className="play-random-button"
+                  type="button"
+                  aria-label={ui.playRandom}
+                  title={ui.playRandom}
+                  onClick={playRandomEntry}
+                >
+                  <Shuffle aria-hidden="true" />
+                  {ui.playRandom}
+                </button>
+              )}
+            </div>
           )}
           {selectedEntryImageUrl && (
             <button

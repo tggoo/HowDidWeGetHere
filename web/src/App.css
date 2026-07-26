@@ -946,24 +946,53 @@
   color: var(--accent);
 }
 
-.play-all-button {
+.entry-audio-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 10px;
+}
+
+.play-all-button,
+.play-random-button {
   align-items: center;
-  background: var(--accent);
-  border: 0;
   border-radius: 8px;
-  color: var(--accent-contrast);
   cursor: pointer;
   display: flex;
   font-weight: 700;
   gap: 8px;
   justify-content: center;
-  margin-top: 10px;
+  min-height: 40px;
   padding: 9px 14px;
   width: 100%;
 }
 
+.play-all-button {
+  background: var(--accent);
+  border: 0;
+  color: var(--accent-contrast);
+}
+
+.play-random-button {
+  background: var(--control-strong);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.play-all-button svg,
+.play-random-button svg {
+  height: 17px;
+  width: 17px;
+}
+
 .play-all-button:hover {
   background: color-mix(in srgb, var(--accent) 88%, black);
+}
+
+.play-random-button:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-muted));
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .entry-image-trigger {
