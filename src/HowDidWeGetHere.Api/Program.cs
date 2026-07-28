@@ -95,6 +95,7 @@ app.UseExceptionHandler(exceptionApp =>
             .CreateLogger("GlobalExceptionHandler");
         var renderRequestId = context.Request.Headers["Rndr-Id"].ToString();
         var isDatabaseStorageUnavailable = IsDatabaseStorageUnavailable(exception);
+        var isGitHubMediaRateLimited = IsGitHubMediaRateLimited(exception);
 
         logger.LogError(
             exception,
@@ -106,12 +107,16 @@ app.UseExceptionHandler(exceptionApp =>
 
         context.Response.StatusCode = isDatabaseStorageUnavailable
             ? StatusCodes.Status503ServiceUnavailable
-            : StatusCodes.Status500InternalServerError;
+            : isGitHubMediaRateLimited
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new
         {
             error = isDatabaseStorageUnavailable
                 ? "Database storage is unavailable. The PostgreSQL server could not write internal files; check database disk usage or quota before retrying."
-                : "An unexpected server error occurred.",
+                : isGitHubMediaRateLimited
+                    ? "GitHub media storage is rate-limited. Wait for GitHub's API rate limit reset, then retry the import."
+                    : "An unexpected server error occurred.",
             traceId = context.TraceIdentifier,
             renderRequestId = string.IsNullOrWhiteSpace(renderRequestId) ? null : renderRequestId
         });
@@ -156,6 +161,21 @@ static bool IsDatabaseStorageUnavailable(Exception? exception)
         if (exception is PostgresException postgresException &&
             string.Equals(postgresException.SqlState, "XX000", StringComparison.Ordinal) &&
             postgresException.MessageText.Contains("could not write init file", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        exception = exception.InnerException;
+    }
+
+    return false;
+}
+
+static bool IsGitHubMediaRateLimited(Exception? exception)
+{
+    while (exception is not null)
+    {
+        if (exception is GitHubReleaseStorageException { IsRateLimited: true })
         {
             return true;
         }

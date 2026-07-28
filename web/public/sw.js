@@ -1,10 +1,20 @@
-const APP_CACHE = 'hwdwgh-app-v2'
+const APP_CACHE = 'hwdwgh-app-v3'
 const DATA_CACHE = 'hwdwgh-data-v1'
 const MEDIA_CACHE = 'hwdwgh-media-v2'
 const TILE_CACHE = 'hwdwgh-tiles-v1'
 const DATA_MAX_AGE_MS = 15 * 60 * 1000
 
-const appShellUrls = ['/', '/favicon.svg', '/icons.svg']
+const appShellUrls = [
+  '/',
+  '/index.html',
+  '/favicon.svg',
+  '/icons.svg',
+  '/manifest.webmanifest',
+  '/pwa-icon-192.png',
+  '/pwa-icon-512.png',
+  '/pwa-maskable-512.png',
+  '/apple-touch-icon.png',
+]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -30,6 +40,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(request.url)
+
+  if (isNavigationRequest(request)) {
+    event.respondWith(networkFirstNavigation(request))
+    return
+  }
 
   if (isMediaRequest(url)) {
     event.respondWith(handleMediaRequest(request))
@@ -72,6 +87,11 @@ async function clearOldCaches() {
   const allowedCaches = new Set([APP_CACHE, DATA_CACHE, MEDIA_CACHE, TILE_CACHE])
   const names = await caches.keys()
   await Promise.all(names.filter((name) => !allowedCaches.has(name)).map((name) => caches.delete(name)))
+}
+
+function isNavigationRequest(request) {
+  return request.mode === 'navigate' ||
+    request.headers.get('accept')?.includes('text/html')
 }
 
 function isPublicApiRequest(url) {
@@ -134,6 +154,24 @@ async function cacheFirst(request, cacheName) {
   }
 
   return response
+}
+
+async function networkFirstNavigation(request) {
+  const cache = await caches.open(APP_CACHE)
+
+  try {
+    const response = await fetch(request)
+    if (response.ok) {
+      await cache.put(request, response.clone())
+    }
+
+    return response
+  } catch {
+    return await cache.match(request) ??
+      await cache.match('/') ??
+      await cache.match('/index.html') ??
+      new Response(null, { status: 504, statusText: 'Gateway Timeout' })
+  }
 }
 
 async function handleMediaRequest(request) {

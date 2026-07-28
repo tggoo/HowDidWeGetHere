@@ -1,0 +1,35 @@
+{
+  "id": "/",
+  "name": "How Did We Get Here",
+  "short_name": "HDWGH",
+  "description": "An interactive history and mythology timeline with maps, routes, media, and offline browsing.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#071f23",
+  "theme_color": "#0b3a40",
+  "categories": ["education", "books", "travel"],
+  "lang": "en",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

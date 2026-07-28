@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -13,6 +14,9 @@ public sealed class GitHubReleaseStorageClient(
     ILogger<GitHubReleaseStorageClient> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly ConcurrentDictionary<string, GitHubRelease> releaseCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> releaseLocks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<long, GitHubReleaseAssetSnapshot> assetSnapshots = new();
 
     public async Task<GitHubReleaseAsset> UploadAssetAsync(
         string assetName,
@@ -25,27 +29,38 @@ public sealed class GitHubReleaseStorageClient(
         for (var shard = 1; shard <= github.MaxReleaseShards; shard++)
         {
             var release = await GetOrCreateReleaseAsync(github, shard, cancellationToken);
-            var assets = await ListAssetsAsync(github, release.Id, cancellationToken);
-            var existingAsset = assets.FirstOrDefault(asset =>
-                string.Equals(asset.Name, assetName, StringComparison.OrdinalIgnoreCase));
-            if (existingAsset is not null)
+            var assetSnapshot = assetSnapshots.GetOrAdd(release.Id, _ => new GitHubReleaseAssetSnapshot());
+            await assetSnapshot.EnsureLoadedAsync(
+                token => ListAssetsAsync(github, release.Id, token),
+                cancellationToken);
+            if (assetSnapshot.TryGetAsset(assetName, out var existingAsset) && existingAsset is not null)
             {
                 return existingAsset;
             }
 
-            if (assets.Count >= github.MaxAssetsPerRelease)
+            if (assetSnapshot.IsFull(github.MaxAssetsPerRelease))
             {
                 continue;
             }
 
-            return await UploadAssetToReleaseAsync(
+            var uploadResult = await UploadAssetToReleaseAsync(
                 github,
                 release,
+                assetSnapshot,
                 assetName,
                 filePath,
                 contentType,
                 contentLength,
                 cancellationToken);
+            if (uploadResult.Asset is not null)
+            {
+                return uploadResult.Asset;
+            }
+
+            if (uploadResult.IsReleaseFull)
+            {
+                continue;
+            }
         }
 
         throw new InvalidOperationException(
@@ -58,6 +73,37 @@ public sealed class GitHubReleaseStorageClient(
         CancellationToken cancellationToken)
     {
         var tag = BuildReleaseTag(github, shard);
+        var cacheKey = BuildReleaseCacheKey(github, tag);
+        if (releaseCache.TryGetValue(cacheKey, out var cachedRelease))
+        {
+            return cachedRelease;
+        }
+
+        var releaseLock = releaseLocks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+        await releaseLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (releaseCache.TryGetValue(cacheKey, out cachedRelease))
+            {
+                return cachedRelease;
+            }
+
+            var release = await GetOrCreateReleaseUncachedAsync(github, shard, tag, cancellationToken);
+            releaseCache[cacheKey] = release;
+            return release;
+        }
+        finally
+        {
+            releaseLock.Release();
+        }
+    }
+
+    private async Task<GitHubRelease> GetOrCreateReleaseUncachedAsync(
+        GitHubReleaseMediaStorageOptions github,
+        int shard,
+        string tag,
+        CancellationToken cancellationToken)
+    {
         using var getRequest = CreateRequest(
             github,
             HttpMethod.Get,
@@ -135,9 +181,10 @@ public sealed class GitHubReleaseStorageClient(
         }
     }
 
-    private async Task<GitHubReleaseAsset> UploadAssetToReleaseAsync(
+    private async Task<GitHubReleaseAssetUploadResult> UploadAssetToReleaseAsync(
         GitHubReleaseMediaStorageOptions github,
         GitHubRelease release,
+        GitHubReleaseAssetSnapshot assetSnapshot,
         string assetName,
         string filePath,
         string contentType,
@@ -155,17 +202,24 @@ public sealed class GitHubReleaseStorageClient(
         using var response = await SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Created)
         {
-            return await ReadJsonAsync<GitHubReleaseAsset>(response, cancellationToken);
+            var asset = await ReadJsonAsync<GitHubReleaseAsset>(response, cancellationToken);
+            assetSnapshot.RecordAsset(asset);
+            return GitHubReleaseAssetUploadResult.Stored(asset);
         }
 
         if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
         {
-            var assets = await ListAssetsAsync(github, release.Id, cancellationToken);
-            var existingAsset = assets.FirstOrDefault(asset =>
-                string.Equals(asset.Name, assetName, StringComparison.OrdinalIgnoreCase));
-            if (existingAsset is not null)
+            await assetSnapshot.RefreshAsync(
+                token => ListAssetsAsync(github, release.Id, token),
+                cancellationToken);
+            if (assetSnapshot.TryGetAsset(assetName, out var existingAsset) && existingAsset is not null)
             {
-                return existingAsset;
+                return GitHubReleaseAssetUploadResult.Stored(existingAsset);
+            }
+
+            if (assetSnapshot.IsFull(github.MaxAssetsPerRelease))
+            {
+                return GitHubReleaseAssetUploadResult.ReleaseFull;
             }
         }
 
@@ -197,6 +251,9 @@ public sealed class GitHubReleaseStorageClient(
 
     private static string BuildReleaseTag(GitHubReleaseMediaStorageOptions github, int shard) =>
         $"{github.ReleaseTagPrefix}-{shard:000}";
+
+    private static string BuildReleaseCacheKey(GitHubReleaseMediaStorageOptions github, string tag) =>
+        $"{github.Owner}/{github.Repository}/releases/tags/{tag}";
 
     private HttpRequestMessage CreateRequest(
         GitHubReleaseMediaStorageOptions github,
@@ -246,8 +303,161 @@ public sealed class GitHubReleaseStorageClient(
         CancellationToken cancellationToken)
     {
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new InvalidOperationException($"{message} Status={(int)response.StatusCode} Body={body}");
+        throw new GitHubReleaseStorageException(
+            $"{message} Status={(int)response.StatusCode} Body={body}",
+            response.StatusCode,
+            IsRateLimited(response, body));
     }
+
+    private static bool IsRateLimited(HttpResponseMessage response, string body)
+    {
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            return true;
+        }
+
+        if (response.StatusCode != HttpStatusCode.Forbidden)
+        {
+            return false;
+        }
+
+        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var remaining) &&
+            remaining.Any(value => string.Equals(value, "0", StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        return body.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record GitHubReleaseAssetUploadResult(GitHubReleaseAsset? Asset, bool IsReleaseFull)
+    {
+        public static GitHubReleaseAssetUploadResult Stored(GitHubReleaseAsset asset) => new(asset, false);
+
+        public static GitHubReleaseAssetUploadResult ReleaseFull { get; } = new(null, true);
+    }
+
+    private sealed class GitHubReleaseAssetSnapshot : IDisposable
+    {
+        private readonly SemaphoreSlim refreshLock = new(1, 1);
+        private readonly object sync = new();
+        private Dictionary<string, GitHubReleaseAsset>? assetsByName;
+
+        public bool TryGetAsset(string assetName, out GitHubReleaseAsset? asset)
+        {
+            lock (sync)
+            {
+                if (assetsByName is not null)
+                {
+                    return assetsByName.TryGetValue(assetName, out asset);
+                }
+            }
+
+            asset = null;
+            return false;
+        }
+
+        public bool IsFull(int maxAssets)
+        {
+            lock (sync)
+            {
+                return assetsByName is not null && assetsByName.Count >= maxAssets;
+            }
+        }
+
+        public async Task EnsureLoadedAsync(
+            Func<CancellationToken, Task<List<GitHubReleaseAsset>>> loadAssets,
+            CancellationToken cancellationToken)
+        {
+            if (IsLoaded())
+            {
+                return;
+            }
+
+            await RefreshCoreAsync(loadAssets, onlyIfMissing: true, cancellationToken);
+        }
+
+        public Task RefreshAsync(
+            Func<CancellationToken, Task<List<GitHubReleaseAsset>>> loadAssets,
+            CancellationToken cancellationToken) =>
+            RefreshCoreAsync(loadAssets, onlyIfMissing: false, cancellationToken);
+
+        public void RecordAsset(GitHubReleaseAsset asset)
+        {
+            lock (sync)
+            {
+                assetsByName ??= new Dictionary<string, GitHubReleaseAsset>(StringComparer.OrdinalIgnoreCase);
+                assetsByName[asset.Name] = asset;
+            }
+        }
+
+        public void RecordSnapshot(IEnumerable<GitHubReleaseAsset> assets)
+        {
+            lock (sync)
+            {
+                assetsByName = assets.ToDictionary(
+                    asset => asset.Name,
+                    asset => asset,
+                    StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private async Task RefreshCoreAsync(
+            Func<CancellationToken, Task<List<GitHubReleaseAsset>>> loadAssets,
+            bool onlyIfMissing,
+            CancellationToken cancellationToken)
+        {
+            await refreshLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (onlyIfMissing && IsLoaded())
+                {
+                    return;
+                }
+
+                var assets = await loadAssets(cancellationToken);
+                RecordSnapshot(assets);
+            }
+            finally
+            {
+                refreshLock.Release();
+            }
+        }
+
+        private bool IsLoaded()
+        {
+            lock (sync)
+            {
+                return assetsByName is not null;
+            }
+        }
+
+        public void Dispose() => refreshLock.Dispose();
+    }
+}
+
+public sealed class GitHubReleaseStorageException : Exception
+{
+    public GitHubReleaseStorageException()
+    {
+    }
+
+    public GitHubReleaseStorageException(string message) : base(message)
+    {
+    }
+
+    public GitHubReleaseStorageException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
+
+    public GitHubReleaseStorageException(string message, HttpStatusCode statusCode, bool isRateLimited) : base(message)
+    {
+        StatusCode = statusCode;
+        IsRateLimited = isRateLimited;
+    }
+
+    public HttpStatusCode StatusCode { get; }
+    public bool IsRateLimited { get; }
 }
 
 public sealed record GitHubRelease(
