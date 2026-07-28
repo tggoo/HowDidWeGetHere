@@ -4,6 +4,7 @@ using HowDidWeGetHere.Api.Endpoints;
 using HowDidWeGetHere.Infrastructure;
 using HowDidWeGetHere.Infrastructure.Identity;
 using HowDidWeGetHere.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Serilog;
@@ -77,6 +78,33 @@ if (app.Environment.IsDevelopment())
 
 app.UseSerilogRequestLogging();
 app.UseCors("Frontend");
+app.UseExceptionHandler(exceptionApp =>
+{
+    exceptionApp.Run(async context =>
+    {
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        var logger = context.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("GlobalExceptionHandler");
+        var renderRequestId = context.Request.Headers["Rndr-Id"].ToString();
+
+        logger.LogError(
+            exception,
+            "Unhandled request exception. TraceId={TraceId} RenderRequestId={RenderRequestId} Method={Method} Path={Path}",
+            context.TraceIdentifier,
+            renderRequestId,
+            context.Request.Method,
+            context.Request.Path);
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "An unexpected server error occurred.",
+            traceId = context.TraceIdentifier,
+            renderRequestId = string.IsNullOrWhiteSpace(renderRequestId) ? null : renderRequestId
+        });
+    });
+});
 app.UseMiddleware<PublicApiCacheMiddleware>();
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions

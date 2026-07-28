@@ -4,6 +4,8 @@ import {
   CalendarRange,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Filter,
   Globe2,
@@ -615,18 +617,18 @@ const sourceSupportKinds: SourceSupportKind[] = [
 const visibleTagLimit = 10
 
 const relationshipTypeLabels: Record<string, Record<string, string>> = {
-  Caused: { en: 'Caused', cs: 'Zpusobilo', es: 'Causo' },
+  Caused: { en: 'Caused', cs: 'Způsobilo', es: 'Causo' },
   Influenced: { en: 'Influenced', cs: 'Ovlivnilo', es: 'Influyo en' },
-  Preceded: { en: 'Came before', cs: 'Predchazelo', es: 'Precedio a' },
-  Followed: { en: 'Came after', cs: 'Nasledovalo', es: 'Siguio a' },
-  PartOf: { en: 'Was part of', cs: 'Bylo soucasti', es: 'Fue parte de' },
+  Preceded: { en: 'Came before', cs: 'Předcházelo', es: 'Precedio a' },
+  Followed: { en: 'Came after', cs: 'Následovalo', es: 'Siguio a' },
+  PartOf: { en: 'Was part of', cs: 'Bylo součástí', es: 'Fue parte de' },
   HasPart: { en: 'Includes', cs: 'Obsahuje', es: 'Incluye' },
-  RelatedTo: { en: 'Related to', cs: 'Souvisi s', es: 'Relacionado con' },
+  RelatedTo: { en: 'Related to', cs: 'Souvisí s', es: 'Relacionado con' },
   Contradicts: { en: 'Contradicts', cs: 'Je v rozporu s', es: 'Contradice' },
-  SameTraditionAs: { en: 'Same tradition as', cs: 'Stejna tradice jako', es: 'Misma tradicion que' },
-  LocatedWithin: { en: 'Located within', cs: 'Nachazi se v', es: 'Ubicado dentro de' },
-  DerivedFrom: { en: 'Derived from', cs: 'Odvozene od', es: 'Derivado de' },
-  Other: { en: 'Other relation', cs: 'Jina vazba', es: 'Otra relacion' },
+  SameTraditionAs: { en: 'Same tradition as', cs: 'Stejná tradice jako', es: 'Misma tradicion que' },
+  LocatedWithin: { en: 'Located within', cs: 'Nachází se v', es: 'Ubicado dentro de' },
+  DerivedFrom: { en: 'Derived from', cs: 'Odvozené od', es: 'Derivado de' },
+  Other: { en: 'Other relation', cs: 'Jiná vazba', es: 'Otra relacion' },
 }
 
 const relationshipDirectionLabels: Record<string, Record<string, string>> = {
@@ -656,6 +658,10 @@ const uiCopy = {
     closeEntryDetail: 'Close entry detail',
     closeImage: 'Close image',
     expandImage: 'Expand image',
+    imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
+    imageSlide: (current: number, total: number) => `Image ${current} of ${total}`,
+    nextImage: 'Next image',
+    previousImage: 'Previous image',
     closeFilters: 'Close filters',
     closeTags: 'Close tags',
     dateUnknown: 'Date unknown',
@@ -721,6 +727,10 @@ const uiCopy = {
     closeEntryDetail: 'Zavřít detail záznamu',
     closeImage: 'Zavřít obrázek',
     expandImage: 'Zvětšit obrázek',
+    imageIndicator: (current: number, total: number) => `Zobrazit obrázek ${current} z ${total}`,
+    imageSlide: (current: number, total: number) => `Obrázek ${current} z ${total}`,
+    nextImage: 'Další obrázek',
+    previousImage: 'Předchozí obrázek',
     closeFilters: 'Zavřít filtry',
     closeTags: 'Zavřít tagy',
     dateUnknown: 'Datum není známé',
@@ -732,10 +742,10 @@ const uiCopy = {
       `Načteno ${entryCount} publikovaných záznamů${yearRange}${viewport}. Posuň mapu nebo doplň místa, aby se zobrazily body.`,
     filters: 'Filtry',
     language: 'Jazyk',
-    nowPlaying: 'Prehrava se',
-    openPlayingEntry: 'Otevrit prehravany zaznam',
-    minimizeAudio: 'Skryt prehravac',
-    restoreAudio: 'Zobrazit prehravac',
+    nowPlaying: 'Přehrává se',
+    openPlayingEntry: 'Otevřít přehrávaný záznam',
+    minimizeAudio: 'Skrýt přehrávač',
+    restoreAudio: 'Zobrazit přehrávač',
     loadingInitial: 'Načítám publikovaná mapová data.',
     moreCount: (count: number) => `Další ${count}`,
     noTimelineEntries: 'Žádné datované záznamy',
@@ -757,10 +767,10 @@ const uiCopy = {
     switchToDarkMode: 'Přepnout do tmavého režimu',
     switchToLightMode: 'Přepnout do světlého režimu',
     tags: 'Tagy',
-    titleAudioLabel: 'Nazev',
-    playAudio: 'Prehrat audio',
-    playAll: 'Prehrat vse',
-    playRandom: 'Prehrat nahodne',
+    titleAudioLabel: 'Název',
+    playAudio: 'Přehrát audio',
+    playAll: 'Přehrát vše',
+    playRandom: 'Přehrát náhodně',
     stopAudio: 'Zastavit audio',
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
@@ -1127,6 +1137,7 @@ type AdminAuthSession = {
 }
 
 const adminSessionStorageKey = 'howdidwegethere.adminSession'
+const entryQueryParam = 'entry'
 
 const adminPages: Array<{ id: AdminPage; label: string }> = [
   { id: 'import', label: 'Import' },
@@ -1209,6 +1220,33 @@ function mediaUrlToAbsolute(url: string | null | undefined) {
 
   const base = apiBaseUrl.replace(/\/$/, '')
   return `${base}/${trimmed.replace(/^\//, '')}`
+}
+
+function entrySlugFromUrl() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return new URLSearchParams(window.location.search).get(entryQueryParam)
+}
+
+function updateEntrySlugInUrl(slug: string | null) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const url = new URL(window.location.href)
+  if (slug) {
+    url.searchParams.set(entryQueryParam, slug)
+  } else {
+    url.searchParams.delete(entryQueryParam)
+  }
+
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(window.history.state, '', nextUrl)
+  }
 }
 
 function findEntryAudioTrack(
@@ -1404,6 +1442,7 @@ function App() {
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
   const [pendingRandomPlayEntryId, setPendingRandomPlayEntryId] = useState<string | null>(null)
   const [isEntryImageExpanded, setEntryImageExpanded] = useState(false)
+  const [entryImageIndex, setEntryImageIndex] = useState(0)
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null)
   const [isLoadingMap, setLoadingMap] = useState(false)
   const [mapStatus, setMapStatus] = useState<string>(ui.loadingInitial)
@@ -1498,6 +1537,8 @@ function App() {
   const [adminEntryTags, setAdminEntryTags] = useState<EntryDetail['tags']>([])
   const [reloadKey, setReloadKey] = useState(0)
   const selectedEntryIdRef = useRef(selectedEntryId)
+  const initialEntrySlugRef = useRef(entrySlugFromUrl())
+  const hasAppliedInitialEntrySlugRef = useRef(false)
 
   useEffect(() => {
     selectedEntryIdRef.current = selectedEntryId
@@ -1528,15 +1569,17 @@ function App() {
     async function loadMapData() {
       setLoadingMap(true)
       try {
+        const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
+        const shouldFindRequestedEntry = requestedEntrySlug !== null
         const [entriesResult, periodsResult, tagsResult, mapResult] = await Promise.all([
           apiClient.GET('/api/entries', {
             params: {
               query: {
                 language,
-                search: searchText.trim() || undefined,
-                tag: selectedTags,
-                fromYear: numberOrNull(fromYear),
-                toYear: numberOrNull(toYear),
+                search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
+                tag: shouldFindRequestedEntry ? [] : selectedTags,
+                fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
+                toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
               },
             },
           }),
@@ -1558,10 +1601,10 @@ function App() {
             params: {
               query: {
                 language,
-                search: searchText.trim() || undefined,
-                tag: selectedTags,
-                fromYear: numberOrNull(fromYear),
-                toYear: numberOrNull(toYear),
+                search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
+                tag: shouldFindRequestedEntry ? [] : selectedTags,
+                fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
+                toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
                 west: mapViewport?.west,
                 south: mapViewport?.south,
                 east: mapViewport?.east,
@@ -1588,12 +1631,19 @@ function App() {
         if (loadedEntries.length > 0) {
           setEntries(loadedEntries)
           const currentSelectedEntryId = selectedEntryIdRef.current
-          const nextSelectedEntryId = loadedEntries.some((entry) => entry.id === currentSelectedEntryId)
+          const requestedEntry = requestedEntrySlug
+            ? loadedEntries.find((entry) => entry.slug === requestedEntrySlug)
+            : undefined
+          const nextSelectedEntryId = requestedEntry?.id ?? (loadedEntries.some((entry) => entry.id === currentSelectedEntryId)
             ? currentSelectedEntryId
-            : loadedEntries[0].id
+            : loadedEntries[0].id)
           if (nextSelectedEntryId !== currentSelectedEntryId) {
             selectedEntryIdRef.current = nextSelectedEntryId
             setSelectedEntryId(nextSelectedEntryId)
+          }
+          if (requestedEntry) {
+            hasAppliedInitialEntrySlugRef.current = true
+            setEntryDetailOpen(true)
           }
           setMapEmptyResult(false)
           const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
@@ -1638,12 +1688,13 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setSelectedEntryId, toYear, ui])
+  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setEntryDetailOpen, setSelectedEntryId, toYear, ui])
 
   useEffect(() => {
     let isActive = true
     const selectedEntry = entries.find((entry) => entry.id === selectedEntryId)
     setEntryImageExpanded(false)
+    setEntryImageIndex(0)
 
     async function loadSelectedEntryDetail() {
       if (!selectedEntry || selectedEntry.id.startsWith('draft-')) {
@@ -1689,23 +1740,6 @@ function App() {
       isActive = false
     }
   }, [entries, language, selectedEntryId])
-
-  useEffect(() => {
-    if (!isEntryImageExpanded) {
-      return
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setEntryImageExpanded(false)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isEntryImageExpanded])
 
   useEffect(() => {
     if (adminToken) {
@@ -1858,6 +1892,38 @@ function App() {
     [entries, selectedEntryId],
   )
 
+  useEffect(() => {
+    const slug = isEntryDetailOpen && selectedEntry && !selectedEntry.id.startsWith('draft-')
+      ? selectedEntry.slug
+      : null
+    updateEntrySlugInUrl(slug)
+  }, [isEntryDetailOpen, selectedEntry])
+
+  useEffect(() => {
+    function handlePopState() {
+      const slug = entrySlugFromUrl()
+      if (!slug) {
+        setEntryDetailOpen(false)
+        return
+      }
+
+      const entry = entries.find((item) => item.slug === slug)
+      if (entry) {
+        selectedEntryIdRef.current = entry.id
+        setSelectedEntryId(entry.id)
+        setEntryDetailOpen(true)
+        return
+      }
+
+      initialEntrySlugRef.current = slug
+      hasAppliedInitialEntrySlugRef.current = false
+      setReloadKey((current) => current + 1)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [entries, setEntryDetailOpen, setSelectedEntryId])
+
   const playableRandomEntries = useMemo(
     () => entries.filter((entry) => !entry.id.startsWith('draft-') && mediaUrlToAbsolute(entry.primaryAudioUrl) !== null),
     [entries],
@@ -1984,8 +2050,24 @@ function App() {
     return [...urls]
   }, [activeAudio?.url, entries, selectedEntryDetail])
 
-  const selectedEntryImage = selectedEntryDetail?.images[0]
-  const selectedEntryImageUrl = mediaUrlToAbsolute(selectedEntryImage?.url)
+  const selectedEntryImages = useMemo(
+    () =>
+      (selectedEntryDetail?.images ?? [])
+        .map((image) => ({
+          image,
+          url: mediaUrlToAbsolute(image.url),
+        }))
+        .filter((item): item is { image: EntryDetail['images'][number]; url: string } => item.url !== null),
+    [selectedEntryDetail],
+  )
+  const selectedEntryImageCount = selectedEntryImages.length
+  const activeEntryImageIndex = selectedEntryImageCount === 0
+    ? 0
+    : Math.min(entryImageIndex, selectedEntryImageCount - 1)
+  const selectedEntryImageItem = selectedEntryImages[activeEntryImageIndex] ?? null
+  const selectedEntryImage = selectedEntryImageItem?.image
+  const selectedEntryImageUrl = selectedEntryImageItem?.url ?? null
+  const hasMultipleEntryImages = selectedEntryImageCount > 1
   const selectedEntryAudioTracks = selectedEntryDetail?.audioTracks ?? []
   const titleAudio = buildSectionAudio(
     selectedEntry,
@@ -2014,6 +2096,60 @@ function App() {
       ),
     [descriptionAudio, titleAudio, whyItMattersAudio],
   )
+
+  useEffect(() => {
+    if (entryImageIndex >= selectedEntryImageCount) {
+      setEntryImageIndex(0)
+    }
+  }, [entryImageIndex, selectedEntryImageCount])
+
+  const showEntryImage = useCallback((index: number) => {
+    if (selectedEntryImageCount === 0) {
+      setEntryImageIndex(0)
+      return
+    }
+
+    setEntryImageIndex(((index % selectedEntryImageCount) + selectedEntryImageCount) % selectedEntryImageCount)
+  }, [selectedEntryImageCount])
+
+  const showAdjacentEntryImage = useCallback((direction: -1 | 1) => {
+    setEntryImageIndex((current) => {
+      if (selectedEntryImageCount <= 1) {
+        return 0
+      }
+
+      return (current + direction + selectedEntryImageCount) % selectedEntryImageCount
+    })
+  }, [selectedEntryImageCount])
+
+  useEffect(() => {
+    if (!isEntryImageExpanded) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setEntryImageExpanded(false)
+        return
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        showAdjacentEntryImage(-1)
+        return
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        showAdjacentEntryImage(1)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isEntryImageExpanded, showAdjacentEntryImage])
 
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
@@ -4153,19 +4289,59 @@ function App() {
             </div>
           )}
           {selectedEntryImageUrl && (
-            <button
-              className="entry-image-trigger"
-              type="button"
-              aria-label={ui.expandImage}
-              title={ui.expandImage}
-              onClick={() => setEntryImageExpanded(true)}
-            >
-              <img
-                alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
-                className="entry-image"
-                src={selectedEntryImageUrl}
-              />
-            </button>
+            <div className="entry-image-carousel">
+              <div className="entry-image-stage">
+                <button
+                  className="entry-image-trigger"
+                  type="button"
+                  aria-label={`${ui.expandImage}. ${ui.imageSlide(activeEntryImageIndex + 1, selectedEntryImageCount)}`}
+                  title={ui.expandImage}
+                  onClick={() => setEntryImageExpanded(true)}
+                >
+                  <img
+                    alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
+                    className="entry-image"
+                    src={selectedEntryImageUrl}
+                  />
+                </button>
+                {hasMultipleEntryImages && (
+                  <>
+                    <button
+                      className="entry-image-nav previous"
+                      type="button"
+                      aria-label={ui.previousImage}
+                      title={ui.previousImage}
+                      onClick={() => showAdjacentEntryImage(-1)}
+                    >
+                      <ChevronLeft aria-hidden="true" />
+                    </button>
+                    <button
+                      className="entry-image-nav next"
+                      type="button"
+                      aria-label={ui.nextImage}
+                      title={ui.nextImage}
+                      onClick={() => showAdjacentEntryImage(1)}
+                    >
+                      <ChevronRight aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+              </div>
+              {hasMultipleEntryImages && (
+                <div className="entry-image-indicators" aria-label={ui.imageSlide(activeEntryImageIndex + 1, selectedEntryImageCount)}>
+                  {selectedEntryImages.map((item, index) => (
+                    <button
+                      className={index === activeEntryImageIndex ? 'active' : undefined}
+                      key={item.image.id}
+                      type="button"
+                      aria-current={index === activeEntryImageIndex ? 'true' : undefined}
+                      aria-label={ui.imageIndicator(index + 1, selectedEntryImageCount)}
+                      onClick={() => showEntryImage(index)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {selectedEntryDetail?.summary && (
             <div className="entry-text-section entry-summary-section">
@@ -4261,7 +4437,13 @@ function App() {
         </aside>
 
         {isEntryImageExpanded && selectedEntryImageUrl && (
-          <div className="image-lightbox" role="dialog" aria-modal="true" onClick={() => setEntryImageExpanded(false)}>
+          <div
+            className="image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={ui.imageSlide(activeEntryImageIndex + 1, selectedEntryImageCount)}
+            onClick={() => setEntryImageExpanded(false)}
+          >
             <button
               className="image-lightbox-close"
               type="button"
@@ -4271,12 +4453,54 @@ function App() {
             >
               <X aria-hidden="true" />
             </button>
+            {hasMultipleEntryImages && (
+              <>
+                <button
+                  className="image-lightbox-nav previous"
+                  type="button"
+                  aria-label={ui.previousImage}
+                  title={ui.previousImage}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    showAdjacentEntryImage(-1)
+                  }}
+                >
+                  <ChevronLeft aria-hidden="true" />
+                </button>
+                <button
+                  className="image-lightbox-nav next"
+                  type="button"
+                  aria-label={ui.nextImage}
+                  title={ui.nextImage}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    showAdjacentEntryImage(1)
+                  }}
+                >
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              </>
+            )}
             <img
               alt={selectedEntryImage?.altText ?? selectedEntryDetail?.title ?? selectedEntry?.title ?? ''}
               className="image-lightbox-img"
               onClick={(event) => event.stopPropagation()}
               src={selectedEntryImageUrl}
             />
+            {hasMultipleEntryImages && (
+              <div className="entry-image-indicators lightbox" onClick={(event) => event.stopPropagation()}>
+                {selectedEntryImages.map((item, index) => (
+                  <button
+                    className={index === activeEntryImageIndex ? 'active' : undefined}
+                    key={item.image.id}
+                    type="button"
+                    aria-current={index === activeEntryImageIndex ? 'true' : undefined}
+                    aria-label={ui.imageIndicator(index + 1, selectedEntryImageCount)}
+                    onClick={() => showEntryImage(index)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 

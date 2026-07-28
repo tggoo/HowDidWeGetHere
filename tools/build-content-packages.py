@@ -32,6 +32,8 @@ FIELD_AUDIO_TRACKS = (
     ("whyItMatters", "WhyItMatters", False, 30),
 )
 
+SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
+
 ERA_RANGES = {
     "prehistory": (-3000000, -3000),
     "neolithic": (-10000, -3300),
@@ -475,7 +477,11 @@ def images_for_slug(slug: str, images_root: Path) -> list[dict[str, object]]:
     matches = sorted(
         path
         for path in images_root.iterdir()
-        if path.is_file() and path.stem.lower() == slug.lower() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
+        if path.is_file() and image_variant_order(slug, path) is not None and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+    )
+    matches = sorted(
+        matches,
+        key=lambda path: (image_variant_order(slug, path), path.suffix.lower(), path.name.lower()),
     )
     images = []
     for index, image_path in enumerate(matches):
@@ -491,6 +497,19 @@ def images_for_slug(slug: str, images_root: Path) -> list[dict[str, object]]:
             }
         )
     return images
+
+
+def image_variant_order(slug: str, image_path: Path) -> int | None:
+    stem = image_path.stem.lower()
+    slug_lower = slug.lower()
+    if stem == slug_lower:
+        return 0
+
+    match = re.fullmatch(rf"{re.escape(slug_lower)}-(\d+)", stem)
+    if match:
+        return int(match.group(1))
+
+    return None
 
 
 def time_period_from_era(era: str) -> dict[str, object] | None:

@@ -199,6 +199,7 @@ public static class AdminContentPackageImportEndpoints
         IConfiguration configuration,
         HttpRequest httpRequest,
         ClaimsPrincipal user,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var uploadError = ValidatePackageUpload(file, configuration);
@@ -206,6 +207,15 @@ public static class AdminContentPackageImportEndpoints
         {
             return Results.BadRequest(new { error = uploadError });
         }
+
+        var logger = loggerFactory.CreateLogger("ContentPackageImport");
+        logger.LogInformation(
+            "Starting content package import. FileName={FileName} FileLength={FileLength} PublishImportedEntries={PublishImportedEntries} UpdateExistingRows={UpdateExistingRows} ClearExistingData={ClearExistingData}",
+            file.FileName,
+            file.Length,
+            publishImportedEntries,
+            updateExistingRows,
+            clearExistingData);
 
         await using var stream = file.OpenReadStream();
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
@@ -216,6 +226,12 @@ public static class AdminContentPackageImportEndpoints
         }
 
         var document = package.Document;
+        logger.LogInformation(
+            "Read content package document. FileName={FileName} PackageSlug={PackageSlug} EntryCount={EntryCount}",
+            file.FileName,
+            document.PackageSlug,
+            document.Entries.Count);
+
         var shouldClearExistingData = clearExistingData == true;
         var warnings = new List<string>();
         foreach (var entry in document.Entries)
@@ -230,9 +246,30 @@ public static class AdminContentPackageImportEndpoints
             ? await ClearContentDataAsync(dbContext, cancellationToken)
             : ContentDataClearResult.Empty;
 
+        var packageSlugs = document.Entries
+            .Select(ResolveSlug)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var packageSourceSheets = document.Entries
+            .Select(entry => EmptyToNull(entry.SourceSheet))
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var packageSourceRows = document.Entries
+            .Where(entry => entry.SourceRow is not null)
+            .Select(entry => entry.SourceRow!.Value)
+            .Distinct()
+            .ToArray();
+
         List<Entry> existingEntries = shouldClearExistingData || updateExistingRows == false
             ? []
             : await dbContext.Entries
+                .Where(entry =>
+                    packageSlugs.Contains(entry.Slug) ||
+                    (entry.SourceSheet != null &&
+                        entry.SourceRow != null &&
+                        packageSourceSheets.Contains(entry.SourceSheet) &&
+                        packageSourceRows.Contains(entry.SourceRow.Value)))
                 .Include(entry => entry.Translations)
                 .Include(entry => entry.Tags)
                 .Include(entry => entry.TimePeriods)
@@ -241,8 +278,18 @@ public static class AdminContentPackageImportEndpoints
                 .Include(entry => entry.AudioTracks)
                 .Include(entry => entry.Images)
                     .ThenInclude(image => image.Translations)
+                .AsSplitQuery()
                 .OrderBy(entry => entry.CreatedAt)
                 .ToListAsync(cancellationToken);
+        logger.LogInformation(
+            "Loaded existing entry candidates. FileName={FileName} PackageSlug={PackageSlug} CandidateSlugCount={CandidateSlugCount} CandidateSourceSheetCount={CandidateSourceSheetCount} CandidateSourceRowCount={CandidateSourceRowCount} ExistingEntryCount={ExistingEntryCount}",
+            file.FileName,
+            document.PackageSlug,
+            packageSlugs.Length,
+            packageSourceSheets.Length,
+            packageSourceRows.Length,
+            existingEntries.Count);
+
         var existingBySourceRow = existingEntries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.SourceSheet) && entry.SourceRow is not null)
             .GroupBy(entry => $"{entry.SourceSheet}|{entry.SourceRow}", StringComparer.OrdinalIgnoreCase)
@@ -288,6 +335,17 @@ public static class AdminContentPackageImportEndpoints
         for (var index = 0; index < document.Entries.Count; index++)
         {
             var packageEntry = document.Entries[index];
+            var packageEntrySlug = ResolveSlug(packageEntry);
+            logger.LogInformation(
+                "Importing content package entry {EntryIndex}/{EntryCount}. FileName={FileName} PackageSlug={PackageSlug} EntrySlug={EntrySlug} AudioRefs={AudioRefs} ImageRefs={ImageRefs}",
+                index + 1,
+                document.Entries.Count,
+                file.FileName,
+                document.PackageSlug,
+                packageEntrySlug,
+                packageEntry.Audio.Count,
+                packageEntry.Images.Count);
+
             var importedRow = new ImportedRow
             {
                 ImportBatch = batch,
@@ -434,6 +492,18 @@ public static class AdminContentPackageImportEndpoints
         {
             await transaction.CommitAsync(cancellationToken);
         }
+
+        logger.LogInformation(
+            "Finished content package import. FileName={FileName} PackageSlug={PackageSlug} EntriesCreated={EntriesCreated} EntriesUpdated={EntriesUpdated} AudioTracksCreated={AudioTracksCreated} AudioTracksUpdated={AudioTracksUpdated} ImagesCreated={ImagesCreated} ImagesUpdated={ImagesUpdated} WarningCount={WarningCount}",
+            file.FileName,
+            document.PackageSlug,
+            entriesCreated,
+            entriesUpdated,
+            audioTracksCreated,
+            audioTracksUpdated,
+            imagesCreated,
+            imagesUpdated,
+            warnings.Count);
 
         return Results.Ok(new ContentPackageImportResult(
             batch.Id,
@@ -1127,12 +1197,14 @@ public static class AdminContentPackageImportEndpoints
     {
         var isPrimary = image.IsPrimary ?? true;
         var kind = ParseEnum(image.Kind, ImageKind.Primary);
+        var sortOrder = image.SortOrder ?? 0;
         var existing = isPrimary
             ? entry.Images
                 .Where(item => item.IsPrimary)
                 .OrderBy(item => item.SortOrder)
                 .FirstOrDefault()
-            : null;
+            : entry.Images
+                .FirstOrDefault(item => !item.IsPrimary && item.Kind == kind && item.SortOrder == sortOrder);
         if (isPrimary)
         {
             foreach (var entryImage in entry.Images)
@@ -1153,7 +1225,7 @@ public static class AdminContentPackageImportEndpoints
                 MediaType = stored.MediaType,
                 Width = image.Width,
                 Height = image.Height,
-                SortOrder = image.SortOrder ?? 0,
+                SortOrder = sortOrder,
                 IsPrimary = isPrimary,
                 Attribution = EmptyToNull(image.Attribution),
                 License = EmptyToNull(image.License),
@@ -1173,7 +1245,7 @@ public static class AdminContentPackageImportEndpoints
         existing.MediaType = stored.MediaType;
         existing.Width = image.Width;
         existing.Height = image.Height;
-        existing.SortOrder = image.SortOrder ?? 0;
+        existing.SortOrder = sortOrder;
         existing.IsPrimary = isPrimary;
         existing.Attribution = EmptyToNull(image.Attribution);
         existing.License = EmptyToNull(image.License);

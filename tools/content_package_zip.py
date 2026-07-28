@@ -25,6 +25,14 @@ def write_package_zips(package_dir: Path, max_zip_bytes: int = DEFAULT_MAX_ZIP_B
 
     package_slug = str(document.get("packageSlug") or package_dir.name)
     output_dir = package_dir.parent
+    missing_media_paths = missing_media_paths_for_entries(package_dir, entries)
+    if missing_media_paths:
+        formatted = ", ".join(path.as_posix() for path in missing_media_paths[:10])
+        remaining_count = len(missing_media_paths) - 10
+        if remaining_count > 0:
+            formatted = f"{formatted}, and {remaining_count} more"
+        raise ValueError(f"{entries_path} references missing media file(s): {formatted}")
+
     remove_existing_zips(output_dir, package_slug)
 
     single_zip_path = output_dir / f"{package_slug}.zip"
@@ -125,8 +133,9 @@ def write_zip(
         archive.writestr("entries.json", json.dumps(document, ensure_ascii=False, indent=2) + "\n")
         for relative_path in sorted(media_paths_for_entries(entries)):
             source_path = package_dir / relative_path
-            if source_path.is_file():
-                archive.write(source_path, relative_path.as_posix())
+            if not source_path.is_file():
+                raise FileNotFoundError(f"Missing media file referenced by package: {source_path}")
+            archive.write(source_path, relative_path.as_posix())
 
 
 def media_paths_for_entries(entries: list[dict[str, Any]]) -> set[Path]:
@@ -146,6 +155,14 @@ def media_paths_for_entries(entries: list[dict[str, Any]]) -> set[Path]:
                     paths.add(package_path)
 
     return paths
+
+
+def missing_media_paths_for_entries(package_dir: Path, entries: list[dict[str, Any]]) -> list[Path]:
+    return sorted(
+        relative_path
+        for relative_path in media_paths_for_entries(entries)
+        if not (package_dir / relative_path).is_file()
+    )
 
 
 def normalize_package_path(value: Any) -> Path | None:

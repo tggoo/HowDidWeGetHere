@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+import importlib.util
 from pathlib import Path
 
 
@@ -18,6 +19,12 @@ sys.path.insert(0, str(TOOLS))
 
 from markdown_tts import markdown_to_tts  # noqa: E402
 from content_package_zip import write_package_zips  # noqa: E402
+
+build_script_spec = importlib.util.spec_from_file_location("build_content_packages", TOOLS / "build-content-packages.py")
+assert build_script_spec is not None
+build_content_packages = importlib.util.module_from_spec(build_script_spec)
+assert build_script_spec.loader is not None
+build_script_spec.loader.exec_module(build_content_packages)
 
 
 class MarkdownToTtsTests(unittest.TestCase):
@@ -265,6 +272,59 @@ class TtsGeneratorTests(unittest.TestCase):
                     document = json.loads(archive.read("entries.json").decode("utf-8"))
                     self.assertEqual(len(document["entries"]), 1)
                     self.assertIn(document["entries"][0]["audio"][0]["path"], names)
+
+    def test_content_package_zip_fails_when_media_reference_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            package_dir = temp / "packages" / "mythology"
+            package_dir.mkdir(parents=True)
+            (package_dir / "entries.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "packageSlug": "mythology",
+                        "title": "Mythology",
+                        "defaultLanguage": "en",
+                        "entries": [
+                            {
+                                "slug": "chaos",
+                                "images": [
+                                    {
+                                        "kind": "Primary",
+                                        "isPrimary": True,
+                                        "sortOrder": 0,
+                                        "path": "images/chaos.png",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "images/chaos.png"):
+                write_package_zips(package_dir)
+
+    def test_images_for_slug_discovers_numbered_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            images_root = Path(temp_dir)
+            (images_root / "morana-marzanna.png").write_bytes(b"primary")
+            (images_root / "morana-marzanna-2.png").write_bytes(b"gallery")
+            (images_root / "morana-marzanna-notes.txt").write_text("ignore", encoding="utf-8")
+            (images_root / "morana-marzanna-extra.png").write_bytes(b"ignore")
+
+            images = build_content_packages.images_for_slug("morana-marzanna", images_root)
+
+            self.assertEqual([image["path"] for image in images], ["images/morana-marzanna.png", "images/morana-marzanna-2.png"])
+            self.assertTrue(images[0]["isPrimary"])
+            self.assertEqual(images[0]["kind"], "Primary")
+            self.assertFalse(images[1]["isPrimary"])
+            self.assertEqual(images[1]["kind"], "Gallery")
+            self.assertEqual(images[1]["sortOrder"], 1)
 
 
 def _read_tree(root: Path) -> dict[str, str]:
