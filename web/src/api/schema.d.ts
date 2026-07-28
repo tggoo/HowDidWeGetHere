@@ -2590,7 +2590,7 @@ export interface components {
         /** @enum {unknown} */
         SpatialConfidence: "Exact" | "Approximate" | "Regional" | "Disputed" | "Mythic" | "Unknown";
         /** @enum {unknown} */
-        StorageProvider: "Local" | "S3" | "AzureBlob" | "ExternalUrl";
+        StorageProvider: "Local" | "S3" | "AzureBlob" | "ExternalUrl" | "GitHubRelease";
         TagListItemResponse: {
             /** Format: uuid */
             id: string;

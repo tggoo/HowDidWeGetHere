@@ -205,7 +205,8 @@ public enum StorageProvider
     Local,
     S3,
     AzureBlob,
-    ExternalUrl
+    ExternalUrl,
+    GitHubRelease
 }
 
 public enum TimePeriodType

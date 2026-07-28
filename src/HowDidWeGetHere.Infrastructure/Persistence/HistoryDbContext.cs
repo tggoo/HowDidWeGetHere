@@ -187,9 +187,13 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         {
             entity.ToTable("media_blobs");
             entity.HasIndex(blob => blob.StorageKey).IsUnique();
+            entity.HasIndex(blob => new { blob.StorageProvider, blob.ContentHash, blob.ContentLength });
             entity.Property(blob => blob.StorageKey).HasMaxLength(600);
             entity.Property(blob => blob.ContentType).HasMaxLength(120);
             entity.Property(blob => blob.ContentHash).HasMaxLength(96);
+            entity.Property(blob => blob.ExternalId).HasMaxLength(120);
+            entity.Property(blob => blob.ExternalUrl).HasMaxLength(1000);
+            entity.Property(blob => blob.ExternalETag).HasMaxLength(240);
         });
     }
 

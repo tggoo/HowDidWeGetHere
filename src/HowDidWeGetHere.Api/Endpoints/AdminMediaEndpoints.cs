@@ -1,10 +1,9 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.IO.Compression;
 using HowDidWeGetHere.Api.Contracts;
+using HowDidWeGetHere.Api.Media;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
-using HowDidWeGetHere.Domain.Media;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
@@ -143,9 +142,9 @@ public static class AdminMediaEndpoints
         [FromForm] string? license,
         [FromForm] string? sourceUrl,
         HistoryDbContext dbContext,
-        IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
+        IMediaStorageService mediaStorage,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -161,12 +160,12 @@ public static class AdminMediaEndpoints
             return Results.BadRequest(new { error = validationError });
         }
 
-        var storedFile = await SaveUploadAsync(file, "images", dbContext, environment, configuration, httpRequest, cancellationToken);
+        var storedFile = await SaveUploadAsync(file, "images", mediaStorage, httpRequest, cancellationToken);
         var image = new EntryImage
         {
             EntryId = entryId,
             Kind = ImageKind.Primary,
-            StorageProvider = StorageProvider.Local,
+            StorageProvider = storedFile.StorageProvider,
             StorageKey = storedFile.StorageKey,
             PublicUrl = storedFile.PublicUrl,
             MediaType = storedFile.MediaType,
@@ -286,9 +285,9 @@ public static class AdminMediaEndpoints
         [FromForm] string? license,
         [FromForm] string? sourceUrl,
         HistoryDbContext dbContext,
-        IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
+        IMediaStorageService mediaStorage,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -304,13 +303,13 @@ public static class AdminMediaEndpoints
             return Results.BadRequest(new { error = validationError });
         }
 
-        var storedFile = await SaveUploadAsync(file, "audio", dbContext, environment, configuration, httpRequest, cancellationToken);
+        var storedFile = await SaveUploadAsync(file, "audio", mediaStorage, httpRequest, cancellationToken);
         var audioTrack = new EntryAudioTrack
         {
             EntryId = entryId,
             LanguageCode = EndpointHelpers.NormalizeLanguage(languageCode),
             Kind = AudioKind.Narration,
-            StorageProvider = StorageProvider.Local,
+            StorageProvider = storedFile.StorageProvider,
             StorageKey = storedFile.StorageKey,
             PublicUrl = storedFile.PublicUrl,
             MediaType = storedFile.MediaType,
@@ -414,6 +413,7 @@ public static class AdminMediaEndpoints
         IWebHostEnvironment environment,
         IConfiguration configuration,
         HttpRequest httpRequest,
+        IMediaStorageService mediaStorage,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -478,9 +478,7 @@ public static class AdminMediaEndpoints
                 archiveEntry.Name,
                 ResolveAudioMediaType(extension),
                 "audio",
-                dbContext,
-                environment,
-                configuration,
+                mediaStorage,
                 httpRequest,
                 cancellationToken);
 
@@ -491,7 +489,7 @@ public static class AdminMediaEndpoints
                     Entry = entry,
                     LanguageCode = language,
                     Kind = AudioKind.Narration,
-                    StorageProvider = StorageProvider.Local,
+                    StorageProvider = storedFile.StorageProvider,
                     StorageKey = storedFile.StorageKey,
                     PublicUrl = storedFile.PublicUrl,
                     MediaType = storedFile.MediaType,
@@ -506,7 +504,7 @@ public static class AdminMediaEndpoints
             {
                 TryDeleteLocalFile(existingPrimary.StorageProvider, existingPrimary.StorageKey, environment, configuration);
                 existingPrimary.Kind = AudioKind.Narration;
-                existingPrimary.StorageProvider = StorageProvider.Local;
+                existingPrimary.StorageProvider = storedFile.StorageProvider;
                 existingPrimary.StorageKey = storedFile.StorageKey;
                 existingPrimary.PublicUrl = storedFile.PublicUrl;
                 existingPrimary.MediaType = storedFile.MediaType;
@@ -656,9 +654,7 @@ public static class AdminMediaEndpoints
     private static async Task<StoredMediaFile> SaveUploadAsync(
         IFormFile file,
         string mediaFolder,
-        HistoryDbContext dbContext,
-        IWebHostEnvironment environment,
-        IConfiguration configuration,
+        IMediaStorageService mediaStorage,
         HttpRequest httpRequest,
         CancellationToken cancellationToken)
     {
@@ -668,9 +664,7 @@ public static class AdminMediaEndpoints
             file.FileName,
             file.ContentType,
             mediaFolder,
-            dbContext,
-            environment,
-            configuration,
+            mediaStorage,
             httpRequest,
             cancellationToken);
     }
@@ -680,66 +674,17 @@ public static class AdminMediaEndpoints
         string fileName,
         string? contentType,
         string mediaFolder,
-        HistoryDbContext dbContext,
-        IWebHostEnvironment environment,
-        IConfiguration configuration,
+        IMediaStorageService mediaStorage,
         HttpRequest httpRequest,
         CancellationToken cancellationToken)
     {
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        var storageKey = Path.Combine(
-                "media",
-                mediaFolder,
-                DateTimeOffset.UtcNow.ToString("yyyy"),
-                DateTimeOffset.UtcNow.ToString("MM"),
-                $"{Guid.NewGuid():N}{extension}")
-            .Replace('\\', '/');
-
-        var staticRoot = GetStaticRoot(environment, configuration);
-        var fullPath = Path.GetFullPath(Path.Combine(staticRoot, storageKey.Replace('/', Path.DirectorySeparatorChar)));
-        EnsurePathIsInsideRoot(staticRoot, fullPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-
-        byte[] content;
-        await using (var memory = new MemoryStream())
-        {
-            await sourceStream.CopyToAsync(memory, cancellationToken);
-            content = memory.ToArray();
-        }
-
-        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
-        UpsertMediaBlob(dbContext, storageKey, contentType ?? "application/octet-stream", content);
-
-        var publicPath = "/" + storageKey;
-        return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), contentType);
-    }
-
-    private static void UpsertMediaBlob(
-        HistoryDbContext dbContext,
-        string storageKey,
-        string contentType,
-        byte[] content)
-    {
-        var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
-        var existing = dbContext.MediaBlobs.Local.FirstOrDefault(blob => blob.StorageKey == storageKey);
-        if (existing is null)
-        {
-            dbContext.MediaBlobs.Add(new MediaBlob
-            {
-                StorageKey = storageKey,
-                ContentType = contentType,
-                Content = content,
-                ContentLength = content.LongLength,
-                ContentHash = hash
-            });
-            return;
-        }
-
-        existing.ContentType = contentType;
-        existing.Content = content;
-        existing.ContentLength = content.LongLength;
-        existing.ContentHash = hash;
-        existing.UpdatedAt = DateTimeOffset.UtcNow;
+        return await mediaStorage.StoreAsync(
+            sourceStream,
+            fileName,
+            contentType,
+            mediaFolder,
+            httpRequest,
+            cancellationToken);
     }
 
     private static string GetStaticRoot(IWebHostEnvironment environment, IConfiguration configuration)
@@ -892,8 +837,6 @@ public static class AdminMediaEndpoints
         audioTrack.License = request.License;
         audioTrack.SourceUrl = request.SourceUrl;
     }
-
-    private sealed record StoredMediaFile(string StorageKey, string PublicUrl, string? MediaType);
 
     private sealed record BulkAudioFileName(string EntrySlug, string LanguageCode);
 }

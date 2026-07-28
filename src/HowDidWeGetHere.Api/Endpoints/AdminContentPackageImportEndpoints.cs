@@ -1,14 +1,13 @@
 using System.IO.Compression;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using HowDidWeGetHere.Api.Contracts;
+using HowDidWeGetHere.Api.Media;
 using HowDidWeGetHere.Application.Time;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Domain.Imports;
-using HowDidWeGetHere.Domain.Media;
 using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
@@ -200,6 +199,7 @@ public static class AdminContentPackageImportEndpoints
         HttpRequest httpRequest,
         ClaimsPrincipal user,
         ILoggerFactory loggerFactory,
+        IMediaStorageService mediaStorage,
         CancellationToken cancellationToken)
     {
         var uploadError = ValidatePackageUpload(file, configuration);
@@ -404,9 +404,7 @@ public static class AdminContentPackageImportEndpoints
                     archive,
                     audio.Path,
                     "audio",
-                    dbContext,
-                    environment,
-                    configuration,
+                    mediaStorage,
                     httpRequest,
                     cancellationToken);
                 if (stored is null)
@@ -445,9 +443,7 @@ public static class AdminContentPackageImportEndpoints
                     archive,
                     image.Path,
                     "images",
-                    dbContext,
-                    environment,
-                    configuration,
+                    mediaStorage,
                     httpRequest,
                     cancellationToken);
                 if (stored is null)
@@ -1120,7 +1116,7 @@ public static class AdminContentPackageImportEndpoints
                 Entry = entry,
                 LanguageCode = language,
                 Kind = kind,
-                StorageProvider = StorageProvider.Local,
+                StorageProvider = stored.StorageProvider,
                 StorageKey = stored.StorageKey,
                 PublicUrl = stored.PublicUrl,
                 MediaType = stored.MediaType,
@@ -1139,7 +1135,7 @@ public static class AdminContentPackageImportEndpoints
 
         TryDeleteLocalFile(existing.StorageProvider, existing.StorageKey, environment, configuration);
         existing.Kind = kind;
-        existing.StorageProvider = StorageProvider.Local;
+        existing.StorageProvider = stored.StorageProvider;
         existing.StorageKey = stored.StorageKey;
         existing.PublicUrl = stored.PublicUrl;
         existing.MediaType = stored.MediaType;
@@ -1219,7 +1215,7 @@ public static class AdminContentPackageImportEndpoints
             {
                 Entry = entry,
                 Kind = kind,
-                StorageProvider = StorageProvider.Local,
+                StorageProvider = stored.StorageProvider,
                 StorageKey = stored.StorageKey,
                 PublicUrl = stored.PublicUrl,
                 MediaType = stored.MediaType,
@@ -1239,7 +1235,7 @@ public static class AdminContentPackageImportEndpoints
 
         TryDeleteLocalFile(existing.StorageProvider, existing.StorageKey, environment, configuration);
         existing.Kind = kind;
-        existing.StorageProvider = StorageProvider.Local;
+        existing.StorageProvider = stored.StorageProvider;
         existing.StorageKey = stored.StorageKey;
         existing.PublicUrl = stored.PublicUrl;
         existing.MediaType = stored.MediaType;
@@ -1603,9 +1599,7 @@ public static class AdminContentPackageImportEndpoints
         ZipArchive archive,
         string? packagePath,
         string mediaFolder,
-        HistoryDbContext dbContext,
-        IWebHostEnvironment environment,
-        IConfiguration configuration,
+        IMediaStorageService mediaStorage,
         HttpRequest httpRequest,
         CancellationToken cancellationToken)
     {
@@ -1616,61 +1610,14 @@ public static class AdminContentPackageImportEndpoints
         }
 
         var extension = Path.GetExtension(archiveEntry.Name).ToLowerInvariant();
-        var storageKey = Path.Combine(
-                "media",
-                mediaFolder,
-                DateTimeOffset.UtcNow.ToString("yyyy"),
-                DateTimeOffset.UtcNow.ToString("MM"),
-                $"{Guid.NewGuid():N}{extension}")
-            .Replace('\\', '/');
-
-        var staticRoot = GetStaticRoot(environment, configuration);
-        var fullPath = Path.GetFullPath(Path.Combine(staticRoot, storageKey.Replace('/', Path.DirectorySeparatorChar)));
-        EnsurePathIsInsideRoot(staticRoot, fullPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-
-        byte[] content;
-        await using (var source = archiveEntry.Open())
-        await using (var memory = new MemoryStream())
-        {
-            await source.CopyToAsync(memory, cancellationToken);
-            content = memory.ToArray();
-        }
-
-        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
-
-        UpsertMediaBlob(dbContext, storageKey, ResolveMediaType(extension), content);
-
-        var publicPath = "/" + storageKey;
-        return new StoredMediaFile(storageKey, BuildPublicUrl(publicPath, configuration, httpRequest), ResolveMediaType(extension));
-    }
-
-    private static void UpsertMediaBlob(
-        HistoryDbContext dbContext,
-        string storageKey,
-        string contentType,
-        byte[] content)
-    {
-        var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
-        var existing = dbContext.MediaBlobs.Local.FirstOrDefault(blob => blob.StorageKey == storageKey);
-        if (existing is null)
-        {
-            dbContext.MediaBlobs.Add(new MediaBlob
-            {
-                StorageKey = storageKey,
-                ContentType = contentType,
-                Content = content,
-                ContentLength = content.LongLength,
-                ContentHash = hash
-            });
-            return;
-        }
-
-        existing.ContentType = contentType;
-        existing.Content = content;
-        existing.ContentLength = content.LongLength;
-        existing.ContentHash = hash;
-        existing.UpdatedAt = DateTimeOffset.UtcNow;
+        await using var source = archiveEntry.Open();
+        return await mediaStorage.StoreAsync(
+            source,
+            archiveEntry.Name,
+            ResolveMediaType(extension),
+            mediaFolder,
+            httpRequest,
+            cancellationToken);
     }
 
     private static ZipArchiveEntry? GetPackageEntry(ZipArchive archive, string? packagePath)
@@ -1862,8 +1809,6 @@ public static class AdminContentPackageImportEndpoints
     private sealed record AudioAttributeDefinition(AudioKind Kind, bool IsPrimary, int SortOrder);
 
     private sealed record PackageReadResult(ContentPackageDocument? Document, string? Error);
-
-    private sealed record StoredMediaFile(string StorageKey, string PublicUrl, string MediaType);
 
     private sealed class ContentPackageDocument
     {

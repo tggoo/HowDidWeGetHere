@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using HowDidWeGetHere.Api.Caching;
 using HowDidWeGetHere.Api.Endpoints;
+using HowDidWeGetHere.Api.Media;
 using HowDidWeGetHere.Infrastructure;
 using HowDidWeGetHere.Infrastructure.Identity;
 using HowDidWeGetHere.Infrastructure.Persistence;
@@ -41,6 +42,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.Configure<MediaStorageOptions>(builder.Configuration.GetSection("Media"));
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<S3ObjectStorageClient>();
+builder.Services.AddSingleton<GitHubReleaseStorageClient>();
+builder.Services.AddScoped<IMediaStorageService, MediaStorageService>();
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
 

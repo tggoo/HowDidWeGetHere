@@ -1,3 +1,5 @@
+using HowDidWeGetHere.Api.Media;
+using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
@@ -19,6 +21,7 @@ public static class MediaFallbackEndpoints
     private static async Task<IResult> ServeMediaFromDatabaseAsync(
         string path,
         HistoryDbContext dbContext,
+        IMediaStorageService mediaStorage,
         HttpResponse response,
         CancellationToken cancellationToken)
     {
@@ -31,14 +34,6 @@ public static class MediaFallbackEndpoints
         var media = await dbContext.MediaBlobs
             .AsNoTracking()
             .Where(blob => blob.StorageKey == storageKey)
-            .Select(blob => new
-            {
-                blob.Content,
-                blob.ContentHash,
-                blob.ContentType,
-                blob.UpdatedAt,
-                blob.CreatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
         if (media is null)
         {
@@ -46,6 +41,16 @@ public static class MediaFallbackEndpoints
         }
 
         response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        var readUri = mediaStorage.CreateReadUri(media);
+        if (readUri is not null)
+        {
+            return Results.Redirect(readUri.ToString(), permanent: false);
+        }
+
+        if (media.Content is null || media.Content.Length == 0)
+        {
+            return Results.NotFound();
+        }
 
         return Results.File(
             media.Content,
