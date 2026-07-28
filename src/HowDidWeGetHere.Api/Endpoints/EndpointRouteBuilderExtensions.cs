@@ -15,6 +15,7 @@ public static class EndpointRouteBuilderExtensions
         var admin = api.MapGroup("/admin")
             .RequireAuthorization("AdminOnly");
 
+        admin.MapAdminDeploymentEndpoints();
         admin.MapAdminEntryEndpoints();
         admin.MapAdminMediaEndpoints();
         admin.MapAdminPlaceEndpoints();

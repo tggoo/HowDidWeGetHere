@@ -15,6 +15,12 @@ public sealed record EntryListItemResponse(
     string? PrimaryImageUrl,
     string? PrimaryAudioUrl);
 
+public sealed record DeploymentInfoResponse(
+    string? CommitSha,
+    string? ShortCommitSha,
+    string? CommitUrl,
+    DateTimeOffset DeployedAtUtc);
+
 public sealed record EntryDetailResponse(
     Guid Id,
     string Slug,

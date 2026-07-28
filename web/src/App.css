@@ -152,7 +152,7 @@
   --filter-track-width: var(--filter-panel-width, 300px);
   --detail-track-width: var(--detail-panel-width, 360px);
   display: grid;
-  grid-template-columns: var(--filter-track-width) minmax(0, 1fr) var(--detail-track-width);
+  grid-template-columns: minmax(0, var(--filter-track-width)) minmax(0, 1fr) minmax(0, var(--detail-track-width));
   height: 100svh;
   min-height: 0;
   overflow: hidden;
@@ -719,6 +719,7 @@
   display: grid;
   grid-template-rows: 130px minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -1655,6 +1656,42 @@
   background: var(--panel);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.admin-deployment-info {
+  align-items: center;
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 8px 9px;
+}
+
+.admin-deployment-info svg {
+  height: 15px;
+  width: 15px;
+}
+
+.admin-deployment-info a,
+.admin-deployment-info code {
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-deployment-info a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.admin-deployment-info time {
+  margin-left: auto;
 }
 
 .translation-switcher {

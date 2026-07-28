@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Download,
   Filter,
+  GitCommitHorizontal,
   Globe2,
   Image as ImageIcon,
   Languages,
@@ -995,6 +996,10 @@ function TimelineRuler({
       return
     }
 
+    if (event.target instanceof Element && event.target.closest('.timeline-event')) {
+      return
+    }
+
     dragStateRef.current = {
       didDrag: false,
       pointerId: event.pointerId,
@@ -1168,6 +1173,13 @@ type AdminAuthSession = {
   expiresAt: number
 }
 
+type DeploymentInfo = {
+  commitSha?: string | null
+  shortCommitSha?: string | null
+  commitUrl?: string | null
+  deployedAtUtc?: string | null
+}
+
 const adminSessionStorageKey = 'howdidwegethere.adminSession'
 const entryQueryParam = 'entry'
 
@@ -1328,6 +1340,19 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
+function formatDeploymentTime(value: string | null | undefined) {
+  if (!value) {
+    return 'unknown deploy time'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString()
+}
+
 function createUploadProgressState(
   phase: UploadProgressPhase,
   loadedBytes: number,
@@ -1486,6 +1511,7 @@ function App() {
   const [adminStatus, setAdminStatus] = useState(() =>
     adminSession ? 'Signed in from saved session.' : 'Sign in with the Render admin account.',
   )
+  const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null)
   const [contentPackageFiles, setContentPackageFiles] = useState<File[]>([])
   const [isPreviewingContentPackage, setPreviewingContentPackage] = useState(false)
   const [isImportingContentPackage, setImportingContentPackage] = useState(false)
@@ -1930,6 +1956,41 @@ function App() {
   }, [adminSession, adminToken, language, reloadKey])
 
   useEffect(() => {
+    if (!adminToken) {
+      setDeploymentInfo(null)
+      return
+    }
+
+    let isActive = true
+
+    async function loadDeploymentInfo() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/admin/deployment-info`, {
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+          },
+        })
+
+        if (!isActive) {
+          return
+        }
+
+        setDeploymentInfo(response.ok ? ((await response.json()) as DeploymentInfo) : null)
+      } catch {
+        if (isActive) {
+          setDeploymentInfo(null)
+        }
+      }
+    }
+
+    void loadDeploymentInfo()
+
+    return () => {
+      isActive = false
+    }
+  }, [adminToken])
+
+  useEffect(() => {
     persistAdminSession(adminSession)
   }, [adminSession])
 
@@ -2298,6 +2359,7 @@ function App() {
   }, [isEntryImageExpanded, showAdjacentEntryImage])
 
   const selectEntry = useCallback((entryId: string) => {
+    selectedEntryIdRef.current = entryId
     setSelectedEntryId(entryId)
     setEntryDetailOpen(true)
     setDetailPaneCollapsed(false)
@@ -4807,6 +4869,22 @@ function App() {
               {adminToken ? <CheckCircle2 aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}
               <span>{adminStatus}</span>
             </div>
+            {adminToken && deploymentInfo && (
+              <div className="admin-deployment-info">
+                <GitCommitHorizontal aria-hidden="true" />
+                <span>Deploy</span>
+                {deploymentInfo.commitUrl && deploymentInfo.shortCommitSha ? (
+                  <a href={deploymentInfo.commitUrl} target="_blank" rel="noreferrer">
+                    {deploymentInfo.shortCommitSha}
+                  </a>
+                ) : (
+                  <code>{deploymentInfo.shortCommitSha ?? 'unknown commit'}</code>
+                )}
+                <time dateTime={deploymentInfo.deployedAtUtc ?? undefined}>
+                  {formatDeploymentTime(deploymentInfo.deployedAtUtc)}
+                </time>
+              </div>
+            )}
             {!adminToken ? (
               <form className="admin-form" onSubmit={signInAdmin}>
                 <label>
