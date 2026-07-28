@@ -8,6 +8,7 @@ using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
+using Npgsql;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,6 +94,7 @@ app.UseExceptionHandler(exceptionApp =>
             .GetRequiredService<ILoggerFactory>()
             .CreateLogger("GlobalExceptionHandler");
         var renderRequestId = context.Request.Headers["Rndr-Id"].ToString();
+        var isDatabaseStorageUnavailable = IsDatabaseStorageUnavailable(exception);
 
         logger.LogError(
             exception,
@@ -102,10 +104,14 @@ app.UseExceptionHandler(exceptionApp =>
             context.Request.Method,
             context.Request.Path);
 
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.StatusCode = isDatabaseStorageUnavailable
+            ? StatusCodes.Status503ServiceUnavailable
+            : StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new
         {
-            error = "An unexpected server error occurred.",
+            error = isDatabaseStorageUnavailable
+                ? "Database storage is unavailable. The PostgreSQL server could not write internal files; check database disk usage or quota before retrying."
+                : "An unexpected server error occurred.",
             traceId = context.TraceIdentifier,
             renderRequestId = string.IsNullOrWhiteSpace(renderRequestId) ? null : renderRequestId
         });
@@ -141,4 +147,21 @@ static string GetMediaRoot(IWebHostEnvironment environment, IConfiguration confi
 
     Directory.CreateDirectory(mediaRoot);
     return Path.GetFullPath(mediaRoot);
+}
+
+static bool IsDatabaseStorageUnavailable(Exception? exception)
+{
+    while (exception is not null)
+    {
+        if (exception is PostgresException postgresException &&
+            string.Equals(postgresException.SqlState, "XX000", StringComparison.Ordinal) &&
+            postgresException.MessageText.Contains("could not write init file", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        exception = exception.InnerException;
+    }
+
+    return false;
 }

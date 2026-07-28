@@ -195,11 +195,13 @@
 .filter-panel {
   display: flex;
   flex-direction: column;
+  grid-column: 1;
   overflow: hidden;
 }
 
 .detail-panel {
   border-width: 0 0 0 1px;
+  grid-column: 3;
 }
 
 .filter-brand {
@@ -717,6 +719,7 @@
 
 .map-main {
   display: grid;
+  grid-column: 2;
   grid-template-rows: 130px minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
