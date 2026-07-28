@@ -2002,6 +2002,79 @@
   font-size: 13px;
 }
 
+.recent-imports {
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.recent-imports-header,
+.recent-imports-main {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.recent-imports-header strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.recent-imports-empty,
+.recent-imports-detail {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.recent-imports-list {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.recent-imports-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  padding: 7px 9px;
+}
+
+.recent-imports-name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-imports-status {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.recent-imports-status.imported {
+  color: var(--success-text);
+}
+
+.recent-imports-status.partiallyimported,
+.recent-imports-status.failed {
+  color: var(--warn-text);
+}
+
 .upload-progress {
   background: var(--panel-muted);
   border: 1px solid var(--border);
@@ -2109,6 +2182,10 @@
 
 .upload-batch-item.error .upload-batch-item-status {
   color: var(--warn-text);
+}
+
+.upload-batch-item.skipped {
+  opacity: 0.78;
 }
 
 .validation-report {

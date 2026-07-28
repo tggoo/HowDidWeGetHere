@@ -68,6 +68,10 @@ public static class AdminContentPackageImportEndpoints
 
     public static RouteGroupBuilder MapAdminContentPackageImportEndpoints(this RouteGroupBuilder admin)
     {
+        admin.MapGet("/imports/content-package/history", GetContentPackageImportHistoryAsync)
+            .Produces<ContentPackageImportHistoryResult>(StatusCodes.Status200OK)
+            .ExcludeFromDescription();
+
         admin.MapPost("/imports/content-package/preview", PreviewContentPackageAsync)
             .Accepts<IFormFile>("multipart/form-data")
             .Produces<ContentPackageImportPreviewResult>(StatusCodes.Status200OK)
@@ -83,6 +87,55 @@ public static class AdminContentPackageImportEndpoints
             .ExcludeFromDescription();
 
         return admin;
+    }
+
+    private static async Task<IResult> GetContentPackageImportHistoryAsync(
+        [FromQuery] int? take,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var limit = Math.Clamp(take ?? 25, 1, 100);
+        var batches = await dbContext.ImportBatches
+            .AsNoTracking()
+            .Where(batch => batch.FileName.ToLower().EndsWith(".zip"))
+            .OrderByDescending(batch => batch.StartedAt)
+            .Take(limit)
+            .Select(batch => new
+            {
+                batch.Id,
+                batch.FileName,
+                batch.Status,
+                batch.StartedAt,
+                batch.CompletedAt,
+                batch.SummaryJson,
+                ImportedRows = batch.Rows.Count
+            })
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(new ContentPackageImportHistoryResult(
+            batches
+                .Select(batch =>
+                {
+                    var summary = ParseContentPackageImportSummary(batch.SummaryJson);
+                    return new ContentPackageImportHistoryItem(
+                        batch.Id,
+                        batch.FileName,
+                        summary.PackageSlug,
+                        summary.Title,
+                        batch.Status,
+                        batch.StartedAt,
+                        batch.CompletedAt,
+                        batch.ImportedRows,
+                        summary.EntriesRead,
+                        summary.EntriesCreated,
+                        summary.EntriesUpdated,
+                        summary.AudioTracksCreated,
+                        summary.AudioTracksUpdated,
+                        summary.ImagesCreated,
+                        summary.ImagesUpdated,
+                        summary.WarningCount);
+                })
+                .ToList()));
     }
 
     private static async Task<IResult> PreviewContentPackageAsync(
@@ -467,6 +520,9 @@ public static class AdminContentPackageImportEndpoints
         batch.Status = warnings.Count == 0 ? ImportStatus.Imported : ImportStatus.PartiallyImported;
         batch.SummaryJson = JsonSerializer.Serialize(new
         {
+            fileName = file.FileName,
+            packageSlug = document.PackageSlug ?? string.Empty,
+            title = document.Title ?? document.PackageSlug ?? file.FileName,
             entriesRead = document.Entries.Count,
             clearedExistingData = shouldClearExistingData,
             contentDataDeleted = shouldClearExistingData ? clearResult : null,
@@ -503,6 +559,9 @@ public static class AdminContentPackageImportEndpoints
 
         return Results.Ok(new ContentPackageImportResult(
             batch.Id,
+            file.FileName,
+            document.PackageSlug ?? string.Empty,
+            document.Title ?? document.PackageSlug ?? file.FileName,
             document.Entries.Count,
             shouldClearExistingData,
             clearResult.EntriesDeleted,
@@ -1789,7 +1848,66 @@ public static class AdminContentPackageImportEndpoints
         }
     }
 
+    private static ContentPackageImportSummary ParseContentPackageImportSummary(string? summaryJson)
+    {
+        if (string.IsNullOrWhiteSpace(summaryJson))
+        {
+            return ContentPackageImportSummary.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(summaryJson);
+            var root = document.RootElement;
+            return new ContentPackageImportSummary(
+                GetString(root, "packageSlug"),
+                GetString(root, "title"),
+                GetInt32(root, "entriesRead"),
+                GetInt32(root, "entriesCreated"),
+                GetInt32(root, "entriesUpdated"),
+                GetInt32(root, "audioTracksCreated"),
+                GetInt32(root, "audioTracksUpdated"),
+                GetInt32(root, "imagesCreated"),
+                GetInt32(root, "imagesUpdated"),
+                GetArrayLength(root, "warnings"));
+        }
+        catch (JsonException)
+        {
+            return ContentPackageImportSummary.Empty;
+        }
+    }
+
+    private static string? GetString(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? EmptyToNull(property.GetString())
+            : null;
+
+    private static int GetInt32(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) && property.TryGetInt32(out var value)
+            ? value
+            : 0;
+
+    private static int GetArrayLength(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.Array
+            ? property.GetArrayLength()
+            : 0;
+
     private sealed record ExistingPackageEntry(Guid Id, string Slug, string? SourceSheet, int? SourceRow);
+
+    private sealed record ContentPackageImportSummary(
+        string? PackageSlug,
+        string? Title,
+        int EntriesRead,
+        int EntriesCreated,
+        int EntriesUpdated,
+        int AudioTracksCreated,
+        int AudioTracksUpdated,
+        int ImagesCreated,
+        int ImagesUpdated,
+        int WarningCount)
+    {
+        public static ContentPackageImportSummary Empty { get; } = new(null, null, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
 
     private sealed record ContentDataClearResult(
         int EntriesDeleted,

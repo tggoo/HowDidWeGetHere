@@ -226,7 +226,7 @@ type UploadProgressState = {
   message: string
 }
 
-type ContentPackageBatchItemStatus = 'pending' | 'uploading' | 'processing' | 'done' | 'error'
+type ContentPackageBatchItemStatus = 'pending' | 'uploading' | 'processing' | 'done' | 'error' | 'skipped'
 
 type ContentPackageBatchItem = {
   name: string
@@ -247,6 +247,9 @@ type AdminEntryRelationshipDetail = {
 
 type ContentPackageImportResult = {
   importBatchId: string
+  fileName: string
+  packageSlug: string
+  title: string
   entriesRead: number | string
   clearedExistingData: boolean
   entriesDeletedBeforeImport: number | string
@@ -261,6 +264,29 @@ type ContentPackageImportResult = {
   imagesCreated: number | string
   imagesUpdated: number | string
   warnings: string[]
+}
+
+type ContentPackageImportHistoryItem = {
+  importBatchId: string
+  fileName: string
+  packageSlug?: string | null
+  title?: string | null
+  status: string
+  startedAt: string
+  completedAt?: string | null
+  importedRows: number | string
+  entriesRead: number | string
+  entriesCreated: number | string
+  entriesUpdated: number | string
+  audioTracksCreated: number | string
+  audioTracksUpdated: number | string
+  imagesCreated: number | string
+  imagesUpdated: number | string
+  warningCount: number | string
+}
+
+type ContentPackageImportHistoryResult = {
+  items: ContentPackageImportHistoryItem[]
 }
 
 type ContentPackageImportPreviewResult = {
@@ -1353,6 +1379,39 @@ function formatDeploymentTime(value: string | null | undefined) {
   return date.toLocaleString()
 }
 
+function formatImportTime(value: string | null | undefined) {
+  if (!value) {
+    return 'not completed'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString()
+}
+
+function describeImportStatus(status: string) {
+  if (status === 'Imported') {
+    return 'Imported'
+  }
+
+  if (status === 'PartiallyImported') {
+    return 'Partially imported'
+  }
+
+  if (status === 'Failed') {
+    return 'Failed'
+  }
+
+  return 'Pending'
+}
+
+function summarizeImportHistoryItem(item: ContentPackageImportHistoryItem) {
+  return `${item.entriesRead} entries, ${item.audioTracksCreated} audio created, ${item.imagesCreated} images created`
+}
+
 function createUploadProgressState(
   phase: UploadProgressPhase,
   loadedBytes: number,
@@ -1520,6 +1579,8 @@ function App() {
   const [contentPackageBatchItems, setContentPackageBatchItems] = useState<ContentPackageBatchItem[]>([])
   const [contentPackagePreview, setContentPackagePreview] = useState<ContentPackageImportPreviewResult | null>(null)
   const [contentPackageResult, setContentPackageResult] = useState<ContentPackageImportResult | null>(null)
+  const [contentPackageImportHistory, setContentPackageImportHistory] = useState<ContentPackageImportHistoryItem[]>([])
+  const [isLoadingContentPackageImportHistory, setLoadingContentPackageImportHistory] = useState(false)
   const [adminEntries, setAdminEntries] = useState<AdminEntryListItem[]>([])
   const [isLoadingAdminEntries, setLoadingAdminEntries] = useState(false)
   const [entryForm, setEntryForm] = useState<EntryFormState>(defaultEntryForm)
@@ -1989,6 +2050,14 @@ function App() {
       isActive = false
     }
   }, [adminToken])
+
+  useEffect(() => {
+    if (!adminToken || !isAdminOpen || adminPage !== 'import') {
+      return
+    }
+
+    void loadContentPackageImportHistory()
+  }, [adminToken, isAdminOpen, adminPage, reloadKey])
 
   useEffect(() => {
     persistAdminSession(adminSession)
@@ -2538,6 +2607,33 @@ function App() {
 
   function authHeaders() {
     return adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined
+  }
+
+  async function loadContentPackageImportHistory() {
+    if (!adminToken) {
+      setContentPackageImportHistory([])
+      return
+    }
+
+    setLoadingContentPackageImportHistory(true)
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package/history?take=20`, {
+        headers: authHeaders(),
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        setContentPackageImportHistory([])
+        return
+      }
+
+      const result = (await response.json()) as ContentPackageImportHistoryResult
+      setContentPackageImportHistory(result.items)
+    } catch {
+      setContentPackageImportHistory([])
+    } finally {
+      setLoadingContentPackageImportHistory(false)
+    }
   }
 
   function numberOrNull(value: string) {
@@ -3181,12 +3277,13 @@ function App() {
               ? {
                   ...item,
                   status: 'done',
-                  message: `${result.entriesCreated} created, ${result.entriesUpdated} updated.${cleanImportStatus}`,
+                  message: `${result.entriesCreated} created, ${result.entriesUpdated} updated. ${result.title || result.packageSlug || result.fileName}.${cleanImportStatus}`,
                 }
               : item,
           ),
         )
         setReloadKey((value) => value + 1)
+        void loadContentPackageImportHistory()
       } catch (error) {
         failedCount += 1
         const message = error instanceof Error ? error.message : 'Import failed.'
@@ -4926,6 +5023,45 @@ function App() {
                 </nav>
                 {adminPage === 'import' && (
                   <div className="admin-form">
+                    <div className="recent-imports">
+                      <div className="recent-imports-header">
+                        <strong>Recent ZIP imports</strong>
+                        <button
+                          aria-label="Refresh recent imports"
+                          className="icon-button subtle"
+                          disabled={isLoadingContentPackageImportHistory}
+                          type="button"
+                          onClick={loadContentPackageImportHistory}
+                        >
+                          <RefreshCw
+                            aria-hidden="true"
+                            className={isLoadingContentPackageImportHistory ? 'spin-icon' : undefined}
+                          />
+                        </button>
+                      </div>
+                      {contentPackageImportHistory.length === 0 ? (
+                        <span className="recent-imports-empty">
+                          {isLoadingContentPackageImportHistory ? 'Loading recent imports...' : 'No ZIP imports recorded yet.'}
+                        </span>
+                      ) : (
+                        <ul className="recent-imports-list">
+                          {contentPackageImportHistory.slice(0, 8).map((item) => (
+                            <li className="recent-imports-item" key={item.importBatchId}>
+                              <div className="recent-imports-main">
+                                <span className="recent-imports-name">{item.fileName}</span>
+                                <span className={`recent-imports-status ${item.status.toLowerCase()}`}>
+                                  {describeImportStatus(item.status)}
+                                </span>
+                              </div>
+                              <span className="recent-imports-detail">
+                                {item.title || item.packageSlug || 'Content package'} - completed {formatImportTime(item.completedAt)}
+                              </span>
+                              <span className="recent-imports-detail">{summarizeImportHistoryItem(item)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                     <label>
                       Content package ZIP(s)
                       <input
@@ -5018,6 +5154,7 @@ function App() {
                               {item.status === 'processing' && 'Importing on server...'}
                               {item.status === 'done' && (item.message ?? 'Done')}
                               {item.status === 'error' && (item.message ?? 'Failed')}
+                              {item.status === 'skipped' && (item.message ?? 'Skipped')}
                             </span>
                           </li>
                         ))}

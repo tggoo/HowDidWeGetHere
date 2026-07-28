@@ -342,6 +342,9 @@ public sealed record BulkAudioUploadPreviewRow(
 
 public sealed record ContentPackageImportResult(
     Guid ImportBatchId,
+    string FileName,
+    string PackageSlug,
+    string Title,
     int EntriesRead,
     bool ClearedExistingData,
     int EntriesDeletedBeforeImport,
@@ -356,6 +359,27 @@ public sealed record ContentPackageImportResult(
     int ImagesCreated,
     int ImagesUpdated,
     IReadOnlyList<string> Warnings);
+
+public sealed record ContentPackageImportHistoryResult(
+    IReadOnlyList<ContentPackageImportHistoryItem> Items);
+
+public sealed record ContentPackageImportHistoryItem(
+    Guid ImportBatchId,
+    string FileName,
+    string? PackageSlug,
+    string? Title,
+    ImportStatus Status,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    int ImportedRows,
+    int EntriesRead,
+    int EntriesCreated,
+    int EntriesUpdated,
+    int AudioTracksCreated,
+    int AudioTracksUpdated,
+    int ImagesCreated,
+    int ImagesUpdated,
+    int WarningCount);
 
 public sealed record ContentPackageImportPreviewResult(
     string PackageSlug,
