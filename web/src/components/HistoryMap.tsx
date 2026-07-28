@@ -228,6 +228,47 @@ export function HistoryMap({
   }, [onViewportChange])
 
   useEffect(() => {
+    const mapContainer = mapContainerRef.current
+    if (!mapContainer || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    let animationFrameId: number | null = null
+    let viewportTimeoutId: number | null = null
+    const observer = new ResizeObserver(() => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        const map = mapRef.current
+        if (!map) {
+          return
+        }
+
+        map.invalidateSize({ debounceMoveend: true })
+        if (viewportTimeoutId !== null) {
+          window.clearTimeout(viewportTimeoutId)
+        }
+        viewportTimeoutId = window.setTimeout(() => {
+          onViewportChange(viewportFromMap(map))
+        }, 180)
+      })
+    })
+
+    observer.observe(mapContainer)
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+      if (viewportTimeoutId !== null) {
+        window.clearTimeout(viewportTimeoutId)
+      }
+      observer.disconnect()
+    }
+  }, [onViewportChange])
+
+  useEffect(() => {
     const map = mapRef.current
     if (!map) {
       return

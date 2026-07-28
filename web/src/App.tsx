@@ -29,7 +29,17 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent,
+} from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
 import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
@@ -615,6 +625,18 @@ const sourceSupportKinds: SourceSupportKind[] = [
 ]
 
 const visibleTagLimit = 10
+type SidePane = 'filter' | 'detail'
+
+const defaultFilterPaneWidth = 300
+const defaultDetailPaneWidth = 360
+const minSidePaneWidth = 240
+const maxFilterPaneWidth = 520
+const maxDetailPaneWidth = 640
+const minMapPaneWidth = 360
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
 
 const relationshipTypeLabels: Record<string, Record<string, string>> = {
   Caused: { en: 'Caused', cs: 'Způsobilo', es: 'Causo' },
@@ -655,6 +677,8 @@ const uiCopy = {
     cacheProgress: (completed: number, total: number) => `Caching media ${completed}/${total}.`,
     caching: 'Caching...',
     clear: 'Clear',
+    collapseEntryDetail: 'Collapse entry detail',
+    collapseFilters: 'Collapse filters',
     closeEntryDetail: 'Close entry detail',
     closeImage: 'Close image',
     expandImage: 'Expand image',
@@ -682,6 +706,7 @@ const uiCopy = {
     offlineCacheStarting: 'Offline cache is starting. Reload the app once and try again.',
     offlineMedia: 'Offline media',
     openAdminPanel: 'Open admin panel',
+    openEntryDetail: 'Open entry detail',
     openFilters: 'Open filters',
     openPlayingEntry: 'Open playing entry',
     minimizeAudio: 'Minimize player',
@@ -690,6 +715,8 @@ const uiCopy = {
     queryFailed: 'API responded, but one of the map queries failed.',
     relatedTopics: 'Related topics',
     resetFilters: 'reset filters',
+    resizeEntryDetail: 'Resize entry detail',
+    resizeFilters: 'Resize filters',
     routeRecords: (count: number) => `${count} route records`,
     searchEntries: 'Search entries',
     selectedEntry: 'Selected entry',
@@ -724,6 +751,8 @@ const uiCopy = {
     cacheProgress: (completed: number, total: number) => `Ukládám média ${completed}/${total}.`,
     caching: 'Ukládám...',
     clear: 'Vyčistit',
+    collapseEntryDetail: 'Sbalit detail zaznamu',
+    collapseFilters: 'Sbalit filtry',
     closeEntryDetail: 'Zavřít detail záznamu',
     closeImage: 'Zavřít obrázek',
     expandImage: 'Zvětšit obrázek',
@@ -754,11 +783,14 @@ const uiCopy = {
     offlineCacheStarting: 'Offline cache se spouští. Načti aplikaci znovu a zkus to ještě jednou.',
     offlineMedia: 'Offline média',
     openAdminPanel: 'Otevřít administraci',
+    openEntryDetail: 'Otevrit detail zaznamu',
     openFilters: 'Otevřít filtry',
     places: 'Místa',
     queryFailed: 'API odpovědělo, ale jeden z dotazů na mapu selhal.',
     relatedTopics: 'Související témata',
     resetFilters: 'resetovat filtr',
+    resizeEntryDetail: 'Zmenit sirku detailu zaznamu',
+    resizeFilters: 'Zmenit sirku filtru',
     routeRecords: (count: number) => `${count} záznamů trasy`,
     searchEntries: 'Hledat záznamy',
     selectedEntry: 'Vybraný záznam',
@@ -1536,6 +1568,17 @@ function App() {
   })
   const [adminEntryTags, setAdminEntryTags] = useState<EntryDetail['tags']>([])
   const [reloadKey, setReloadKey] = useState(0)
+  const [filterPaneWidth, setFilterPaneWidth] = useState(defaultFilterPaneWidth)
+  const [detailPaneWidth, setDetailPaneWidth] = useState(defaultDetailPaneWidth)
+  const [isFilterPaneCollapsed, setFilterPaneCollapsed] = useState(false)
+  const [isDetailPaneCollapsed, setDetailPaneCollapsed] = useState(false)
+  const [resizingPane, setResizingPane] = useState<SidePane | null>(null)
+  const sidePaneResizeRef = useRef<{
+    pane: SidePane
+    pointerId: number
+    startWidth: number
+    startX: number
+  } | null>(null)
   const selectedEntryIdRef = useRef(selectedEntryId)
   const initialEntrySlugRef = useRef(entrySlugFromUrl())
   const hasAppliedInitialEntrySlugRef = useRef(false)
@@ -1562,6 +1605,107 @@ function App() {
         : roundedViewport,
     )
   }, [setMapViewport])
+
+  const workspaceStyle = useMemo<CSSProperties>(() => ({
+    '--detail-panel-width': `${detailPaneWidth}px`,
+    '--filter-panel-width': `${filterPaneWidth}px`,
+  }) as CSSProperties, [detailPaneWidth, filterPaneWidth])
+
+  const workspaceClassName = [
+    'map-workspace',
+    isFilterPaneCollapsed ? 'filter-pane-collapsed' : '',
+    isDetailPaneCollapsed ? 'detail-pane-collapsed' : '',
+    resizingPane ? 'resizing-pane' : '',
+  ].filter(Boolean).join(' ')
+
+  function maxResizablePaneWidth(pane: SidePane) {
+    const paneMaxWidth = pane === 'filter' ? maxFilterPaneWidth : maxDetailPaneWidth
+    if (typeof window === 'undefined') {
+      return paneMaxWidth
+    }
+
+    const oppositeWidth = pane === 'filter' ? detailPaneWidth : filterPaneWidth
+    const isOppositeCollapsed = pane === 'filter' ? isDetailPaneCollapsed : isFilterPaneCollapsed
+    const availableWidth = window.innerWidth - minMapPaneWidth - (isOppositeCollapsed ? 0 : oppositeWidth)
+    return Math.max(minSidePaneWidth, Math.min(paneMaxWidth, availableWidth))
+  }
+
+  function clampSidePaneWidth(pane: SidePane, width: number) {
+    return Math.round(clampNumber(width, minSidePaneWidth, maxResizablePaneWidth(pane)))
+  }
+
+  function setSidePaneWidth(pane: SidePane, width: number) {
+    const clampedWidth = clampSidePaneWidth(pane, width)
+    if (pane === 'filter') {
+      setFilterPaneWidth(clampedWidth)
+      return
+    }
+
+    setDetailPaneWidth(clampedWidth)
+  }
+
+  function beginSidePaneResize(pane: SidePane, event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return
+    }
+
+    event.preventDefault()
+    sidePaneResizeRef.current = {
+      pane,
+      pointerId: event.pointerId,
+      startWidth: pane === 'filter' ? filterPaneWidth : detailPaneWidth,
+      startX: event.clientX,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setResizingPane(pane)
+  }
+
+  function moveSidePaneResize(event: PointerEvent<HTMLDivElement>) {
+    const resizeState = sidePaneResizeRef.current
+    if (!resizeState || resizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    const deltaX = event.clientX - resizeState.startX
+    const nextWidth = resizeState.pane === 'filter'
+      ? resizeState.startWidth + deltaX
+      : resizeState.startWidth - deltaX
+    setSidePaneWidth(resizeState.pane, nextWidth)
+  }
+
+  function endSidePaneResize(event: PointerEvent<HTMLDivElement>) {
+    const resizeState = sidePaneResizeRef.current
+    if (!resizeState || resizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    sidePaneResizeRef.current = null
+    setResizingPane(null)
+  }
+
+  function resizeSidePaneWithKeyboard(pane: SidePane, event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 40 : 16
+    const currentWidth = pane === 'filter' ? filterPaneWidth : detailPaneWidth
+    let nextWidth = currentWidth
+
+    if (event.key === 'ArrowLeft') {
+      nextWidth += pane === 'filter' ? -step : step
+    } else if (event.key === 'ArrowRight') {
+      nextWidth += pane === 'filter' ? step : -step
+    } else if (event.key === 'Home') {
+      nextWidth = minSidePaneWidth
+    } else if (event.key === 'End') {
+      nextWidth = maxResizablePaneWidth(pane)
+    } else {
+      return
+    }
+
+    event.preventDefault()
+    setSidePaneWidth(pane, nextWidth)
+  }
 
   useEffect(() => {
     let isActive = true
@@ -1644,6 +1788,7 @@ function App() {
           if (requestedEntry) {
             hasAppliedInitialEntrySlugRef.current = true
             setEntryDetailOpen(true)
+            setDetailPaneCollapsed(false)
           }
           setMapEmptyResult(false)
           const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
@@ -1912,6 +2057,7 @@ function App() {
         selectedEntryIdRef.current = entry.id
         setSelectedEntryId(entry.id)
         setEntryDetailOpen(true)
+        setDetailPaneCollapsed(false)
         return
       }
 
@@ -2154,6 +2300,7 @@ function App() {
   const selectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId)
     setEntryDetailOpen(true)
+    setDetailPaneCollapsed(false)
   }, [setEntryDetailOpen, setSelectedEntryId])
 
   const playAudio = useCallback((audio: ActiveAudio) => {
@@ -2256,6 +2403,7 @@ function App() {
 
     setSelectedEntryId(activeAudio.entryId)
     setEntryDetailOpen(true)
+    setDetailPaneCollapsed(false)
   }
 
   function renderSectionPlayButton(audio: ActiveAudio | null) {
@@ -4018,11 +4166,46 @@ function App() {
         {renderShellControls(true)}
       </header>
 
-      <section className="map-workspace">
+      <section className={workspaceClassName} style={workspaceStyle}>
+        {isFilterPaneCollapsed && (
+          <button
+            className="side-pane-tab left desktop-only"
+            type="button"
+            aria-label={ui.openFilters}
+            title={ui.openFilters}
+            onClick={() => setFilterPaneCollapsed(false)}
+          >
+            <Filter aria-hidden="true" />
+            <ChevronRight aria-hidden="true" />
+          </button>
+        )}
+        {isDetailPaneCollapsed && (
+          <button
+            className="side-pane-tab right desktop-only"
+            type="button"
+            aria-label={ui.openEntryDetail}
+            title={ui.openEntryDetail}
+            onClick={() => setDetailPaneCollapsed(false)}
+          >
+            <ChevronLeft aria-hidden="true" />
+            <PanelRight aria-hidden="true" />
+          </button>
+        )}
         <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label="Map filters">
           <div className="filter-brand">
-            <Globe2 aria-hidden="true" />
-            <span>{ui.appName}</span>
+            <span className="filter-brand-title">
+              <Globe2 aria-hidden="true" />
+              <span>{ui.appName}</span>
+            </span>
+            <button
+              className="panel-collapse-button desktop-only"
+              type="button"
+              aria-label={ui.collapseFilters}
+              title={ui.collapseFilters}
+              onClick={() => setFilterPaneCollapsed(true)}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </button>
           </div>
           <div className="panel-header filter-panel-header">
             <span>
@@ -4178,6 +4361,24 @@ function App() {
           </div>
         </aside>
 
+        {!isFilterPaneCollapsed && (
+          <div
+            className="side-pane-resizer left desktop-only"
+            role="separator"
+            tabIndex={0}
+            aria-label={ui.resizeFilters}
+            aria-orientation="vertical"
+            aria-valuemin={minSidePaneWidth}
+            aria-valuemax={maxResizablePaneWidth('filter')}
+            aria-valuenow={filterPaneWidth}
+            onKeyDown={(event) => resizeSidePaneWithKeyboard('filter', event)}
+            onPointerCancel={endSidePaneResize}
+            onPointerDown={(event) => beginSidePaneResize('filter', event)}
+            onPointerMove={moveSidePaneResize}
+            onPointerUp={endSidePaneResize}
+          />
+        )}
+
         <div className="map-main">
           <TimelineRuler
             entries={entries}
@@ -4198,6 +4399,24 @@ function App() {
             onSelectEntry={selectEntry}
           />
         </div>
+
+        {!isDetailPaneCollapsed && (
+          <div
+            className="side-pane-resizer right desktop-only"
+            role="separator"
+            tabIndex={0}
+            aria-label={ui.resizeEntryDetail}
+            aria-orientation="vertical"
+            aria-valuemin={minSidePaneWidth}
+            aria-valuemax={maxResizablePaneWidth('detail')}
+            aria-valuenow={detailPaneWidth}
+            onKeyDown={(event) => resizeSidePaneWithKeyboard('detail', event)}
+            onPointerCancel={endSidePaneResize}
+            onPointerDown={(event) => beginSidePaneResize('detail', event)}
+            onPointerMove={moveSidePaneResize}
+            onPointerUp={endSidePaneResize}
+          />
+        )}
 
         {expandedTagGroupModel && (
           <div className="modal-backdrop" role="presentation" onClick={() => setExpandedTagGroup(null)}>
@@ -4247,15 +4466,26 @@ function App() {
               <PanelRight aria-hidden="true" />
               {ui.selectedEntry}
             </span>
-            <button
-              className="panel-close"
-              type="button"
-              aria-label={ui.closeEntryDetail}
-              title={ui.closeEntryDetail}
-              onClick={() => setEntryDetailOpen(false)}
-            >
-              <X aria-hidden="true" />
-            </button>
+            <div className="panel-header-actions">
+              <button
+                className="panel-collapse-button desktop-only"
+                type="button"
+                aria-label={ui.collapseEntryDetail}
+                title={ui.collapseEntryDetail}
+                onClick={() => setDetailPaneCollapsed(true)}
+              >
+                <ChevronRight aria-hidden="true" />
+              </button>
+              <button
+                className="panel-close"
+                type="button"
+                aria-label={ui.closeEntryDetail}
+                title={ui.closeEntryDetail}
+                onClick={() => setEntryDetailOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
           </div>
           <div className="entry-title-row">
             <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
