@@ -347,13 +347,20 @@ export function HistoryMap({
         }
 
         const routeCoordinates = route.geometry.map((point) => L.latLng(point.latitude, point.longitude))
-        L.polyline(routeCoordinates, {
-          color: '#135e96',
-          opacity: selectedEntryId === entry.entryId ? 0.95 : 0.5,
-          weight: selectedEntryId === entry.entryId ? 4 : 3,
-        }).addTo(overlay)
-
         routeCoordinates.forEach((point, index) => {
+          routeCoordinateKeys.add(entryCoordinateKey(entry.entryId, point))
+          if (selectedEntryId !== entry.entryId) {
+            return
+          }
+
+          if (index === 0) {
+            L.polyline(routeCoordinates, {
+              color: '#135e96',
+              opacity: 0.95,
+              weight: 4,
+            }).addTo(overlay)
+          }
+
           const routeMarker: MapRouteMarker = {
             entry,
             route,
@@ -362,7 +369,6 @@ export function HistoryMap({
             pointIndex: index,
             pointCount: routeCoordinates.length,
           }
-          routeCoordinateKeys.add(entryCoordinateKey(entry.entryId, point))
           addRoutePointMarker(overlay, routeMarker, selectedEntryId, onSelectEntry)
           bounds.extend(point)
         })
