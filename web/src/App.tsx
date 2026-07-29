@@ -1463,6 +1463,23 @@ function summarizeImportHistoryItem(item: ContentPackageImportHistoryItem) {
   return `${item.entriesRead} entries, ${item.audioTracksCreated} audio created, ${item.imagesCreated} images created`
 }
 
+async function copyTextToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.left = '-9999px'
+  textarea.style.position = 'fixed'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textarea)
+}
+
 function createUploadProgressState(
   phase: UploadProgressPhase,
   loadedBytes: number,
@@ -1604,6 +1621,7 @@ function App() {
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
   const [selectedEntryDetail, setSelectedEntryDetail] = useState<EntryDetail | null>(null)
   const [isLoadingSelectedEntryDetail, setLoadingSelectedEntryDetail] = useState(false)
+  const [copiedEntrySlug, setCopiedEntrySlug] = useState<string | null>(null)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
   const [audioQueue, setAudioQueue] = useState<ActiveAudio[]>([])
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
@@ -2217,6 +2235,7 @@ function App() {
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0],
     [entries, selectedEntryId],
   )
+  const selectedEntrySlug = selectedEntryDetail?.slug ?? selectedEntry?.slug ?? null
 
   useEffect(() => {
     const slug = isEntryDetailOpen && selectedEntry && !selectedEntry.id.startsWith('draft-')
@@ -2654,6 +2673,19 @@ function App() {
     const registration = await navigator.serviceWorker.ready
     const worker = navigator.serviceWorker.controller ?? registration.active
     worker?.postMessage({ type: 'HDWGH_CLEAR_RUNTIME_CACHE' })
+  }
+
+  async function copyEntrySlug(slug: string) {
+    try {
+      await copyTextToClipboard(slug)
+      setCopiedEntrySlug(slug)
+      setAdminStatus(`Entry slug copied: ${slug}`)
+      window.setTimeout(() => {
+        setCopiedEntrySlug((current) => current === slug ? null : current)
+      }, 1600)
+    } catch {
+      setAdminStatus('Entry slug could not be copied.')
+    }
   }
 
   function authHeaders() {
@@ -4698,7 +4730,20 @@ function App() {
             </div>
           </div>
           <div className="entry-title-row">
-            <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
+            <div className="entry-title-main">
+              <h1>{selectedEntryDetail?.title ?? selectedEntry?.title}</h1>
+              {adminToken && selectedEntrySlug && (
+                <button
+                  className={copiedEntrySlug === selectedEntrySlug ? 'entry-slug-copy copied' : 'entry-slug-copy'}
+                  type="button"
+                  aria-label={`Copy entry slug ${selectedEntrySlug}`}
+                  title="Copy entry slug"
+                  onClick={() => copyEntrySlug(selectedEntrySlug)}
+                >
+                  {selectedEntrySlug}
+                </button>
+              )}
+            </div>
             {renderSectionPlayButton(titleAudio)}
           </div>
           <div className="entry-meta">

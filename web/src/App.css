@@ -1109,6 +1109,42 @@
   justify-content: space-between;
 }
 
+.entry-title-main {
+  display: grid;
+  min-width: 0;
+}
+
+.entry-title-main h1 {
+  margin-bottom: 3px;
+}
+
+.entry-slug-copy {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: copy;
+  font-size: 12px;
+  justify-self: start;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-slug-copy:hover,
+.entry-slug-copy:focus-visible {
+  color: var(--accent);
+  outline: none;
+  text-decoration: underline;
+}
+
+.entry-slug-copy.copied {
+  color: var(--success-text);
+}
+
 .entry-title-row .section-play-button {
   margin-top: 20px;
 }
