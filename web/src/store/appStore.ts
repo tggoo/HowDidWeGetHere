@@ -76,7 +76,7 @@ export const useAppStore = create<AppState>()(
       searchText: '',
       selectedEntryId: 'draft-columbus',
       selectedPeriodId: null,
-      selectedTags: ['category-exploration'],
+      selectedTags: [],
       theme: preferredInitialTheme(),
       toYear: '',
       clearFilters: () =>

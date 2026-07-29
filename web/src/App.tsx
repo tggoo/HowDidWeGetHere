@@ -40,6 +40,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
+  type WheelEvent,
 } from 'react'
 import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
@@ -954,6 +955,8 @@ function createTimelineTicks(startYear: number, endYear: number) {
   return [...ticks].sort((left, right) => left - right)
 }
 
+const TimelineEdgePaddingPx = 64
+
 function TimelineRuler({
   entries,
   fromYear,
@@ -996,13 +999,14 @@ function TimelineRuler({
   const timelineStart = Math.min(minYear, maxYear)
   const timelineEnd = Math.max(minYear, maxYear)
   const range = Math.max(timelineEnd - timelineStart, 1)
-  const pixelsPerYear = range <= 300 ? 10 : range <= 1200 ? 4 : range <= 10000 ? 1.2 : 0.25
-  const trackWidth = Math.min(Math.max(1200, Math.ceil(range * pixelsPerYear), datedEntries.length * 44), 60000)
-  const positionForYear = (year: number) => ((year - timelineStart) / range) * 100
+  const pixelsPerYear = range <= 300 ? 10 : range <= 1200 ? 4 : range <= 10000 ? 1.2 : range <= 100000 ? 0.18 : 0.035
+  const timelineContentWidth = Math.min(Math.max(1120, Math.ceil(range * pixelsPerYear), datedEntries.length * 44), 24000)
+  const trackWidth = timelineContentWidth + TimelineEdgePaddingPx * 2
+  const positionForYear = (year: number) => TimelineEdgePaddingPx + ((year - timelineStart) / range) * timelineContentWidth
   const laneLastX = [-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]
   const placedEntries = datedEntries.map(({ entry, year }) => {
     const left = positionForYear(year)
-    const x = (left / 100) * trackWidth
+    const x = left
     const lane = laneLastX.findIndex((lastX) => x - lastX >= 34)
     const resolvedLane = lane === -1
       ? laneLastX.indexOf(Math.min(...laneLastX))
@@ -1016,6 +1020,32 @@ function TimelineRuler({
     }
   })
   const ticks = createTimelineTicks(timelineStart, timelineEnd)
+
+  function scrollTimelineBy(direction: -1 | 1) {
+    const timeline = scrollRef.current
+    if (!timeline) {
+      return
+    }
+
+    timeline.scrollBy({
+      behavior: 'smooth',
+      left: direction * Math.max(360, timeline.clientWidth * 0.75),
+    })
+  }
+
+  function scrollTimelineWithWheel(event: WheelEvent<HTMLDivElement>) {
+    if (!scrollRef.current) {
+      return
+    }
+
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (delta === 0) {
+      return
+    }
+
+    event.preventDefault()
+    scrollRef.current.scrollLeft += delta
+  }
 
   function beginTimelineDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || !scrollRef.current) {
@@ -1068,7 +1098,27 @@ function TimelineRuler({
 
   return (
     <section className="timeline-ruler" aria-label={labels.timeline}>
-      <div className="timeline-ruler-title">{labels.timeline}</div>
+      <div className="timeline-ruler-header">
+        <div className="timeline-ruler-title">{labels.timeline}</div>
+        <div className="timeline-ruler-controls">
+          <button
+            className="timeline-nav-button"
+            type="button"
+            aria-label="Scroll timeline left"
+            onClick={() => scrollTimelineBy(-1)}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </button>
+          <button
+            className="timeline-nav-button"
+            type="button"
+            aria-label="Scroll timeline right"
+            onClick={() => scrollTimelineBy(1)}
+          >
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </div>
+      </div>
       <div
         className={isTimelineDragging ? 'timeline-scroll dragging' : 'timeline-scroll'}
         ref={scrollRef}
@@ -1082,30 +1132,31 @@ function TimelineRuler({
         onPointerDown={beginTimelineDrag}
         onPointerMove={moveTimelineDrag}
         onPointerUp={endTimelineDrag}
+        onWheel={scrollTimelineWithWheel}
       >
-      <div className="timeline-track" style={{ width: `${trackWidth}px` }}>
-        {ticks.map((tick) => (
-          <div className="timeline-tick" key={tick} style={{ left: `${positionForYear(tick)}%` }}>
-            <span>{timelineYearLabel(tick)}</span>
-          </div>
-        ))}
-        {placedEntries.map(({ entry, lane, left, year }) => (
-          <button
-            className={entry.id === selectedEntryId ? 'timeline-event active' : 'timeline-event'}
-            key={entry.id}
-            style={{ left: `${left}%`, top: `${4 + lane * 25}px` }}
-            title={`${entry.title} (${entry.dateLabel ?? timelineYearLabel(year)})`}
-            type="button"
-            onClick={() => {
-              if (!recentTimelineDragRef.current) {
-                onSelectEntry(entry.id)
-              }
-            }}
-          >
-            <Icon icon={entryIconKey(entry)} aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+        <div className="timeline-track" style={{ width: `${trackWidth}px` }}>
+          {ticks.map((tick) => (
+            <div className="timeline-tick" key={tick} style={{ left: `${positionForYear(tick)}px` }}>
+              <span>{timelineYearLabel(tick)}</span>
+            </div>
+          ))}
+          {placedEntries.map(({ entry, lane, left, year }) => (
+            <button
+              className={entry.id === selectedEntryId ? 'timeline-event active' : 'timeline-event'}
+              key={entry.id}
+              style={{ left: `${left}px`, top: `${4 + lane * 25}px` }}
+              title={`${entry.title} (${entry.dateLabel ?? timelineYearLabel(year)})`}
+              type="button"
+              onClick={() => {
+                if (!recentTimelineDragRef.current) {
+                  onSelectEntry(entry.id)
+                }
+              }}
+            >
+              <Icon icon={entryIconKey(entry)} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   )
