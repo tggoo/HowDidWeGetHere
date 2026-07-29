@@ -9,6 +9,7 @@ using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Domain.Imports;
 using HowDidWeGetHere.Domain.Places;
+using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
 using HowDidWeGetHere.Infrastructure.Persistence;
@@ -22,6 +23,7 @@ public static class AdminContentPackageImportEndpoints
 {
     private const int Wgs84Srid = 4326;
     private const long DefaultMaxContentPackageBytes = 1024L * 1024 * 1024;
+    private static readonly GeometryFactory GeometryFactory = new(new PrecisionModel(), Wgs84Srid);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -200,9 +202,10 @@ public static class AdminContentPackageImportEndpoints
                 entriesToUpdate++;
             }
 
+            var routePointCount = entry.Routes.Sum(route => route.Points.Count);
             tagsToAttach += entry.Tags.Count;
             periodsToAttach += entry.TimePeriods.Count;
-            placesToAttach += entry.Places.Count;
+            placesToAttach += entry.Places.Count + routePointCount;
             sourcesToAttach += entry.Sources.Count;
             audioToAttach += resolvedAudio.Count;
             imagesToAttach += entry.Images.Count(image => PackageEntryExists(archive, image.Path));
@@ -216,7 +219,7 @@ public static class AdminContentPackageImportEndpoints
                 existing?.Id,
                 entry.Tags.Count,
                 entry.TimePeriods.Count,
-                entry.Places.Count,
+                entry.Places.Count + routePointCount,
                 entry.Sources.Count,
                 resolvedAudio.Count,
                 entry.Images.Count,
@@ -327,6 +330,8 @@ public static class AdminContentPackageImportEndpoints
                 .Include(entry => entry.Tags)
                 .Include(entry => entry.TimePeriods)
                 .Include(entry => entry.Places)
+                .Include(entry => entry.Routes)
+                    .ThenInclude(route => route.Points)
                 .Include(entry => entry.Sources)
                 .Include(entry => entry.AudioTracks)
                 .Include(entry => entry.Images)
@@ -370,6 +375,7 @@ public static class AdminContentPackageImportEndpoints
         var tagsAttached = 0;
         var timePeriodsAttached = 0;
         var placesAttached = 0;
+        var routesAttached = 0;
         var sourcesAttached = 0;
         var audioTracksCreated = 0;
         var audioTracksUpdated = 0;
@@ -447,6 +453,13 @@ public static class AdminContentPackageImportEndpoints
             foreach (var place in packageEntry.Places)
             {
                 placesAttached += AttachPlace(matchedEntry, place, placeCache, dbContext);
+            }
+
+            foreach (var route in packageEntry.Routes)
+            {
+                var routeCounts = AttachRoute(matchedEntry, route, placeCache, dbContext);
+                routesAttached += routeCounts.RoutesAttached;
+                placesAttached += routeCounts.PlacesAttached;
             }
 
             var importedAudioKeys = new HashSet<AudioTrackImportKey>();
@@ -531,6 +544,7 @@ public static class AdminContentPackageImportEndpoints
             tagsAttached,
             timePeriodsAttached,
             placesAttached,
+            routesAttached,
             sourcesAttached,
             audioTracksCreated,
             audioTracksUpdated,
@@ -1115,6 +1129,212 @@ public static class AdminContentPackageImportEndpoints
         }
     }
 
+    private static ContentPackageRouteAttachCounts AttachRoute(
+        Entry entry,
+        ContentPackageRoute packageRoute,
+        IDictionary<string, Place> placeCache,
+        HistoryDbContext dbContext)
+    {
+        var orderedPoints = packageRoute.Points
+            .Select((point, index) => new
+            {
+                Point = point,
+                SortOrder = point.SortOrder ?? index,
+                Name = ResolveRoutePointName(point)
+            })
+            .Where(item =>
+                item.Point.Longitude is not null &&
+                item.Point.Latitude is not null &&
+                !string.IsNullOrWhiteSpace(item.Name))
+            .OrderBy(item => item.SortOrder)
+            .ThenBy(item => item.Name)
+            .ToList();
+
+        if (orderedPoints.Count < 2)
+        {
+            return new ContentPackageRouteAttachCounts(0, 0);
+        }
+
+        var routeName = EmptyToNull(packageRoute.Name) ?? $"{entry.DefaultTitle} route";
+        var routeType = ParseEnum(packageRoute.RouteType, RouteType.Journey);
+        var route = entry.Routes.FirstOrDefault(item =>
+            string.Equals(item.Name, routeName, StringComparison.OrdinalIgnoreCase) &&
+            item.RouteType == routeType);
+        var isNewRoute = route is null;
+
+        if (route is null)
+        {
+            route = new EntryRoute
+            {
+                Entry = entry,
+                Name = routeName,
+                RouteType = routeType
+            };
+            entry.Routes.Add(route);
+        }
+        else
+        {
+            dbContext.RoutePoints.RemoveRange(route.Points);
+            route.Points.Clear();
+            route.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        route.Name = routeName;
+        route.RouteType = routeType;
+        route.SpatialConfidence = ParseEnum(packageRoute.SpatialConfidence, SpatialConfidence.Approximate);
+        route.SourceNote = EmptyToNull(packageRoute.SourceNote);
+
+        var placesAttached = 0;
+        var coordinates = new List<Coordinate>();
+        foreach (var orderedPoint in orderedPoints)
+        {
+            var point = orderedPoint.Point;
+            var place = UpsertRoutePointPlace(point, orderedPoint.Name, placeCache, dbContext);
+            var role = ParseEnum(point.Role, RoutePointRole.Stop);
+
+            route.Points.Add(new RoutePoint
+            {
+                Route = route,
+                Place = place,
+                SortOrder = orderedPoint.SortOrder,
+                Role = role,
+                DateLabel = EmptyToNull(point.DateLabel),
+                Note = EmptyToNull(point.Note)
+            });
+
+            placesAttached += AttachEntryPlaceForRoutePoint(entry, place, role, orderedPoint.SortOrder, point.Note);
+            coordinates.Add(new Coordinate(point.Longitude!.Value, point.Latitude!.Value));
+        }
+
+        route.Geometry = GeometryFactory.CreateLineString(coordinates.ToArray());
+        return new ContentPackageRouteAttachCounts(isNewRoute ? 1 : 0, placesAttached);
+    }
+
+    private static Place UpsertRoutePointPlace(
+        ContentPackageRoutePoint point,
+        string name,
+        IDictionary<string, Place> placeCache,
+        HistoryDbContext dbContext)
+    {
+        var slug = EndpointHelpers.Slugify(EmptyToNull(point.Slug) ?? name);
+        if (!placeCache.TryGetValue(slug, out var place))
+        {
+            place = new Place
+            {
+                Slug = slug,
+                DefaultName = name,
+                PlaceType = ParseEnum(point.PlaceType, PlaceType.RouteStop),
+                SpatialConfidence = ParseEnum(point.SpatialConfidence, SpatialConfidence.Approximate),
+                ModernCountryCode = EmptyToNull(point.ModernCountryCode),
+                WikidataId = EmptyToNull(point.WikidataId),
+                GeoNamesId = point.GeoNamesId,
+                Geometry = GeometryFactory.CreatePoint(new Coordinate(point.Longitude!.Value, point.Latitude!.Value)),
+                Translations = CreateRoutePointPlaceTranslations(point, name)
+            };
+            placeCache[slug] = place;
+            dbContext.Places.Add(place);
+            return place;
+        }
+
+        place.DefaultName = name;
+        place.PlaceType = ParseEnum(point.PlaceType, place.PlaceType);
+        place.SpatialConfidence = ParseEnum(point.SpatialConfidence, place.SpatialConfidence);
+        place.ModernCountryCode = EmptyToNull(point.ModernCountryCode);
+        place.WikidataId = EmptyToNull(point.WikidataId);
+        place.GeoNamesId = point.GeoNamesId;
+        place.Geometry = GeometryFactory.CreatePoint(new Coordinate(point.Longitude!.Value, point.Latitude!.Value));
+        UpsertRoutePointPlaceTranslations(place, point, name);
+        return place;
+    }
+
+    private static List<PlaceTranslation> CreateRoutePointPlaceTranslations(ContentPackageRoutePoint point, string name)
+    {
+        var description = EmptyToNull(point.Note);
+        var translations = point.Translations
+            .Where(translation => !string.IsNullOrWhiteSpace(translation.Value))
+            .GroupBy(translation => NormalizeLanguage(translation.Key))
+            .Select(group => new PlaceTranslation
+            {
+                LanguageCode = group.Key,
+                Name = group.First().Value.Trim(),
+                Description = description
+            })
+            .ToList();
+
+        if (translations.Count == 0)
+        {
+            translations.Add(new PlaceTranslation
+            {
+                LanguageCode = "en",
+                Name = name,
+                Description = description
+            });
+        }
+
+        return translations;
+    }
+
+    private static void UpsertRoutePointPlaceTranslations(Place place, ContentPackageRoutePoint point, string name)
+    {
+        foreach (var importedTranslation in CreateRoutePointPlaceTranslations(point, name))
+        {
+            var translation = place.Translations.FirstOrDefault(item => item.LanguageCode == importedTranslation.LanguageCode);
+            if (translation is null)
+            {
+                place.Translations.Add(importedTranslation);
+            }
+            else
+            {
+                translation.Name = importedTranslation.Name;
+                translation.Description = importedTranslation.Description;
+            }
+        }
+    }
+
+    private static int AttachEntryPlaceForRoutePoint(
+        Entry entry,
+        Place place,
+        RoutePointRole routePointRole,
+        int sortOrder,
+        string? note)
+    {
+        var entryPlaceRole = ToEntryPlaceRole(routePointRole);
+        if (entry.Places.Any(entryPlace =>
+                (entryPlace.Place == place || entryPlace.PlaceId == place.Id) &&
+                entryPlace.Role == entryPlaceRole))
+        {
+            return 0;
+        }
+
+        entry.Places.Add(new EntryPlace
+        {
+            Entry = entry,
+            Place = place,
+            Role = entryPlaceRole,
+            SortOrder = sortOrder,
+            Note = EmptyToNull(note)
+        });
+        return 1;
+    }
+
+    private static EntryPlaceRole ToEntryPlaceRole(RoutePointRole role) =>
+        role switch
+        {
+            RoutePointRole.Start => EntryPlaceRole.Origin,
+            RoutePointRole.End => EntryPlaceRole.Destination,
+            RoutePointRole.Summit => EntryPlaceRole.Destination,
+            RoutePointRole.BaseCamp => EntryPlaceRole.Stop,
+            RoutePointRole.Stop => EntryPlaceRole.Stop,
+            RoutePointRole.Approximate => EntryPlaceRole.MainSite,
+            _ => EntryPlaceRole.Other
+        };
+
+    private static string ResolveRoutePointName(ContentPackageRoutePoint point)
+    {
+        var name = EmptyToNull(point.Name);
+        return name ?? ResolvePackageLabel(point.Translations, point.Slug, "Route point");
+    }
+
     private static string ResolvePackageLabel(
         IReadOnlyDictionary<string, string> translations,
         string? slug,
@@ -1421,6 +1641,27 @@ public static class AdminContentPackageImportEndpoints
         foreach (var place in entry.Places)
         {
             AddTaxonomyTranslationWarnings(warnings, "Place", place.Slug, place.Translations);
+        }
+
+        foreach (var route in entry.Routes)
+        {
+            if (route.Points.Count is > 0 and < 2)
+            {
+                warnings.Add($"Route '{route.Name ?? "unnamed"}' has fewer than two points.");
+            }
+
+            foreach (var point in route.Points)
+            {
+                AddTaxonomyTranslationWarnings(warnings, "Route point", point.Slug, point.Translations);
+                if (point.Longitude is null || point.Latitude is null)
+                {
+                    warnings.Add($"Route point '{point.Name ?? point.Slug ?? "unnamed"}' has no coordinates.");
+                }
+                else if (point.Longitude is < -180 or > 180 || point.Latitude is < -90 or > 90)
+                {
+                    warnings.Add($"Route point '{point.Name ?? point.Slug ?? "unnamed"}' has coordinates outside valid longitude/latitude bounds.");
+                }
+            }
         }
 
         foreach (var audio in entry.Audio)
@@ -1926,6 +2167,8 @@ public static class AdminContentPackageImportEndpoints
 
     private sealed record AudioAttributeDefinition(AudioKind Kind, bool IsPrimary, int SortOrder);
 
+    private sealed record ContentPackageRouteAttachCounts(int RoutesAttached, int PlacesAttached);
+
     private sealed record PackageReadResult(ContentPackageDocument? Document, string? Error);
 
     private sealed class ContentPackageDocument
@@ -1961,6 +2204,7 @@ public static class AdminContentPackageImportEndpoints
         public List<ContentPackageTimePeriod> TimePeriods { get; set; } = [];
         public List<ContentPackageSource> Sources { get; set; } = [];
         public List<ContentPackagePlace> Places { get; set; } = [];
+        public List<ContentPackageRoute> Routes { get; set; } = [];
         public List<ContentPackageAudio> Audio { get; set; } = [];
         public List<ContentPackageImage> Images { get; set; } = [];
     }
@@ -2014,6 +2258,33 @@ public static class AdminContentPackageImportEndpoints
         public string? WikidataId { get; set; }
         public int? GeoNamesId { get; set; }
         public int? SortOrder { get; set; }
+        public string? Note { get; set; }
+    }
+
+    private sealed class ContentPackageRoute
+    {
+        public string? Name { get; set; }
+        public string? RouteType { get; set; }
+        public string? SpatialConfidence { get; set; }
+        public string? SourceNote { get; set; }
+        public List<ContentPackageRoutePoint> Points { get; set; } = [];
+    }
+
+    private sealed class ContentPackageRoutePoint
+    {
+        public string? Slug { get; set; }
+        public string? Name { get; set; }
+        public Dictionary<string, string> Translations { get; set; } = [];
+        public string? Role { get; set; }
+        public string? PlaceType { get; set; }
+        public string? SpatialConfidence { get; set; }
+        public double? Longitude { get; set; }
+        public double? Latitude { get; set; }
+        public string? ModernCountryCode { get; set; }
+        public string? WikidataId { get; set; }
+        public int? GeoNamesId { get; set; }
+        public int? SortOrder { get; set; }
+        public string? DateLabel { get; set; }
         public string? Note { get; set; }
     }
 
