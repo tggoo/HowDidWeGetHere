@@ -331,7 +331,6 @@ public static class AdminContentPackageImportEndpoints
                 .Include(entry => entry.TimePeriods)
                 .Include(entry => entry.Places)
                 .Include(entry => entry.Routes)
-                    .ThenInclude(route => route.Points)
                 .Include(entry => entry.Sources)
                 .Include(entry => entry.AudioTracks)
                 .Include(entry => entry.Images)
@@ -457,7 +456,13 @@ public static class AdminContentPackageImportEndpoints
 
             foreach (var route in packageEntry.Routes)
             {
-                var routeCounts = AttachRoute(matchedEntry, route, placeCache, dbContext);
+                var routeCounts = await AttachRouteAsync(
+                    matchedEntry,
+                    route,
+                    placeCache,
+                    userId,
+                    dbContext,
+                    cancellationToken);
                 routesAttached += routeCounts.RoutesAttached;
                 placesAttached += routeCounts.PlacesAttached;
             }
@@ -1129,11 +1134,13 @@ public static class AdminContentPackageImportEndpoints
         }
     }
 
-    private static ContentPackageRouteAttachCounts AttachRoute(
+    private static async Task<ContentPackageRouteAttachCounts> AttachRouteAsync(
         Entry entry,
         ContentPackageRoute packageRoute,
         IDictionary<string, Place> placeCache,
-        HistoryDbContext dbContext)
+        string? userId,
+        HistoryDbContext dbContext,
+        CancellationToken cancellationToken)
     {
         var orderedPoints = packageRoute.Points
             .Select((point, index) => new
@@ -1166,17 +1173,23 @@ public static class AdminContentPackageImportEndpoints
         {
             route = new EntryRoute
             {
+                EntryId = entry.Id,
                 Entry = entry,
                 Name = routeName,
-                RouteType = routeType
+                RouteType = routeType,
+                CreatedByUserId = userId
             };
             entry.Routes.Add(route);
+            dbContext.EntryRoutes.Add(route);
         }
         else
         {
-            dbContext.RoutePoints.RemoveRange(route.Points);
+            await dbContext.RoutePoints
+                .Where(point => point.RouteId == route.Id)
+                .ExecuteDeleteAsync(cancellationToken);
             route.Points.Clear();
             route.UpdatedAt = DateTimeOffset.UtcNow;
+            route.UpdatedByUserId = userId;
         }
 
         route.Name = routeName;
@@ -1192,15 +1205,19 @@ public static class AdminContentPackageImportEndpoints
             var place = UpsertRoutePointPlace(point, orderedPoint.Name, placeCache, dbContext);
             var role = ParseEnum(point.Role, RoutePointRole.Stop);
 
-            route.Points.Add(new RoutePoint
+            var routePoint = new RoutePoint
             {
+                RouteId = route.Id,
                 Route = route,
+                PlaceId = place.Id,
                 Place = place,
                 SortOrder = orderedPoint.SortOrder,
                 Role = role,
                 DateLabel = EmptyToNull(point.DateLabel),
                 Note = EmptyToNull(point.Note)
-            });
+            };
+            route.Points.Add(routePoint);
+            dbContext.RoutePoints.Add(routePoint);
 
             placesAttached += AttachEntryPlaceForRoutePoint(entry, place, role, orderedPoint.SortOrder, point.Note);
             coordinates.Add(new Coordinate(point.Longitude!.Value, point.Latitude!.Value));
@@ -1299,16 +1316,21 @@ public static class AdminContentPackageImportEndpoints
         string? note)
     {
         var entryPlaceRole = ToEntryPlaceRole(routePointRole);
-        if (entry.Places.Any(entryPlace =>
+        var entryPlace = entry.Places.FirstOrDefault(entryPlace =>
                 (entryPlace.Place == place || entryPlace.PlaceId == place.Id) &&
-                entryPlace.Role == entryPlaceRole))
+                entryPlace.Role == entryPlaceRole);
+        if (entryPlace is not null)
         {
+            entryPlace.SortOrder = sortOrder;
+            entryPlace.Note = EmptyToNull(note);
             return 0;
         }
 
         entry.Places.Add(new EntryPlace
         {
+            EntryId = entry.Id,
             Entry = entry,
+            PlaceId = place.Id,
             Place = place,
             Role = entryPlaceRole,
             SortOrder = sortOrder,
