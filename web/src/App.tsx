@@ -3395,7 +3395,7 @@ function App() {
     setContentPackageUploadProgress(
       failedCount > 0
         ? createUploadProgressState('error', 0, null, `${importedCount} of ${files.length} packages imported, ${failedCount} failed.`)
-        : createUploadProgressState('complete', 0, null, `${importedCount} of ${files.length} packages imported.`),
+        : createUploadProgressState('complete', 0, null, `Import done. ${importedCount} of ${files.length} packages imported.`),
     )
     setAdminStatus(
       failedCount > 0
@@ -5246,18 +5246,23 @@ function App() {
                           <span>{contentPackageUploadProgress.message}</span>
                           {contentPackageUploadProgress.percent != null && <strong>{contentPackageUploadProgress.percent}%</strong>}
                         </div>
-                        {contentPackageUploadProgress.percent == null ? (
-                          <progress />
-                        ) : (
-                          <progress max={100} value={contentPackageUploadProgress.percent} />
-                        )}
-                        <small>
-                          {contentPackageUploadProgress.totalBytes
-                            ? `${formatBytes(contentPackageUploadProgress.loadedBytes)} of ${formatBytes(
-                                contentPackageUploadProgress.totalBytes,
-                              )}`
-                            : `${formatBytes(contentPackageUploadProgress.loadedBytes)} uploaded`}
-                        </small>
+                        {contentPackageUploadProgress.phase !== 'complete' &&
+                          contentPackageUploadProgress.phase !== 'error' && (
+                            <>
+                              {contentPackageUploadProgress.percent == null ? (
+                                <progress />
+                              ) : (
+                                <progress max={100} value={contentPackageUploadProgress.percent} />
+                              )}
+                              <small>
+                                {contentPackageUploadProgress.totalBytes
+                                  ? `${formatBytes(contentPackageUploadProgress.loadedBytes)} of ${formatBytes(
+                                      contentPackageUploadProgress.totalBytes,
+                                    )}`
+                                  : `${formatBytes(contentPackageUploadProgress.loadedBytes)} uploaded`}
+                              </small>
+                            </>
+                          )}
                       </div>
                     )}
                     {contentPackageBatchItems.length > 1 && (
