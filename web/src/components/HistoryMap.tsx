@@ -54,6 +54,15 @@ type MapPointMarker = {
   coordinate: L.LatLng
 }
 
+type MapRouteMarker = {
+  entry: MapEntry
+  route: MapEntry['routes'][number]
+  coordinate: L.LatLng
+  kind: 'start' | 'waypoint' | 'end'
+  pointIndex: number
+  pointCount: number
+}
+
 const defaultCenter: L.LatLngExpression = [25, 10]
 const defaultZoom = 2
 const clusterCellSize = 52
@@ -88,6 +97,21 @@ function popupContent(entry: MapEntry, placeName: string, role: string) {
   `
 }
 
+function routePopupContent(marker: MapRouteMarker) {
+  const date = marker.entry.dateLabel ? `<span>${marker.entry.dateLabel}</span>` : ''
+  const pointLabel = marker.kind === 'start'
+    ? 'Start'
+    : marker.kind === 'end'
+      ? 'Goal'
+      : `Waypoint ${marker.pointIndex + 1}`
+
+  return `
+    <strong>${escapeHtml(marker.entry.title)}</strong>
+    <small>${escapeHtml(marker.route.name || marker.route.routeType)} ${date}</small>
+    <span>${pointLabel} (${marker.pointIndex + 1}/${marker.pointCount})</span>
+  `
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll('&', '&amp;')
@@ -103,6 +127,18 @@ function markerIcon(isSelected: boolean) {
     html: '<span></span>',
     iconSize: [26, 26],
     iconAnchor: [13, 13],
+  })
+}
+
+function routeMarkerIcon(kind: MapRouteMarker['kind'], isSelected: boolean) {
+  const className = ['route-marker', `route-marker-${kind}`, isSelected ? 'selected' : ''].filter(Boolean).join(' ')
+  return L.divIcon({
+    className,
+    html: kind === 'end'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 22V4"/><path d="M4 4h13l-2 5 2 5H4"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>',
+    iconSize: kind === 'waypoint' ? [15, 15] : [18, 18],
+    iconAnchor: kind === 'end' ? [4, 16] : kind === 'waypoint' ? [7.5, 15] : [9, 18],
   })
 }
 
@@ -129,7 +165,15 @@ function clusterPopupContent(markers: MapPointMarker[]) {
 }
 
 function coordinateGroupKey(marker: MapPointMarker) {
-  return `${marker.coordinate.lat.toFixed(coordinateGroupPrecision)}:${marker.coordinate.lng.toFixed(coordinateGroupPrecision)}`
+  return coordinateKey(marker.coordinate)
+}
+
+function coordinateKey(coordinate: L.LatLng) {
+  return `${coordinate.lat.toFixed(coordinateGroupPrecision)}:${coordinate.lng.toFixed(coordinateGroupPrecision)}`
+}
+
+function entryCoordinateKey(entryId: string, coordinate: L.LatLng) {
+  return `${entryId}:${coordinateKey(coordinate)}`
 }
 
 function groupByExactCoordinate(markers: MapPointMarker[]) {
@@ -294,6 +338,7 @@ export function HistoryMap({
     overlay.clearLayers()
     const bounds = L.latLngBounds([])
     const markerPoints: MapPointMarker[] = []
+    const routeCoordinateKeys = new Set<string>()
 
     for (const entry of entries) {
       for (const route of entry.routes) {
@@ -308,13 +353,27 @@ export function HistoryMap({
           weight: selectedEntryId === entry.entryId ? 4 : 3,
         }).addTo(overlay)
 
-        for (const point of routeCoordinates) {
+        routeCoordinates.forEach((point, index) => {
+          const routeMarker: MapRouteMarker = {
+            entry,
+            route,
+            coordinate: point,
+            kind: index === 0 ? 'start' : index === routeCoordinates.length - 1 ? 'end' : 'waypoint',
+            pointIndex: index,
+            pointCount: routeCoordinates.length,
+          }
+          routeCoordinateKeys.add(entryCoordinateKey(entry.entryId, point))
+          addRoutePointMarker(overlay, routeMarker, selectedEntryId, onSelectEntry)
           bounds.extend(point)
-        }
+        })
       }
 
       for (const point of entry.points) {
         const coordinate = L.latLng(point.latitude, point.longitude)
+        if (routeCoordinateKeys.has(entryCoordinateKey(entry.entryId, coordinate))) {
+          continue
+        }
+
         markerPoints.push({ entry, point, coordinate })
         bounds.extend(coordinate)
       }
@@ -404,6 +463,26 @@ export function HistoryMap({
       )}
     </section>
   )
+}
+
+function addRoutePointMarker(
+  overlay: L.LayerGroup,
+  routeMarker: MapRouteMarker,
+  selectedEntryId: string | undefined,
+  onSelectEntry: (entryId: string) => void,
+) {
+  const { entry, coordinate, kind } = routeMarker
+  const marker = L.marker(coordinate, {
+    icon: routeMarkerIcon(kind, selectedEntryId === entry.entryId),
+    title: `${entry.title} / ${routeMarker.route.name || routeMarker.route.routeType}`,
+    zIndexOffset: selectedEntryId === entry.entryId ? 750 : -100,
+  })
+
+  marker.bindPopup(routePopupContent(routeMarker), {
+    className: 'history-popup route-popup',
+  })
+  marker.on('click', () => onSelectEntry(entry.entryId))
+  marker.addTo(overlay)
 }
 
 function addSpiderfiedPointMarkers(

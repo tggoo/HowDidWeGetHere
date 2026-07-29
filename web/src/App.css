@@ -1059,6 +1059,48 @@
   background: var(--panel);
 }
 
+.route-marker {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, var(--text-muted) 82%, var(--panel));
+  display: flex;
+  filter: drop-shadow(0 1px 2px var(--shadow));
+  justify-content: center;
+}
+
+.route-marker svg {
+  display: block;
+  fill: color-mix(in srgb, currentColor 18%, transparent);
+  height: 100%;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  width: 100%;
+}
+
+.route-marker-start {
+  color: #1d6fb8;
+}
+
+.route-marker-waypoint {
+  color: color-mix(in srgb, var(--text-muted) 78%, var(--accent));
+}
+
+.route-marker-end {
+  color: var(--success-text);
+}
+
+.route-marker.selected {
+  color: var(--accent);
+  filter: drop-shadow(0 2px 4px var(--shadow));
+}
+
+.route-marker-end.selected {
+  color: var(--success-text);
+}
+
 .history-cluster {
   align-items: center;
   background: var(--panel);
