@@ -23,7 +23,7 @@ import {
   Route,
   Save,
   Search,
-  Shuffle,
+  SkipForward,
   Sun,
   Tags,
   Trash2,
@@ -757,8 +757,9 @@ const uiCopy = {
     timePeriod: 'Time period',
     titleAudioLabel: 'Title',
     playAudio: 'Play audio',
-    playAll: 'Play all',
+    playAll: 'Play',
     playRandom: 'Play random',
+    playNext: 'Play next',
     stopAudio: 'Stop audio',
     unsupportedCache: 'This browser does not support offline media cache.',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
@@ -829,8 +830,9 @@ const uiCopy = {
     tags: 'Tagy',
     titleAudioLabel: 'Název',
     playAudio: 'Přehrát audio',
-    playAll: 'Přehrát vše',
+    playAll: 'Přehrát',
     playRandom: 'Přehrát náhodně',
+    playNext: 'Přehrát další',
     stopAudio: 'Zastavit audio',
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
@@ -923,7 +925,7 @@ function entryTimelineYear(entry: EntryListItem) {
 }
 
 function timelineYearLabel(year: number) {
-  const rounded = Math.abs(year) >= 1000 ? Math.round(year / 100) * 100 : Math.round(year)
+  const rounded = Math.round(year)
   return rounded < 0 ? `${Math.abs(rounded)} BCE` : `${rounded}`
 }
 
@@ -955,7 +957,7 @@ function createTimelineTicks(startYear: number, endYear: number) {
   return [...ticks].sort((left, right) => left - right)
 }
 
-const TimelineEdgePaddingPx = 64
+const TimelineEdgePaddingPx = 80
 
 function TimelineRuler({
   entries,
@@ -2534,22 +2536,35 @@ function App() {
     playAudio(first)
   }, [playAudio])
 
-  const playRandomEntry = useCallback(() => {
+  const playRandomEntry = useCallback((excludedEntryId: string | null = null) => {
     if (playableRandomEntries.length === 0) {
       return
     }
 
-    const randomEntry = playableRandomEntries[Math.floor(Math.random() * playableRandomEntries.length)]
+    const candidates = playableRandomEntries.filter((entry) => entry.id !== excludedEntryId)
+    const sourceEntries = candidates.length > 0 ? candidates : playableRandomEntries
+    const randomEntry = sourceEntries[Math.floor(Math.random() * sourceEntries.length)]
     if (!randomEntry) {
       return
     }
 
+    const player = persistentAudioRef.current
+    if (player) {
+      player.pause()
+    }
+    setActiveAudio(null)
+    setAudioQueue([])
+    setAudioPlayerMinimized(false)
     setPendingRandomPlayEntryId(randomEntry.id)
     if (randomEntry.id !== selectedEntryId) {
       setLoadingSelectedEntryDetail(true)
     }
     selectEntry(randomEntry.id)
   }, [playableRandomEntries, selectEntry, selectedEntryId])
+
+  const playNextRandomEntry = useCallback(() => {
+    playRandomEntry(activeAudio?.entryId ?? selectedEntryId)
+  }, [activeAudio?.entryId, playRandomEntry, selectedEntryId])
 
   useEffect(() => {
     if (!pendingRandomPlayEntryId || selectedEntryId !== pendingRandomPlayEntryId || isLoadingSelectedEntryDetail) {
@@ -4384,6 +4399,16 @@ function App() {
         <button
           className="icon-button"
           type="button"
+          aria-label={ui.playRandom}
+          title={ui.playRandom}
+          disabled={playableRandomEntries.length === 0}
+          onClick={() => playRandomEntry()}
+        >
+          <Music aria-hidden="true" />
+        </button>
+        <button
+          className="icon-button"
+          type="button"
           aria-label={theme === 'dark' ? ui.switchToLightMode : ui.switchToDarkMode}
           title={theme === 'dark' ? ui.switchToLightMode : ui.switchToDarkMode}
           onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
@@ -4751,26 +4776,12 @@ function App() {
             <span>{selectedEntry?.dateLabel ?? ui.dateUnknown}</span>
             {selectedEntryDetail?.realityStatus && <span>{selectedEntryDetail.realityStatus}</span>}
           </div>
-          {(ultimateAudioSequence.length > 0 || playableRandomEntries.length > 0) && (
+          {ultimateAudioSequence.length > 0 && (
             <div className="entry-audio-actions">
-              {ultimateAudioSequence.length > 0 && (
-                <button className="play-all-button" type="button" onClick={() => playAudioSequence(ultimateAudioSequence)}>
-                  <PlayCircle aria-hidden="true" />
-                  {ui.playAll}
-                </button>
-              )}
-              {playableRandomEntries.length > 0 && (
-                <button
-                  className="play-random-button"
-                  type="button"
-                  aria-label={ui.playRandom}
-                  title={ui.playRandom}
-                  onClick={playRandomEntry}
-                >
-                  <Shuffle aria-hidden="true" />
-                  {ui.playRandom}
-                </button>
-              )}
+              <button className="play-all-button" type="button" onClick={() => playAudioSequence(ultimateAudioSequence)}>
+                <PlayCircle aria-hidden="true" />
+                {ui.playAll}
+              </button>
             </div>
           )}
           {selectedEntryImageUrl && (
@@ -5015,6 +5026,16 @@ function App() {
               {activeAudio.subtitle && <small>{activeAudio.subtitle}</small>}
             </button>
             <div className="persistent-audio-actions">
+              <button
+                className="icon-button subtle"
+                type="button"
+                aria-label={ui.playNext}
+                title={ui.playNext}
+                disabled={playableRandomEntries.length <= 1}
+                onClick={playNextRandomEntry}
+              >
+                <SkipForward aria-hidden="true" />
+              </button>
               <button
                 className="icon-button subtle"
                 type="button"

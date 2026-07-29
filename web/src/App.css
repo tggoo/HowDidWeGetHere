@@ -140,6 +140,11 @@
   width: 36px;
 }
 
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .mobile-only {
   display: none;
 }
@@ -1189,8 +1194,7 @@
   margin-top: 10px;
 }
 
-.play-all-button,
-.play-random-button {
+.play-all-button {
   align-items: center;
   border-radius: 8px;
   cursor: pointer;
@@ -1209,26 +1213,13 @@
   color: var(--accent-contrast);
 }
 
-.play-random-button {
-  background: var(--control-strong);
-  border: 1px solid var(--border);
-  color: var(--text);
-}
-
-.play-all-button svg,
-.play-random-button svg {
+.play-all-button svg {
   height: 17px;
   width: 17px;
 }
 
 .play-all-button:hover {
   background: color-mix(in srgb, var(--accent) 88%, black);
-}
-
-.play-random-button:hover {
-  background: color-mix(in srgb, var(--accent) 16%, var(--panel-muted));
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .entry-image-carousel {
