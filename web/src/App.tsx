@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Filter,
   Globe2,
+  LoaderCircle,
   PanelRight,
   PlayCircle,
 } from 'lucide-react'
@@ -27,11 +28,20 @@ import type { AdminPanelProps } from './components/organisms/AdminPanel'
 import { EntryDetailPanel } from './components/organisms/EntryDetailPanel'
 import { FilterPanel } from './components/organisms/FilterPanel'
 import { ImageLightbox } from './components/organisms/ImageLightbox'
+import { OfflineMediaPanel } from './components/organisms/OfflineMediaPanel'
 import { PersistentAudioPlayer } from './components/organisms/PersistentAudioPlayer'
 import { TagModal } from './components/organisms/TagModal'
 import { TimelineRuler } from './components/organisms/TimelineRuler'
 import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistoryQuery'
 import { cachedQuery } from './lib/queryCache'
+import {
+  clearOfflineMediaCache,
+  emptyOfflineMediaSummary,
+  inspectOfflineMediaCache,
+  prefetchOfflineMediaUrls,
+  type OfflineMediaCandidate,
+  type OfflineMediaSummary,
+} from './lib/offlineMediaCache'
 import { useAppStore, type AdminPage, type MediaCacheProgress } from './store/appStore'
 import './App.css'
 
@@ -688,12 +698,15 @@ const uiCopy = {
   en: {
     appName: 'HowDidWeGetHere',
     audio: 'Audio',
+    audioLanguages: 'Audio languages',
     cacheCleared: 'Cached map data and media were cleared.',
     cacheDone: (completed: number) => `Cached ${completed} media files for offline browsing.`,
     cacheDoneWithFailures: (completed: number, total: number, failed: number) =>
       `Cached ${completed}/${total} media files. ${failed} failed.`,
     cacheProgress: (completed: number, total: number) => `Caching media ${completed}/${total}.`,
     caching: 'Caching...',
+    cachedEntries: 'Downloaded entries',
+    cachedFiles: 'Local files',
     clear: 'Clear',
     collapseEntryDetail: 'Collapse entry detail',
     collapseFilters: 'Collapse filters',
@@ -701,10 +714,12 @@ const uiCopy = {
     closeImage: 'Close image',
     expandImage: 'Expand image',
     imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
+    images: 'Images',
     imageSlide: (current: number, total: number) => `Image ${current} of ${total}`,
     nextImage: 'Next image',
     previousImage: 'Previous image',
     closeFilters: 'Close filters',
+    closeOfflineMedia: 'Close offline media',
     closeTags: 'Close tags',
     dateUnknown: 'Date unknown',
     description: 'Description',
@@ -716,19 +731,26 @@ const uiCopy = {
     filters: 'Filters',
     language: 'Language',
     loadingInitial: 'Loading published map data.',
+    mediaCacheCleared: 'Cached offline media were cleared.',
     moreCount: (count: number) => `More ${count}`,
     noTimelineEntries: 'No dated entries',
+    noAudioLanguages: 'No audio languages',
     noMediaUrls: 'No media URLs are attached to the current results.',
     noResults: 'No map points match the current filters.',
     nowPlaying: 'Now playing',
     offlineCacheStarting: 'Offline cache is starting. Reload the app once and try again.',
+    offlineMediaEmpty: 'No local media files downloaded yet.',
+    offlineMediaRefresh: 'Refresh',
+    offlineMediaUnavailable: 'This browser cannot inspect offline media storage.',
     offlineMedia: 'Offline media',
     openAdminPanel: 'Open admin panel',
     openEntryDetail: 'Open entry detail',
     openFilters: 'Open filters',
+    openOfflineMedia: 'Open offline media',
     openPlayingEntry: 'Open playing entry',
     minimizeAudio: 'Minimize player',
     restoreAudio: 'Show player',
+    otherFiles: 'Other files',
     places: 'Places',
     queryFailed: 'API responded, but one of the map queries failed.',
     relatedTopics: 'Related topics',
@@ -752,6 +774,8 @@ const uiCopy = {
     playNext: 'Play next',
     stopAudio: 'Stop audio',
     unsupportedCache: 'This browser does not support offline media cache.',
+    unknownEntry: 'No matching entry in the current data',
+    unknownSize: 'unknown size',
     unreachableApi: 'Unable to reach the API. Check Render API URL and CORS settings.',
     viewportSuffix: ' in the visible map area',
     whyItMatters: 'Why it matters',
@@ -763,12 +787,15 @@ const uiCopy = {
   cs: {
     appName: 'HowDidWeGetHere',
     audio: 'Audio',
+    audioLanguages: 'Audio jazyky',
     cacheCleared: 'Cache mapových dat a médií byla vymazána.',
     cacheDone: (completed: number) => `Uloženo ${completed} mediálních souborů pro offline prohlížení.`,
     cacheDoneWithFailures: (completed: number, total: number, failed: number) =>
       `Uloženo ${completed}/${total} mediálních souborů. ${failed} selhalo.`,
     cacheProgress: (completed: number, total: number) => `Ukládám média ${completed}/${total}.`,
     caching: 'Ukládám...',
+    cachedEntries: 'Stažené záznamy',
+    cachedFiles: 'Lokální soubory',
     clear: 'Vyčistit',
     collapseEntryDetail: 'Sbalit detail zaznamu',
     collapseFilters: 'Sbalit filtry',
@@ -776,10 +803,12 @@ const uiCopy = {
     closeImage: 'Zavřít obrázek',
     expandImage: 'Zvětšit obrázek',
     imageIndicator: (current: number, total: number) => `Zobrazit obrázek ${current} z ${total}`,
+    images: 'Obrázky',
     imageSlide: (current: number, total: number) => `Obrázek ${current} z ${total}`,
     nextImage: 'Další obrázek',
     previousImage: 'Předchozí obrázek',
     closeFilters: 'Zavřít filtry',
+    closeOfflineMedia: 'Zavřít offline média',
     closeTags: 'Zavřít tagy',
     dateUnknown: 'Datum není známé',
     description: 'Popis',
@@ -795,16 +824,23 @@ const uiCopy = {
     minimizeAudio: 'Skrýt přehrávač',
     restoreAudio: 'Zobrazit přehrávač',
     loadingInitial: 'Načítám publikovaná mapová data.',
+    mediaCacheCleared: 'Offline média byla vymazána.',
     moreCount: (count: number) => `Další ${count}`,
     noTimelineEntries: 'Žádné datované záznamy',
+    noAudioLanguages: 'Žádné audio jazyky',
     noMediaUrls: 'Aktuální výsledky nemají připojená žádná média.',
     noResults: 'Pro dané filtry nebyly vybrány žádné body.',
     offlineCacheStarting: 'Offline cache se spouští. Načti aplikaci znovu a zkus to ještě jednou.',
+    offlineMediaEmpty: 'Zatím nejsou stažené žádné lokální mediální soubory.',
+    offlineMediaRefresh: 'Obnovit',
+    offlineMediaUnavailable: 'Tento prohlížeč neumí zobrazit offline úložiště médií.',
     offlineMedia: 'Offline média',
     openAdminPanel: 'Otevřít administraci',
     openEntryDetail: 'Otevrit detail zaznamu',
     openFilters: 'Otevřít filtry',
+    openOfflineMedia: 'Otevřít offline média',
     places: 'Místa',
+    otherFiles: 'Ostatní soubory',
     queryFailed: 'API odpovědělo, ale jeden z dotazů na mapu selhal.',
     relatedTopics: 'Související témata',
     resetFilters: 'resetovat filtr',
@@ -827,6 +863,8 @@ const uiCopy = {
     timeline: 'Časová osa',
     timePeriod: 'Časové období',
     unsupportedCache: 'Tento prohlížeč nepodporuje offline cache médií.',
+    unknownEntry: 'Bez odpovídajícího záznamu v aktuálních datech',
+    unknownSize: 'neznámá velikost',
     unreachableApi: 'API není dostupné. Zkontroluj Render API URL a CORS nastavení.',
     viewportSuffix: ' ve viditelné oblasti mapy',
     whyItMatters: 'Proč je to důležité',
@@ -1001,6 +1039,21 @@ function mediaUrlToAbsolute(url: string | null | undefined) {
 
   const base = apiBaseUrl.replace(/\/$/, '')
   return `${base}/${trimmed.replace(/^\//, '')}`
+}
+
+function addOfflineMediaCandidate(
+  candidatesByUrl: Map<string, OfflineMediaCandidate>,
+  candidate: OfflineMediaCandidate,
+) {
+  const existing = candidatesByUrl.get(candidate.url)
+  candidatesByUrl.set(candidate.url, {
+    entryId: candidate.entryId ?? existing?.entryId,
+    entryTitle: candidate.entryTitle ?? existing?.entryTitle,
+    kind: candidate.kind,
+    label: candidate.label ?? existing?.label,
+    languageCode: candidate.languageCode ?? existing?.languageCode,
+    url: candidate.url,
+  })
 }
 
 function entrySlugFromUrl() {
@@ -1244,6 +1297,7 @@ function App() {
   const isFilterPanelOpen = useAppStore((state) => state.isFilterPanelOpen)
   const isMediaPrefetching = useAppStore((state) => state.isMediaPrefetching)
   const isOfflineCacheAvailable = useAppStore((state) => state.isOfflineCacheAvailable)
+  const isOfflineMediaPanelOpen = useAppStore((state) => state.isOfflineMediaPanelOpen)
   const language = useAppStore((state) => state.language)
   const mapViewport = useAppStore((state) => state.mapViewport)
   const mediaCacheProgress = useAppStore((state) => state.mediaCacheProgress)
@@ -1263,6 +1317,7 @@ function App() {
   const setMediaCacheStatus = useAppStore((state) => state.setMediaCacheStatus)
   const setMediaPrefetching = useAppStore((state) => state.setMediaPrefetching)
   const setOfflineCacheAvailable = useAppStore((state) => state.setOfflineCacheAvailable)
+  const setOfflineMediaPanelOpen = useAppStore((state) => state.setOfflineMediaPanelOpen)
   const setSearchText = useAppStore((state) => state.setSearchText)
   const setSelectedEntryId = useAppStore((state) => state.setSelectedEntryId)
   const setSelectedPeriodId = useAppStore((state) => state.setSelectedPeriodId)
@@ -1296,6 +1351,8 @@ function App() {
   const [copiedEntrySlug, setCopiedEntrySlug] = useState<string | null>(null)
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
   const [audioQueue, setAudioQueue] = useState<ActiveAudio[]>([])
+  const [offlineMediaSummary, setOfflineMediaSummary] = useState<OfflineMediaSummary>(emptyOfflineMediaSummary)
+  const [isInspectingOfflineMedia, setInspectingOfflineMedia] = useState(false)
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
   const [pendingRandomPlayEntryId, setPendingRandomPlayEntryId] = useState<string | null>(null)
   const [isEntryImageExpanded, setEntryImageExpanded] = useState(false)
@@ -1700,6 +1757,8 @@ function App() {
 
     async function loadMapData() {
       setLoadingMap(true)
+      setMapEmptyResult(false)
+      setMapStatus(ui.loadingInitial)
       try {
         const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
         const shouldFindRequestedEntry = requestedEntrySlug !== null
@@ -1850,6 +1909,82 @@ function App() {
     }
   }, [entries, language, selectedEntryId, reloadKey])
 
+  const knownOfflineMedia = useMemo(() => {
+    const candidatesByUrl = new Map<string, OfflineMediaCandidate>()
+
+    for (const entry of entries) {
+      const imageUrl = mediaUrlToAbsolute(entry.primaryImageUrl)
+      if (imageUrl) {
+        addOfflineMediaCandidate(candidatesByUrl, {
+          entryId: entry.id,
+          entryTitle: entry.title,
+          kind: 'image',
+          label: entry.title,
+          url: imageUrl,
+        })
+      }
+
+      const audioUrl = mediaUrlToAbsolute(entry.primaryAudioUrl)
+      if (audioUrl) {
+        addOfflineMediaCandidate(candidatesByUrl, {
+          entryId: entry.id,
+          entryTitle: entry.title,
+          kind: 'audio',
+          label: entry.title,
+          languageCode: language,
+          url: audioUrl,
+        })
+      }
+    }
+
+    if (selectedEntryDetail) {
+      for (const image of selectedEntryDetail.images) {
+        const imageUrl = mediaUrlToAbsolute(image.url)
+        if (imageUrl) {
+          addOfflineMediaCandidate(candidatesByUrl, {
+            entryId: selectedEntryDetail.id,
+            entryTitle: selectedEntryDetail.title,
+            kind: 'image',
+            label: image.altText ?? image.caption ?? selectedEntryDetail.title,
+            url: imageUrl,
+          })
+        }
+      }
+
+      for (const audioTrack of selectedEntryDetail.audioTracks) {
+        const audioUrl = mediaUrlToAbsolute(audioTrack.url)
+        if (audioUrl) {
+          addOfflineMediaCandidate(candidatesByUrl, {
+            entryId: selectedEntryDetail.id,
+            entryTitle: selectedEntryDetail.title,
+            kind: 'audio',
+            label: audioTrack.title ?? audioTrack.kind,
+            languageCode: audioTrack.languageCode,
+            url: audioUrl,
+          })
+        }
+      }
+    }
+
+    return [...candidatesByUrl.values()]
+  }, [entries, language, selectedEntryDetail])
+
+  const refreshOfflineMediaSummary = useCallback(async () => {
+    if (!isOfflineCacheAvailable) {
+      setOfflineMediaSummary(emptyOfflineMediaSummary)
+      return
+    }
+
+    setInspectingOfflineMedia(true)
+    try {
+      setOfflineMediaSummary(await inspectOfflineMediaCache(knownOfflineMedia))
+    } catch {
+      setOfflineMediaSummary(emptyOfflineMediaSummary)
+    } finally {
+      setInspectingOfflineMedia(false)
+    }
+  }, [isOfflineCacheAvailable, knownOfflineMedia])
+
   useEffect(() => {
     if (adminToken) {
       if (adminSession?.refreshToken && adminSession.expiresAt <= Date.now() + 5_000) {
@@ -1982,6 +2117,7 @@ function App() {
 
       if (event.data?.type === 'HDWGH_CACHE_CLEARED') {
         clearRuntimeCacheState()
+        setOfflineMediaSummary(emptyOfflineMediaSummary)
         setMediaCacheStatus(ui.cacheCleared)
       }
     }
@@ -1989,6 +2125,14 @@ function App() {
     navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage)
     return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage)
   }, [clearRuntimeCacheState, setMediaCacheProgress, setMediaCacheStatus, setMediaPrefetching, ui])
+
+  useEffect(() => {
+    if (!isOfflineMediaPanelOpen || isMediaPrefetching) {
+      return
+    }
+
+    void refreshOfflineMediaSummary()
+  }, [isMediaPrefetching, isOfflineMediaPanelOpen, refreshOfflineMediaSummary])
 
   useEffect(() => {
     if (!adminSession?.refreshToken) {
@@ -2313,9 +2457,10 @@ function App() {
   const selectEntry = useCallback((entryId: string) => {
     selectedEntryIdRef.current = entryId
     setSelectedEntryId(entryId)
+    setOfflineMediaPanelOpen(false)
     setEntryDetailOpen(true)
     setDetailPaneCollapsed(false)
-  }, [setEntryDetailOpen, setSelectedEntryId])
+  }, [setEntryDetailOpen, setOfflineMediaPanelOpen, setSelectedEntryId])
 
   const playAudio = useCallback((audio: ActiveAudio) => {
     setActiveAudio(audio)
@@ -2475,30 +2620,35 @@ function App() {
       return
     }
 
-    const registration = await navigator.serviceWorker.ready
-    const worker = navigator.serviceWorker.controller ?? registration.active
-    if (!worker) {
-      setMediaCacheStatus(ui.offlineCacheStarting)
-      return
-    }
-
     setMediaPrefetching(true)
     setMediaCacheProgress({ completed: 0, failed: 0, total: visibleMediaUrls.length })
     setMediaCacheStatus(ui.cacheProgress(0, visibleMediaUrls.length))
-    worker.postMessage({
-      type: 'HDWGH_PREFETCH_URLS',
-      urls: visibleMediaUrls,
-    })
+    try {
+      const progress = await prefetchOfflineMediaUrls(visibleMediaUrls, (nextProgress) => {
+        setMediaCacheProgress(nextProgress)
+        setMediaCacheStatus(ui.cacheProgress(nextProgress.completed, nextProgress.total))
+      })
+      setMediaCacheStatus(
+        progress.failed > 0
+          ? ui.cacheDoneWithFailures(progress.completed, progress.total, progress.failed)
+          : ui.cacheDone(progress.completed),
+      )
+      void refreshOfflineMediaSummary()
+    } finally {
+      setMediaPrefetching(false)
+    }
   }
 
-  async function clearRuntimeCache() {
+  async function clearOfflineMedia() {
     if (!isOfflineCacheAvailable) {
       return
     }
 
-    const registration = await navigator.serviceWorker.ready
-    const worker = navigator.serviceWorker.controller ?? registration.active
-    worker?.postMessage({ type: 'HDWGH_CLEAR_RUNTIME_CACHE' })
+    await clearOfflineMediaCache()
+    clearRuntimeCacheState()
+    setMediaCacheProgress(null)
+    setMediaCacheStatus(ui.mediaCacheCleared)
+    setOfflineMediaSummary(emptyOfflineMediaSummary)
   }
 
   async function copyEntrySlug(slug: string) {
@@ -4148,13 +4298,26 @@ function App() {
   function openAdminPanel() {
     setEntryDetailOpen(false)
     setFilterPanelOpen(false)
+    setOfflineMediaPanelOpen(false)
     setAdminOpen((value) => !value)
   }
 
   function openFiltersPanel() {
     setAdminOpen(false)
+    setOfflineMediaPanelOpen(false)
     setEntryDetailOpen(false)
     setFilterPanelOpen(true)
+  }
+
+  function openOfflineMediaPanel() {
+    const nextIsOpen = !isOfflineMediaPanelOpen
+    setAdminOpen(false)
+    setEntryDetailOpen(false)
+    setFilterPanelOpen(false)
+    setOfflineMediaPanelOpen(nextIsOpen)
+    if (nextIsOpen) {
+      void refreshOfflineMediaSummary()
+    }
   }
 
   function toggleTheme() {
@@ -4166,14 +4329,18 @@ function App() {
       language: ui.language,
       openAdminPanel: ui.openAdminPanel,
       openFilters: ui.openFilters,
+      openOfflineMedia: ui.openOfflineMedia,
       playRandom: ui.playRandom,
       switchToDarkMode: ui.switchToDarkMode,
       switchToLightMode: ui.switchToLightMode,
     },
+    isOfflineMediaPanelOpen,
     language,
+    offlineMediaFileCount: offlineMediaSummary.items.length,
     onLanguageChange: setLanguage,
     onOpenAdminPanel: openAdminPanel,
     onOpenFilters: openFiltersPanel,
+    onOpenOfflineMedia: openOfflineMediaPanel,
     onPlayRandom: () => playRandomEntry(),
     onToggleTheme: toggleTheme,
     playableRandomEntryCount: playableRandomEntries.length,
@@ -4358,19 +4525,14 @@ function App() {
           fromYear={fromYear}
           isLoadingMap={isLoadingMap}
           isMapEmptyResult={isMapEmptyResult}
-          isMediaPrefetching={isMediaPrefetching}
-          isOfflineCacheAvailable={isOfflineCacheAvailable}
           labels={{
             appName: ui.appName,
-            caching: ui.caching,
             clear: ui.clear,
             closeFilters: ui.closeFilters,
             collapseFilters: ui.collapseFilters,
             dateUnknown: ui.dateUnknown,
-            downloadCount: ui.downloadCount,
             filters: ui.filters,
             moreCount: ui.moreCount,
-            offlineMedia: ui.offlineMedia,
             resetFilters: ui.resetFilters,
             searchEntries: ui.searchEntries,
             tags: ui.tags,
@@ -4379,17 +4541,13 @@ function App() {
             yearTo: ui.yearTo,
           }}
           mapStatus={mapStatus}
-          mediaCacheProgress={mediaCacheProgress}
-          mediaCacheStatus={mediaCacheStatus}
           periodHierarchy={periodHierarchy}
           searchText={searchText}
           selectedPeriodId={selectedPeriodId}
           selectedTags={selectedTags}
           tagGroups={tagGroups}
           toYear={toYear}
-          visibleMediaCount={visibleMediaUrls.length}
           onClearFilters={clearFilters}
-          onClearRuntimeCache={clearRuntimeCache}
           onClose={() => setFilterPanelOpen(false)}
           onCollapse={() => setFilterPaneCollapsed(true)}
           onExpandTagGroup={setExpandedTagGroup}
@@ -4397,7 +4555,6 @@ function App() {
             setSelectedPeriodId(null)
             setFromYear(value)
           }}
-          onPrefetchVisibleMedia={prefetchVisibleMedia}
           onSearchTextChange={setSearchText}
           onSelectPeriod={selectPeriodFilter}
           onToYearChange={(value) => {
@@ -4434,16 +4591,24 @@ function App() {
             onSelectEntry={selectEntry}
             toYear={numberOrNull(toYear)}
           />
-          <HistoryMap
-            autoFitKey={mapAutoFitKey}
-            entries={mapEntries}
-            fallbackEntryIds={entries.map((entry) => entry.id)}
-            language={language}
-            showFallback={!mapViewport}
-            selectedEntryId={selectedEntryId}
-            onViewportChange={handleMapViewportChange}
-            onSelectEntry={selectEntry}
-          />
+          <div className="map-stage">
+            <HistoryMap
+              autoFitKey={mapAutoFitKey}
+              entries={mapEntries}
+              fallbackEntryIds={entries.map((entry) => entry.id)}
+              language={language}
+              showFallback={!mapViewport}
+              selectedEntryId={selectedEntryId}
+              onViewportChange={handleMapViewportChange}
+              onSelectEntry={selectEntry}
+            />
+            {isLoadingMap && (
+              <div className="map-loading-overlay" role="status" aria-live="polite">
+                <LoaderCircle aria-hidden="true" className="spin-icon" />
+                <span>{mapStatus}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {!isDetailPaneCollapsed && (
@@ -4571,6 +4736,42 @@ function App() {
             onPlayNext={playNextRandomEntry}
             onRestore={() => setAudioPlayerMinimized(false)}
             onStop={stopAudio}
+          />
+        )}
+
+        {isOfflineMediaPanelOpen && (
+          <OfflineMediaPanel
+            formatBytes={formatBytes}
+            isInspecting={isInspectingOfflineMedia}
+            isMediaPrefetching={isMediaPrefetching}
+            isOfflineCacheAvailable={isOfflineCacheAvailable}
+            labels={{
+              audio: ui.audio,
+              audioLanguages: ui.audioLanguages,
+              cachedEntries: ui.cachedEntries,
+              cachedFiles: ui.cachedFiles,
+              caching: ui.caching,
+              clear: ui.clear,
+              close: ui.closeOfflineMedia,
+              downloadVisible: ui.downloadCount,
+              empty: ui.offlineMediaEmpty,
+              images: ui.images,
+              noLanguages: ui.noAudioLanguages,
+              otherFiles: ui.otherFiles,
+              refresh: ui.offlineMediaRefresh,
+              title: ui.offlineMedia,
+              unavailable: ui.offlineMediaUnavailable,
+              unknownEntry: ui.unknownEntry,
+              unknownSize: ui.unknownSize,
+            }}
+            mediaCacheProgress={mediaCacheProgress}
+            mediaCacheStatus={mediaCacheStatus}
+            summary={offlineMediaSummary}
+            visibleMediaCount={visibleMediaUrls.length}
+            onClear={clearOfflineMedia}
+            onClose={() => setOfflineMediaPanelOpen(false)}
+            onDownloadVisible={prefetchVisibleMedia}
+            onRefresh={refreshOfflineMediaSummary}
           />
         )}
 

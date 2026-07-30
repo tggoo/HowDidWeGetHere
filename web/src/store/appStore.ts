@@ -18,6 +18,7 @@ type AppState = {
   isEntryDetailOpen: boolean
   isFilterPanelOpen: boolean
   isMediaPrefetching: boolean
+  isOfflineMediaPanelOpen: boolean
   isOfflineCacheAvailable: boolean
   language: string
   mapViewport: MapViewport | null
@@ -42,6 +43,7 @@ type AppState = {
   setMediaCacheStatus: (mediaCacheStatus: string) => void
   setMediaPrefetching: (isMediaPrefetching: boolean) => void
   setOfflineCacheAvailable: (isOfflineCacheAvailable: boolean) => void
+  setOfflineMediaPanelOpen: (isOpen: boolean) => void
   setSearchText: (searchText: string) => void
   setSelectedEntryId: (selectedEntryId: string) => void
   setSelectedPeriodId: (selectedPeriodId: string | null) => void
@@ -68,6 +70,7 @@ export const useAppStore = create<AppState>()(
       isEntryDetailOpen: false,
       isFilterPanelOpen: false,
       isMediaPrefetching: false,
+      isOfflineMediaPanelOpen: false,
       isOfflineCacheAvailable: false,
       language: 'en',
       mapViewport: null,
@@ -109,6 +112,7 @@ export const useAppStore = create<AppState>()(
       setMediaCacheStatus: (mediaCacheStatus) => set({ mediaCacheStatus }),
       setMediaPrefetching: (isMediaPrefetching) => set({ isMediaPrefetching }),
       setOfflineCacheAvailable: (isOfflineCacheAvailable) => set({ isOfflineCacheAvailable }),
+      setOfflineMediaPanelOpen: (isOfflineMediaPanelOpen) => set({ isOfflineMediaPanelOpen }),
       setSearchText: (searchText) => set({ searchText }),
       setSelectedEntryId: (selectedEntryId) => set({ selectedEntryId }),
       setSelectedPeriodId: (selectedPeriodId) => set({ selectedPeriodId }),

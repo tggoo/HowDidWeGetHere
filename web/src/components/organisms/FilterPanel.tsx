@@ -1,5 +1,4 @@
-import { CalendarRange, CheckCircle2, ChevronLeft, Download, Filter, Globe2, Search, Tags, X } from 'lucide-react'
-import type { MediaCacheProgress } from '../../store/appStore'
+import { CalendarRange, CheckCircle2, ChevronLeft, Filter, Globe2, LoaderCircle, Search, Tags, X } from 'lucide-react'
 
 type FilterTag = {
   id: string
@@ -27,15 +26,12 @@ type PeriodHierarchyItem<TPeriod extends PeriodFilterItem> = {
 
 type FilterPanelLabels = {
   appName: string
-  caching: string
   clear: string
   closeFilters: string
   collapseFilters: string
   dateUnknown: string
-  downloadCount: (count: number) => string
   filters: string
   moreCount: (count: number) => string
-  offlineMedia: string
   resetFilters: string
   searchEntries: string
   tags: string
@@ -49,27 +45,20 @@ type FilterPanelProps<TPeriod extends PeriodFilterItem> = {
   fromYear: string
   isLoadingMap: boolean
   isMapEmptyResult: boolean
-  isMediaPrefetching: boolean
-  isOfflineCacheAvailable: boolean
   labels: FilterPanelLabels
   mapStatus: string
-  mediaCacheProgress: MediaCacheProgress | null
-  mediaCacheStatus: string
   periodHierarchy: Array<PeriodHierarchyItem<TPeriod>>
   searchText: string
   selectedPeriodId: string | null
   selectedTags: string[]
   tagGroups: FilterTagGroup[]
   toYear: string
-  visibleMediaCount: number
   formatPeriodYear: (period: TPeriod, dateUnknown: string) => string
   onClearFilters: () => void
-  onClearRuntimeCache: () => void
   onClose: () => void
   onCollapse: () => void
   onExpandTagGroup: (group: string) => void
   onFromYearChange: (value: string) => void
-  onPrefetchVisibleMedia: () => void
   onSearchTextChange: (value: string) => void
   onSelectPeriod: (period: TPeriod) => void
   onToYearChange: (value: string) => void
@@ -82,19 +71,13 @@ export function FilterPanel<TPeriod extends PeriodFilterItem>({
   fromYear,
   isLoadingMap,
   isMapEmptyResult,
-  isMediaPrefetching,
-  isOfflineCacheAvailable,
   labels,
   mapStatus,
-  mediaCacheProgress,
-  mediaCacheStatus,
   onClearFilters,
-  onClearRuntimeCache,
   onClose,
   onCollapse,
   onExpandTagGroup,
   onFromYearChange,
-  onPrefetchVisibleMedia,
   onSearchTextChange,
   onSelectPeriod,
   onToYearChange,
@@ -105,7 +88,6 @@ export function FilterPanel<TPeriod extends PeriodFilterItem>({
   selectedTags,
   tagGroups,
   toYear,
-  visibleMediaCount,
 }: FilterPanelProps<TPeriod>) {
   return (
     <aside className={className} aria-label="Map filters">
@@ -140,36 +122,13 @@ export function FilterPanel<TPeriod extends PeriodFilterItem>({
         </button>
       </div>
       <div className="status-pill">
-        {isLoadingMap ? <Filter aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+        {isLoadingMap ? <LoaderCircle aria-hidden="true" className="spin-icon" /> : <CheckCircle2 aria-hidden="true" />}
         <span>{mapStatus}</span>
         {isMapEmptyResult && (
           <button type="button" onClick={onClearFilters}>
             {labels.resetFilters}
           </button>
         )}
-      </div>
-
-      <div className="cache-panel">
-        <div>
-          <strong>{labels.offlineMedia}</strong>
-          {mediaCacheStatus && <span>{mediaCacheStatus}</span>}
-          {mediaCacheProgress && (
-            <progress max={mediaCacheProgress.total || 1} value={mediaCacheProgress.completed + mediaCacheProgress.failed} />
-          )}
-        </div>
-        <div className="cache-actions">
-          <button
-            type="button"
-            disabled={!isOfflineCacheAvailable || isMediaPrefetching || visibleMediaCount === 0}
-            onClick={onPrefetchVisibleMedia}
-          >
-            <Download aria-hidden="true" />
-            {isMediaPrefetching ? labels.caching : labels.downloadCount(visibleMediaCount)}
-          </button>
-          <button type="button" disabled={!isOfflineCacheAvailable || isMediaPrefetching} onClick={onClearRuntimeCache}>
-            {labels.clear}
-          </button>
-        </div>
       </div>
 
       <div className="search-box">
