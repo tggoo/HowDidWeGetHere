@@ -9,7 +9,11 @@ import {
   X,
 } from 'lucide-react'
 import type { MediaCacheProgress } from '../../store/appStore'
-import type { OfflineMediaCacheItem, OfflineMediaSummary } from '../../lib/offlineMediaCache'
+import type {
+  OfflineMediaCacheItem,
+  OfflineMediaDownloadLanguage,
+  OfflineMediaSummary,
+} from '../../lib/offlineMediaCache'
 import { VirtualizedList } from '../molecules/VirtualizedList'
 
 type OfflineMediaPanelLabels = {
@@ -20,8 +24,13 @@ type OfflineMediaPanelLabels = {
   caching: string
   clear: string
   close: string
-  downloadVisible: (count: number) => string
+  downloadAudioLanguage: string
+  downloadMedia: string
+  downloadLanguageAll: string
+  downloadLanguageCs: string
+  downloadLanguageEn: string
   empty: string
+  includeImages: string
   images: string
   noLanguages: string
   otherFiles: string
@@ -41,15 +50,21 @@ type OfflineMediaPanelProps = {
   mediaCacheProgress: MediaCacheProgress | null
   mediaCacheStatus: string
   summary: OfflineMediaSummary
-  visibleMediaCount: number
+  downloadLanguage: OfflineMediaDownloadLanguage
+  includeImages: boolean
+  downloadSourceCount: number
   onClear: () => void | Promise<void>
   onClose: () => void
   onDownloadVisible: () => void | Promise<void>
+  onDownloadLanguageChange: (language: OfflineMediaDownloadLanguage) => void
+  onIncludeImagesChange: (includeImages: boolean) => void
   onRefresh: () => void | Promise<void>
 }
 
 export function OfflineMediaPanel({
+  downloadLanguage,
   formatBytes,
+  includeImages,
   isInspecting,
   isMediaPrefetching,
   isOfflineCacheAvailable,
@@ -58,10 +73,12 @@ export function OfflineMediaPanel({
   mediaCacheStatus,
   onClear,
   onClose,
+  onDownloadLanguageChange,
   onDownloadVisible,
+  onIncludeImagesChange,
   onRefresh,
   summary,
-  visibleMediaCount,
+  downloadSourceCount,
 }: OfflineMediaPanelProps) {
   const languageLabel = summary.languages.length > 0
     ? summary.languages.map((language) => language.toUpperCase()).join(', ')
@@ -98,14 +115,38 @@ export function OfflineMediaPanel({
         />
       )}
 
+      <div className="offline-media-options">
+        <label>
+          <span>{labels.downloadAudioLanguage}</span>
+          <select
+            value={downloadLanguage}
+            disabled={isMediaPrefetching}
+            onChange={(event) => onDownloadLanguageChange(event.target.value as OfflineMediaDownloadLanguage)}
+          >
+            <option value="all">{labels.downloadLanguageAll}</option>
+            <option value="cs">{labels.downloadLanguageCs}</option>
+            <option value="en">{labels.downloadLanguageEn}</option>
+          </select>
+        </label>
+        <label className="offline-media-checkbox">
+          <input
+            type="checkbox"
+            checked={downloadLanguage === 'all' || includeImages}
+            disabled={isMediaPrefetching || downloadLanguage === 'all'}
+            onChange={(event) => onIncludeImagesChange(event.target.checked)}
+          />
+          <span>{labels.includeImages}</span>
+        </label>
+      </div>
+
       <div className="offline-media-actions">
         <button
           type="button"
-          disabled={!isOfflineCacheAvailable || isMediaPrefetching || visibleMediaCount === 0}
+          disabled={!isOfflineCacheAvailable || isMediaPrefetching || downloadSourceCount === 0}
           onClick={onDownloadVisible}
         >
           <HardDriveDownload aria-hidden="true" />
-          {isMediaPrefetching ? labels.caching : labels.downloadVisible(visibleMediaCount)}
+          {isMediaPrefetching ? labels.caching : labels.downloadMedia}
         </button>
         <button type="button" disabled={!isOfflineCacheAvailable || isInspecting} onClick={onRefresh}>
           <RefreshCw aria-hidden="true" className={isInspecting ? 'spin-icon' : undefined} />

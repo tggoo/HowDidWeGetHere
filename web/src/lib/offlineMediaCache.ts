@@ -1,6 +1,7 @@
 export const offlineMediaCacheName = 'hwdwgh-media-v2'
 
 export type OfflineMediaKind = 'audio' | 'image' | 'other'
+export type OfflineMediaDownloadLanguage = 'all' | 'cs' | 'en'
 
 export type OfflineMediaCandidate = {
   entryId?: string

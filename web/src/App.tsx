@@ -40,6 +40,7 @@ import {
   inspectOfflineMediaCache,
   prefetchOfflineMediaUrls,
   type OfflineMediaCandidate,
+  type OfflineMediaDownloadLanguage,
   type OfflineMediaSummary,
 } from './lib/offlineMediaCache'
 import { useAppStore, type AdminPage, type MediaCacheProgress } from './store/appStore'
@@ -716,6 +717,7 @@ const uiCopy = {
     imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
     images: 'Images',
     imageSlide: (current: number, total: number) => `Image ${current} of ${total}`,
+    includeImages: 'Download images too',
     nextImage: 'Next image',
     previousImage: 'Previous image',
     closeFilters: 'Close filters',
@@ -723,7 +725,11 @@ const uiCopy = {
     closeTags: 'Close tags',
     dateUnknown: 'Date unknown',
     description: 'Description',
-    downloadCount: (count: number) => `Download ${count}`,
+    downloadAudioLanguage: 'Audio language',
+    downloadLanguageAll: 'All',
+    downloadLanguageCs: 'Czech',
+    downloadLanguageEn: 'English',
+    downloadMedia: 'Download media',
     entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
       `Loaded ${entryCount} published entries and ${mapPointCount} map points${yearRange}${viewport}.`,
     entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
@@ -805,6 +811,7 @@ const uiCopy = {
     imageIndicator: (current: number, total: number) => `Zobrazit obrázek ${current} z ${total}`,
     images: 'Obrázky',
     imageSlide: (current: number, total: number) => `Obrázek ${current} z ${total}`,
+    includeImages: 'Stáhnout i obrázky',
     nextImage: 'Další obrázek',
     previousImage: 'Předchozí obrázek',
     closeFilters: 'Zavřít filtry',
@@ -812,7 +819,11 @@ const uiCopy = {
     closeTags: 'Zavřít tagy',
     dateUnknown: 'Datum není známé',
     description: 'Popis',
-    downloadCount: (count: number) => `Stáhnout ${count}`,
+    downloadAudioLanguage: 'Jazyk audia',
+    downloadLanguageAll: 'Vše',
+    downloadLanguageCs: 'Čeština',
+    downloadLanguageEn: 'Angličtina',
+    downloadMedia: 'Stáhnout média',
     entriesLoaded: (entryCount: number, mapPointCount: number, yearRange: string, viewport: string) =>
       `Načteno ${entryCount} publikovaných záznamů a ${mapPointCount} bodů na mapě${yearRange}${viewport}.`,
     entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
@@ -975,6 +986,8 @@ const contentLanguages = [
   { code: 'cs', label: 'CS' },
   { code: 'es', label: 'ES' },
 ]
+const offlineAudioLanguages = ['en', 'cs'] as const
+type OfflineAudioLanguage = (typeof offlineAudioLanguages)[number]
 
 function createAdminSession(tokenResponse: AccessTokenResponse): AdminAuthSession {
   const expiresInSeconds = Number(tokenResponse.expiresIn)
@@ -1054,6 +1067,97 @@ function addOfflineMediaCandidate(
     languageCode: candidate.languageCode ?? existing?.languageCode,
     url: candidate.url,
   })
+}
+
+function mergeOfflineMediaCandidates(candidates: Iterable<OfflineMediaCandidate>) {
+  const candidatesByUrl = new Map<string, OfflineMediaCandidate>()
+  for (const candidate of candidates) {
+    addOfflineMediaCandidate(candidatesByUrl, candidate)
+  }
+  return [...candidatesByUrl.values()]
+}
+
+function offlineAudioLanguagesForDownload(language: OfflineMediaDownloadLanguage): OfflineAudioLanguage[] {
+  return language === 'all' ? [...offlineAudioLanguages] : [language]
+}
+
+function addEntryListMediaCandidates(
+  candidatesByUrl: Map<string, OfflineMediaCandidate>,
+  entry: EntryListItem,
+  options: {
+    includeAudio: boolean
+    includeImages: boolean
+    languageCode?: string
+  },
+) {
+  if (options.includeImages) {
+    const imageUrl = mediaUrlToAbsolute(entry.primaryImageUrl)
+    if (imageUrl) {
+      addOfflineMediaCandidate(candidatesByUrl, {
+        entryId: entry.id,
+        entryTitle: entry.title,
+        kind: 'image',
+        label: entry.title,
+        url: imageUrl,
+      })
+    }
+  }
+
+  if (options.includeAudio) {
+    const audioUrl = mediaUrlToAbsolute(entry.primaryAudioUrl)
+    if (audioUrl) {
+      addOfflineMediaCandidate(candidatesByUrl, {
+        entryId: entry.id,
+        entryTitle: entry.title,
+        kind: 'audio',
+        label: entry.title,
+        languageCode: options.languageCode,
+        url: audioUrl,
+      })
+    }
+  }
+}
+
+function addEntryDetailMediaCandidates(
+  candidatesByUrl: Map<string, OfflineMediaCandidate>,
+  entryDetail: EntryDetail,
+  options: {
+    includeAudioLanguages: readonly string[]
+    includeImages: boolean
+  },
+) {
+  if (options.includeImages) {
+    for (const image of entryDetail.images) {
+      const imageUrl = mediaUrlToAbsolute(image.url)
+      if (imageUrl) {
+        addOfflineMediaCandidate(candidatesByUrl, {
+          entryId: entryDetail.id,
+          entryTitle: entryDetail.title,
+          kind: 'image',
+          label: image.altText ?? image.caption ?? entryDetail.title,
+          url: imageUrl,
+        })
+      }
+    }
+  }
+
+  for (const audioTrack of entryDetail.audioTracks) {
+    if (!options.includeAudioLanguages.includes(audioTrack.languageCode)) {
+      continue
+    }
+
+    const audioUrl = mediaUrlToAbsolute(audioTrack.url)
+    if (audioUrl) {
+      addOfflineMediaCandidate(candidatesByUrl, {
+        entryId: entryDetail.id,
+        entryTitle: entryDetail.title,
+        kind: 'audio',
+        label: audioTrack.title ?? audioTrack.kind,
+        languageCode: audioTrack.languageCode,
+        url: audioUrl,
+      })
+    }
+  }
 }
 
 function entrySlugFromUrl() {
@@ -1352,6 +1456,10 @@ function App() {
   const [activeAudio, setActiveAudio] = useState<ActiveAudio | null>(null)
   const [audioQueue, setAudioQueue] = useState<ActiveAudio[]>([])
   const [offlineMediaSummary, setOfflineMediaSummary] = useState<OfflineMediaSummary>(emptyOfflineMediaSummary)
+  const [offlineMediaDownloadLanguage, setOfflineMediaDownloadLanguage] =
+    useState<OfflineMediaDownloadLanguage>('all')
+  const [includeOfflineImages, setIncludeOfflineImages] = useState(true)
+  const [downloadedOfflineMediaCandidates, setDownloadedOfflineMediaCandidates] = useState<OfflineMediaCandidate[]>([])
   const [isInspectingOfflineMedia, setInspectingOfflineMedia] = useState(false)
   const [isAudioPlayerMinimized, setAudioPlayerMinimized] = useState(false)
   const [pendingRandomPlayEntryId, setPendingRandomPlayEntryId] = useState<string | null>(null)
@@ -1913,61 +2021,26 @@ function App() {
     const candidatesByUrl = new Map<string, OfflineMediaCandidate>()
 
     for (const entry of entries) {
-      const imageUrl = mediaUrlToAbsolute(entry.primaryImageUrl)
-      if (imageUrl) {
-        addOfflineMediaCandidate(candidatesByUrl, {
-          entryId: entry.id,
-          entryTitle: entry.title,
-          kind: 'image',
-          label: entry.title,
-          url: imageUrl,
-        })
-      }
-
-      const audioUrl = mediaUrlToAbsolute(entry.primaryAudioUrl)
-      if (audioUrl) {
-        addOfflineMediaCandidate(candidatesByUrl, {
-          entryId: entry.id,
-          entryTitle: entry.title,
-          kind: 'audio',
-          label: entry.title,
-          languageCode: language,
-          url: audioUrl,
-        })
-      }
+      addEntryListMediaCandidates(candidatesByUrl, entry, {
+        includeAudio: true,
+        includeImages: true,
+        languageCode: language,
+      })
     }
 
     if (selectedEntryDetail) {
-      for (const image of selectedEntryDetail.images) {
-        const imageUrl = mediaUrlToAbsolute(image.url)
-        if (imageUrl) {
-          addOfflineMediaCandidate(candidatesByUrl, {
-            entryId: selectedEntryDetail.id,
-            entryTitle: selectedEntryDetail.title,
-            kind: 'image',
-            label: image.altText ?? image.caption ?? selectedEntryDetail.title,
-            url: imageUrl,
-          })
-        }
-      }
-
-      for (const audioTrack of selectedEntryDetail.audioTracks) {
-        const audioUrl = mediaUrlToAbsolute(audioTrack.url)
-        if (audioUrl) {
-          addOfflineMediaCandidate(candidatesByUrl, {
-            entryId: selectedEntryDetail.id,
-            entryTitle: selectedEntryDetail.title,
-            kind: 'audio',
-            label: audioTrack.title ?? audioTrack.kind,
-            languageCode: audioTrack.languageCode,
-            url: audioUrl,
-          })
-        }
-      }
+      addEntryDetailMediaCandidates(candidatesByUrl, selectedEntryDetail, {
+        includeAudioLanguages: contentLanguages.map((item) => item.code),
+        includeImages: true,
+      })
     }
 
     return [...candidatesByUrl.values()]
   }, [entries, language, selectedEntryDetail])
+
+  const offlineMediaInspectionCandidates = useMemo(() => {
+    return mergeOfflineMediaCandidates([...knownOfflineMedia, ...downloadedOfflineMediaCandidates])
+  }, [downloadedOfflineMediaCandidates, knownOfflineMedia])
 
   const refreshOfflineMediaSummary = useCallback(async () => {
     if (!isOfflineCacheAvailable) {
@@ -1977,13 +2050,13 @@ function App() {
 
     setInspectingOfflineMedia(true)
     try {
-      setOfflineMediaSummary(await inspectOfflineMediaCache(knownOfflineMedia))
+      setOfflineMediaSummary(await inspectOfflineMediaCache(offlineMediaInspectionCandidates))
     } catch {
       setOfflineMediaSummary(emptyOfflineMediaSummary)
     } finally {
       setInspectingOfflineMedia(false)
     }
-  }, [isOfflineCacheAvailable, knownOfflineMedia])
+  }, [isOfflineCacheAvailable, offlineMediaInspectionCandidates])
 
   useEffect(() => {
     if (adminToken) {
@@ -2117,6 +2190,7 @@ function App() {
 
       if (event.data?.type === 'HDWGH_CACHE_CLEARED') {
         clearRuntimeCacheState()
+        setDownloadedOfflineMediaCandidates([])
         setOfflineMediaSummary(emptyOfflineMediaSummary)
         setMediaCacheStatus(ui.cacheCleared)
       }
@@ -2318,40 +2392,7 @@ function App() {
     [expandedTagGroup, tagGroups],
   )
 
-  const visibleMediaUrls = useMemo(() => {
-    const urls = new Set<string>()
-
-    for (const entry of entries) {
-      const imageUrl = mediaUrlToAbsolute(entry.primaryImageUrl)
-      const audioUrl = mediaUrlToAbsolute(entry.primaryAudioUrl)
-      if (imageUrl) {
-        urls.add(imageUrl)
-      }
-      if (audioUrl) {
-        urls.add(audioUrl)
-      }
-    }
-
-    for (const image of selectedEntryDetail?.images ?? []) {
-      const imageUrl = mediaUrlToAbsolute(image.url)
-      if (imageUrl) {
-        urls.add(imageUrl)
-      }
-    }
-
-    for (const audio of selectedEntryDetail?.audioTracks ?? []) {
-      const audioUrl = mediaUrlToAbsolute(audio.url)
-      if (audioUrl) {
-        urls.add(audioUrl)
-      }
-    }
-
-    if (activeAudio?.url) {
-      urls.add(activeAudio.url)
-    }
-
-    return [...urls]
-  }, [activeAudio?.url, entries, selectedEntryDetail])
+  const offlineMediaDownloadSourceCount = entries.length + (selectedEntryDetail ? 1 : 0)
 
   const selectedEntryImages = useMemo(
     () =>
@@ -2609,22 +2650,116 @@ function App() {
     clearFiltersState()
   }
 
-  async function prefetchVisibleMedia() {
+  async function loadEntriesForOfflineAudioLanguage(audioLanguage: OfflineAudioLanguage) {
+    if (audioLanguage === language) {
+      return entries
+    }
+
+    const result = await cachedQuery(
+      [
+        'offline-media-entries',
+        audioLanguage,
+        debouncedSearchText.trim(),
+        debouncedSelectedTags,
+        debouncedFromYear,
+        debouncedToYear,
+        reloadKey,
+      ],
+      () =>
+        apiClient.GET('/api/entries', {
+          params: {
+            query: {
+              language: audioLanguage,
+              search: debouncedSearchText.trim() || undefined,
+              tag: debouncedSelectedTags,
+              fromYear: numberOrNull(debouncedFromYear),
+              toYear: numberOrNull(debouncedToYear),
+            },
+          },
+        }),
+      { ttlMs: 60_000 },
+    )
+
+    return result.error || !result.data ? [] : (result.data as EntryListItem[])
+  }
+
+  async function buildOfflineMediaDownloadCandidates() {
+    const candidatesByUrl = new Map<string, OfflineMediaCandidate>()
+    const audioLanguages = offlineAudioLanguagesForDownload(offlineMediaDownloadLanguage)
+    const includeImages = offlineMediaDownloadLanguage === 'all' || includeOfflineImages
+
+    if (includeImages) {
+      for (const entry of entries) {
+        addEntryListMediaCandidates(candidatesByUrl, entry, {
+          includeAudio: false,
+          includeImages: true,
+        })
+      }
+
+      if (selectedEntryDetail) {
+        addEntryDetailMediaCandidates(candidatesByUrl, selectedEntryDetail, {
+          includeAudioLanguages: [],
+          includeImages: true,
+        })
+      }
+    }
+
+    const localizedEntryLists = await Promise.all(
+      audioLanguages.map(async (audioLanguage) => ({
+        audioLanguage,
+        entries: await loadEntriesForOfflineAudioLanguage(audioLanguage),
+      })),
+    )
+
+    for (const localizedEntryList of localizedEntryLists) {
+      for (const entry of localizedEntryList.entries) {
+        addEntryListMediaCandidates(candidatesByUrl, entry, {
+          includeAudio: true,
+          includeImages: false,
+          languageCode: localizedEntryList.audioLanguage,
+        })
+      }
+    }
+
+    if (selectedEntryDetail) {
+      addEntryDetailMediaCandidates(candidatesByUrl, selectedEntryDetail, {
+        includeAudioLanguages: audioLanguages,
+        includeImages: false,
+      })
+    }
+
+    return [...candidatesByUrl.values()]
+  }
+
+  async function prefetchOfflineMedia() {
     if (!isOfflineCacheAvailable) {
       setMediaCacheStatus(ui.unsupportedCache)
       return
     }
 
-    if (visibleMediaUrls.length === 0) {
-      setMediaCacheStatus(ui.noMediaUrls)
-      return
-    }
-
     setMediaPrefetching(true)
-    setMediaCacheProgress({ completed: 0, failed: 0, total: visibleMediaUrls.length })
-    setMediaCacheStatus(ui.cacheProgress(0, visibleMediaUrls.length))
+    setMediaCacheProgress(null)
+    setMediaCacheStatus(ui.caching)
     try {
-      const progress = await prefetchOfflineMediaUrls(visibleMediaUrls, (nextProgress) => {
+      const downloadCandidates = await buildOfflineMediaDownloadCandidates()
+      const urls = downloadCandidates.map((candidate) => candidate.url)
+
+      if (urls.length === 0) {
+        setMediaCacheStatus(ui.noMediaUrls)
+        return
+      }
+
+      const nextInspectionCandidates = mergeOfflineMediaCandidates([
+        ...offlineMediaInspectionCandidates,
+        ...downloadCandidates,
+      ])
+      setDownloadedOfflineMediaCandidates((current) =>
+        mergeOfflineMediaCandidates([...current, ...downloadCandidates]),
+      )
+
+      setMediaCacheProgress({ completed: 0, failed: 0, total: urls.length })
+      setMediaCacheStatus(ui.cacheProgress(0, urls.length))
+      const progress = await prefetchOfflineMediaUrls(urls, (nextProgress) => {
         setMediaCacheProgress(nextProgress)
         setMediaCacheStatus(ui.cacheProgress(nextProgress.completed, nextProgress.total))
       })
@@ -2633,7 +2768,7 @@ function App() {
           ? ui.cacheDoneWithFailures(progress.completed, progress.total, progress.failed)
           : ui.cacheDone(progress.completed),
       )
-      void refreshOfflineMediaSummary()
+      setOfflineMediaSummary(await inspectOfflineMediaCache(nextInspectionCandidates))
     } finally {
       setMediaPrefetching(false)
     }
@@ -2648,6 +2783,7 @@ function App() {
     clearRuntimeCacheState()
     setMediaCacheProgress(null)
     setMediaCacheStatus(ui.mediaCacheCleared)
+    setDownloadedOfflineMediaCandidates([])
     setOfflineMediaSummary(emptyOfflineMediaSummary)
   }
 
@@ -4753,8 +4889,13 @@ function App() {
               caching: ui.caching,
               clear: ui.clear,
               close: ui.closeOfflineMedia,
-              downloadVisible: ui.downloadCount,
+              downloadAudioLanguage: ui.downloadAudioLanguage,
+              downloadLanguageAll: ui.downloadLanguageAll,
+              downloadLanguageCs: ui.downloadLanguageCs,
+              downloadLanguageEn: ui.downloadLanguageEn,
+              downloadMedia: ui.downloadMedia,
               empty: ui.offlineMediaEmpty,
+              includeImages: ui.includeImages,
               images: ui.images,
               noLanguages: ui.noAudioLanguages,
               otherFiles: ui.otherFiles,
@@ -4764,13 +4905,17 @@ function App() {
               unknownEntry: ui.unknownEntry,
               unknownSize: ui.unknownSize,
             }}
+            downloadLanguage={offlineMediaDownloadLanguage}
+            includeImages={includeOfflineImages}
             mediaCacheProgress={mediaCacheProgress}
             mediaCacheStatus={mediaCacheStatus}
             summary={offlineMediaSummary}
-            visibleMediaCount={visibleMediaUrls.length}
+            downloadSourceCount={offlineMediaDownloadSourceCount}
             onClear={clearOfflineMedia}
             onClose={() => setOfflineMediaPanelOpen(false)}
-            onDownloadVisible={prefetchVisibleMedia}
+            onDownloadLanguageChange={setOfflineMediaDownloadLanguage}
+            onDownloadVisible={prefetchOfflineMedia}
+            onIncludeImagesChange={setIncludeOfflineImages}
             onRefresh={refreshOfflineMediaSummary}
           />
         )}
