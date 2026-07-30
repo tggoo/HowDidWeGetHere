@@ -121,6 +121,7 @@ public static class PublicEndpoints
         double? south,
         double? east,
         double? north,
+        Guid? selectedEntryId,
         CancellationToken cancellationToken)
     {
         var lang = EndpointHelpers.NormalizeLanguage(language);
@@ -129,28 +130,67 @@ public static class PublicEndpoints
         if (viewport is not null)
         {
             query = query.Where(entry =>
+                (selectedEntryId.HasValue && entry.Id == selectedEntryId.Value) ||
                 entry.Places.Any(entryPlace =>
-                    entryPlace.Place.Geometry != null && entryPlace.Place.Geometry.Intersects(viewport)) ||
-                entry.Routes.Any(route =>
-                    route.Geometry != null && route.Geometry.Intersects(viewport)) ||
-                entry.Routes.Any(route =>
-                    route.Points.Any(point =>
-                        point.Place.Geometry != null && point.Place.Geometry.Intersects(viewport))));
+                    entryPlace.Place.Geometry != null && entryPlace.Place.Geometry.Intersects(viewport)));
         }
 
         var entries = await query
-            .Include(entry => entry.Translations)
-            .Include(entry => entry.Images)
-            .Include(entry => entry.Places)
-                .ThenInclude(entryPlace => entryPlace.Place)
-                    .ThenInclude(place => place.Translations)
-            .Include(entry => entry.Routes)
-                .ThenInclude(route => route.Points)
-                    .ThenInclude(point => point.Place)
-                        .ThenInclude(place => place.Translations)
             .OrderBy(entry => entry.StartYear ?? long.MaxValue)
             .ThenBy(entry => entry.DefaultTitle)
             .Take(500)
+            .Select(entry => new MapEntryProjection(
+                entry.Id,
+                entry.Slug,
+                entry.Kind,
+                entry.IconKey,
+                entry.Translations
+                    .Where(translation => translation.LanguageCode == lang)
+                    .Select(translation => translation.Title)
+                    .FirstOrDefault() ??
+                entry.Translations
+                    .Where(translation => translation.LanguageCode == "en")
+                    .Select(translation => translation.Title)
+                    .FirstOrDefault() ??
+                entry.Translations
+                    .Select(translation => translation.Title)
+                    .FirstOrDefault() ?? entry.DefaultTitle,
+                entry.DateLabel,
+                entry.StartYear,
+                entry.EndYear,
+                entry.Places
+                    .Where(entryPlace => !entry.Routes.Any(route =>
+                        route.Points.Any(routePoint => routePoint.PlaceId == entryPlace.PlaceId)))
+                    .OrderBy(entryPlace => entryPlace.SortOrder)
+                    .Select(entryPlace => new MapPointProjection(
+                        entryPlace.PlaceId,
+                        entryPlace.Place.Slug,
+                        entryPlace.Place.Translations
+                            .Where(translation => translation.LanguageCode == lang)
+                            .Select(translation => translation.Name)
+                            .FirstOrDefault() ??
+                        entryPlace.Place.Translations
+                            .Select(translation => translation.Name)
+                            .FirstOrDefault() ?? entryPlace.Place.DefaultName,
+                        entryPlace.Role,
+                        entryPlace.Place.SpatialConfidence,
+                        entryPlace.Place.Geometry))
+                    .ToList(),
+                entry.Routes
+                    .Where(route => selectedEntryId.HasValue && entry.Id == selectedEntryId.Value)
+                    .OrderBy(route => route.Name)
+                    .Select(route => new MapRouteProjection(
+                        route.Id,
+                        route.Name,
+                        route.RouteType,
+                        route.SpatialConfidence,
+                        route.Geometry,
+                        route.Points
+                            .OrderBy(point => point.SortOrder)
+                            .Select(point => point.Place.Geometry)
+                            .ToList()))
+                    .ToList()))
+            .AsSplitQuery()
             .ToListAsync(cancellationToken);
 
         var response = entries
@@ -159,43 +199,43 @@ public static class PublicEndpoints
                 entry.Slug,
                 entry.Kind.ToString(),
                 entry.IconKey,
-                LocalizedEntryTitle(entry, lang),
+                entry.Title,
                 entry.DateLabel,
                 entry.StartYear,
                 entry.EndYear,
-                entry.Images
-                    .OrderByDescending(image => image.IsPrimary)
-                    .ThenBy(image => image.SortOrder)
-                    .Select(image => image.PublicUrl ?? image.StorageKey)
-                    .FirstOrDefault(),
-                entry.Places
-                    .Where(entryPlace => entryPlace.Place.Geometry is Point)
-                    .OrderBy(entryPlace => entryPlace.SortOrder)
-                    .Select(entryPlace => new MapPointResponse(
-                        entryPlace.PlaceId,
-                        entryPlace.Place.Slug,
-                        LocalizedPlaceName(entryPlace.Place, lang),
-                        entryPlace.Role.ToString(),
-                        entryPlace.Place.SpatialConfidence.ToString(),
-                        Longitude(entryPlace.Place.Geometry)!.Value,
-                        Latitude(entryPlace.Place.Geometry)!.Value))
+                null,
+                entry.Points
+                    .Where(point => point.Geometry is Point)
+                    .Select(point => new MapPointResponse(
+                        point.PlaceId,
+                        point.PlaceSlug,
+                        point.PlaceName,
+                        point.Role.ToString(),
+                        point.SpatialConfidence.ToString(),
+                        Longitude(point.Geometry)!.Value,
+                        Latitude(point.Geometry)!.Value))
                     .ToList(),
                 entry.Routes
-                    .OrderBy(route => route.Name)
-                    .Select(route => new MapRouteResponse(
-                        route.Id,
-                        route.Name,
-                        route.RouteType.ToString(),
-                        route.SpatialConfidence.ToString(),
-                        Coordinates(route.Geometry).Count > 0
-                            ? Coordinates(route.Geometry)
-                            : route.Points
-                                .Where(point => point.Place.Geometry is Point)
-                                .OrderBy(point => point.SortOrder)
-                                .Select(point => new GeoCoordinateResponse(
-                                    Longitude(point.Place.Geometry)!.Value,
-                                    Latitude(point.Place.Geometry)!.Value))
-                                .ToList()))
+                    .Select(route =>
+                    {
+                        var geometry = Coordinates(route.Geometry);
+                        if (geometry.Count == 0)
+                        {
+                            geometry = route.PointGeometries
+                                .Where(geometry => geometry is Point)
+                                .Select(geometry => new GeoCoordinateResponse(
+                                    Longitude(geometry)!.Value,
+                                    Latitude(geometry)!.Value))
+                                .ToList();
+                        }
+
+                        return new MapRouteResponse(
+                            route.Id,
+                            route.Name,
+                            route.RouteType.ToString(),
+                            route.SpatialConfidence.ToString(),
+                            geometry);
+                    })
                     .Where(route => route.Geometry.Count > 0)
                     .ToList()))
             .Where(entry => entry.Points.Count > 0 || entry.Routes.Count > 0)
@@ -404,9 +444,6 @@ public static class PublicEndpoints
         var lang = EndpointHelpers.NormalizeLanguage(language);
         var query = dbContext.Tags
             .AsNoTracking()
-            .Include(tag => tag.Translations)
-            .Include(tag => tag.Entries)
-                .ThenInclude(entryTag => entryTag.Entry)
             .Where(tag => tag.Entries.Any(entryTag => entryTag.Entry.Status == ContentStatus.Published));
 
         if (!string.IsNullOrWhiteSpace(group))
@@ -414,18 +451,23 @@ public static class PublicEndpoints
             query = query.Where(tag => tag.TagGroup == group);
         }
 
-        var tags = await query.ToListAsync(cancellationToken);
-        var response = tags
+        var response = await query
             .Select(tag => new TagListItemResponse(
                 tag.Id,
                 tag.Slug,
                 tag.TagGroup,
-                LocalizedTagName(tag, lang),
+                tag.Translations
+                    .Where(translation => translation.LanguageCode == lang)
+                    .Select(translation => translation.Name)
+                    .FirstOrDefault() ??
+                tag.Translations
+                    .Select(translation => translation.Name)
+                    .FirstOrDefault() ?? tag.Slug,
                 tag.ParentTagId,
                 tag.Entries.Count(entryTag => entryTag.Entry.Status == ContentStatus.Published)))
             .OrderBy(tag => tag.TagGroup)
             .ThenBy(tag => tag.Name)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         return Results.Ok(response);
     }
@@ -523,6 +565,34 @@ public static class PublicEndpoints
 
         return Results.Ok(response);
     }
+
+    private sealed record MapEntryProjection(
+        Guid Id,
+        string Slug,
+        EntryKind Kind,
+        string? IconKey,
+        string Title,
+        string? DateLabel,
+        long? StartYear,
+        long? EndYear,
+        IReadOnlyList<MapPointProjection> Points,
+        IReadOnlyList<MapRouteProjection> Routes);
+
+    private sealed record MapPointProjection(
+        Guid PlaceId,
+        string PlaceSlug,
+        string PlaceName,
+        EntryPlaceRole Role,
+        SpatialConfidence SpatialConfidence,
+        Geometry? Geometry);
+
+    private sealed record MapRouteProjection(
+        Guid Id,
+        string Name,
+        RouteType RouteType,
+        SpatialConfidence SpatialConfidence,
+        Geometry? Geometry,
+        IReadOnlyList<Geometry?> PointGeometries);
 
     private static (long? StartYear, long? EndYear) ResolveKnownPeriodRange(string slug) =>
         slug.ToLowerInvariant() switch

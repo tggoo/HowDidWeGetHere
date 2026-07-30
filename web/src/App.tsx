@@ -1868,12 +1868,11 @@ function App() {
   useEffect(() => {
     let isActive = true
 
-    async function loadMapData() {
-      setLoadingMap(true)
+    async function loadEntryListData() {
       try {
         const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
         const shouldFindRequestedEntry = requestedEntrySlug !== null
-        const [entriesResult, periodsResult, tagsResult, mapResult] = await Promise.all([
+        const [entriesResult, periodsResult, tagsResult] = await Promise.all([
           apiClient.GET('/api/entries', {
             params: {
               query: {
@@ -1899,31 +1898,13 @@ function App() {
               },
             },
           }),
-          apiClient.GET('/api/map/entries', {
-            params: {
-              query: {
-                language,
-                search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
-                tag: shouldFindRequestedEntry ? [] : selectedTags,
-                fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
-                toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
-                west: mapViewport?.west,
-                south: mapViewport?.south,
-                east: mapViewport?.east,
-                north: mapViewport?.north,
-              },
-            },
-          }),
         ])
 
         if (!isActive) {
           return
         }
 
-        const mapPayload = (mapResult.data as MapEntry[] | undefined) ?? []
-        const mapPointCount = mapPayload.reduce((count, entry) => count + entry.points.length, 0)
-
-        if (entriesResult.error || periodsResult.error || tagsResult.error || mapResult.error) {
+        if (entriesResult.error || periodsResult.error || tagsResult.error) {
           setMapEmptyResult(false)
           setMapStatus(ui.queryFailed)
           return
@@ -1949,13 +1930,6 @@ function App() {
             setDetailPaneCollapsed(false)
           }
           setMapEmptyResult(false)
-          const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
-          const viewportLabel = mapViewport ? ui.viewportSuffix : ''
-          setMapStatus(
-            mapPointCount > 0
-              ? ui.entriesLoaded(loadedEntries.length, mapPointCount, yearRangeLabel, viewportLabel)
-              : ui.entriesLoadedNoPoints(loadedEntries.length, yearRangeLabel, viewportLabel),
-          )
         } else {
           setEntries([])
           selectedEntryIdRef.current = ''
@@ -1972,8 +1946,76 @@ function App() {
         if (tagsResult.data && tagsResult.data.length > 0) {
           setTags(tagsResult.data as TagListItem[])
         }
+      } catch {
+        if (isActive) {
+          setMapEmptyResult(false)
+          setMapStatus(ui.unreachableApi)
+        }
+      }
+    }
 
+    void loadEntryListData()
+
+    return () => {
+      isActive = false
+    }
+  }, [fromYear, language, searchText, selectedTags, reloadKey, setEntryDetailOpen, setSelectedEntryId, toYear, ui])
+
+  useEffect(() => {
+    let isActive = true
+
+    async function loadMapData() {
+      setLoadingMap(true)
+      try {
+        const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
+        const shouldFindRequestedEntry = requestedEntrySlug !== null
+        const mapResult = await apiClient.GET('/api/map/entries', {
+          params: {
+            query: {
+              language,
+              search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
+              tag: shouldFindRequestedEntry ? [] : selectedTags,
+              fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
+              toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
+              west: mapViewport?.west,
+              south: mapViewport?.south,
+              east: mapViewport?.east,
+              north: mapViewport?.north,
+              selectedEntryId: selectedEntryId || undefined,
+            },
+          },
+        })
+
+        if (!isActive) {
+          return
+        }
+
+        if (mapResult.error) {
+          setMapEmptyResult(false)
+          setMapStatus(ui.queryFailed)
+          return
+        }
+
+        const mapPayload = (mapResult.data as MapEntry[] | undefined) ?? []
+        const mapPointCount = mapPayload.reduce(
+          (count, entry) => count + entry.points.length + entry.routes.reduce((sum, route) => sum + route.geometry.length, 0),
+          0,
+        )
+        const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
+        const viewportLabel = mapViewport ? ui.viewportSuffix : ''
         setMapEntries(mapPayload)
+        if (mapPayload.length === 0) {
+          setMapEmptyResult(true)
+          setMapStatus(ui.noResults)
+          return
+        }
+
+        setMapEmptyResult(false)
+        setMapStatus(
+          mapPointCount > 0
+            ? ui.entriesLoaded(mapPayload.length, mapPointCount, yearRangeLabel, viewportLabel)
+            : ui.entriesLoadedNoPoints(mapPayload.length, yearRangeLabel, viewportLabel),
+        )
       } catch {
         if (isActive) {
           setMapEmptyResult(false)
@@ -1991,7 +2033,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, mapViewport, searchText, selectedTags, reloadKey, setEntryDetailOpen, setSelectedEntryId, toYear, ui])
+  }, [fromYear, language, mapViewport, searchText, selectedEntryId, selectedTags, reloadKey, toYear, ui])
 
   useEffect(() => {
     let isActive = true

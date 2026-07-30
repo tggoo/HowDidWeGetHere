@@ -598,6 +598,7 @@ export interface paths {
                     south?: number | string;
                     east?: number | string;
                     north?: number | string;
+                    selectedEntryId?: string;
                 };
                 header?: never;
                 path?: never;

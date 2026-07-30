@@ -203,6 +203,8 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         {
             entity.ToTable("places");
             entity.HasIndex(place => place.Slug).IsUnique();
+            entity.HasIndex(place => place.Geometry)
+                .HasMethod("gist");
             entity.Property(place => place.Slug).HasMaxLength(180);
             entity.Property(place => place.DefaultName).HasMaxLength(260);
             entity.Property(place => place.Geometry).HasColumnType("geometry");
@@ -230,6 +232,8 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         builder.Entity<EntryRoute>(entity =>
         {
             entity.ToTable("entry_routes");
+            entity.HasIndex(route => route.Geometry)
+                .HasMethod("gist");
             entity.Property(route => route.Name).HasMaxLength(260);
             entity.Property(route => route.Geometry).HasColumnType("geometry");
         });

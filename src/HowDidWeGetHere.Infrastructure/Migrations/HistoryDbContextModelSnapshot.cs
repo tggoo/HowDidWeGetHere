@@ -61,6 +61,9 @@ namespace HowDidWeGetHere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Geometry")
+                        .HasMethod("gist");
+
                     b.HasIndex("Slug")
                         .IsUnique();
 
@@ -864,6 +867,9 @@ namespace HowDidWeGetHere.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EntryId");
+
+                    b.HasIndex("Geometry")
+                        .HasMethod("gist");
 
                     b.ToTable("entry_routes", (string)null);
                 });
