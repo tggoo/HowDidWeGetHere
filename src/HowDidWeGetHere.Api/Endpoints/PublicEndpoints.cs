@@ -451,7 +451,7 @@ public static class PublicEndpoints
             query = query.Where(tag => tag.TagGroup == group);
         }
 
-        var response = await query
+        var response = (await query
             .Select(tag => new TagListItemResponse(
                 tag.Id,
                 tag.Slug,
@@ -465,9 +465,10 @@ public static class PublicEndpoints
                     .FirstOrDefault() ?? tag.Slug,
                 tag.ParentTagId,
                 tag.Entries.Count(entryTag => entryTag.Entry.Status == ContentStatus.Published)))
+            .ToListAsync(cancellationToken))
             .OrderBy(tag => tag.TagGroup)
             .ThenBy(tag => tag.Name)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return Results.Ok(response);
     }
