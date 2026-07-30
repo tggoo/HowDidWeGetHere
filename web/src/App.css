@@ -2087,6 +2087,28 @@
   margin-top: 10px;
 }
 
+.admin-entry-virtual-list {
+  max-height: var(--virtualized-list-height);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.virtualized-list-spacer {
+  position: relative;
+}
+
+.virtualized-list-window {
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.virtualized-list-item {
+  display: grid;
+  padding-bottom: 8px;
+}
+
 .admin-entry {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2353,6 +2375,27 @@
   font-size: 13px;
   min-width: 460px;
   width: 100%;
+}
+
+.admin-table.virtualized {
+  table-layout: fixed;
+}
+
+.admin-table.virtualized thead,
+.admin-table.virtualized .virtualized-table-body tr {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.virtualized-table-body {
+  display: block;
+  overflow-y: auto;
+}
+
+.virtualized-table-spacer-row td {
+  border-bottom: 0;
+  padding: 0;
 }
 
 .admin-table th,

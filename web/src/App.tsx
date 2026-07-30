@@ -7,6 +7,8 @@ import {
   PlayCircle,
 } from 'lucide-react'
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -21,15 +23,21 @@ import { apiBaseUrl, apiClient } from './api/client'
 import type { components } from './api/schema'
 import { HistoryMap, type MapEntry, type MapViewport } from './components/HistoryMap'
 import { ShellControls } from './components/molecules/ShellControls'
-import { AdminPanel } from './components/organisms/AdminPanel'
+import type { AdminPanelProps } from './components/organisms/AdminPanel'
 import { EntryDetailPanel } from './components/organisms/EntryDetailPanel'
 import { FilterPanel } from './components/organisms/FilterPanel'
 import { ImageLightbox } from './components/organisms/ImageLightbox'
 import { PersistentAudioPlayer } from './components/organisms/PersistentAudioPlayer'
 import { TagModal } from './components/organisms/TagModal'
 import { TimelineRuler } from './components/organisms/TimelineRuler'
+import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistoryQuery'
+import { cachedQuery } from './lib/queryCache'
 import { useAppStore, type AdminPage, type MediaCacheProgress } from './store/appStore'
 import './App.css'
+
+const AdminPanel = lazy(() =>
+  import('./components/organisms/AdminPanel').then((module) => ({ default: module.AdminPanel })),
+)
 
 type AdminEntryUpsertRequest = components['schemas']['AdminEntryUpsertRequest']
 type AdminEntryImageRequest = components['schemas']['AdminEntryImageRequest']
@@ -1266,6 +1274,18 @@ function App() {
   const toggleTagState = useAppStore((state) => state.toggleTag)
   const uiLanguage = normalizeUiLanguage(language)
   const ui = uiCopy[uiLanguage]
+  const debouncedQuery = useDebouncedHistoryQuery({
+    fromYear,
+    mapViewport,
+    searchText,
+    selectedTags,
+    toYear,
+  })
+  const debouncedFromYear = debouncedQuery.fromYear
+  const debouncedMapViewport = debouncedQuery.mapViewport
+  const debouncedSearchText = debouncedQuery.searchText
+  const debouncedSelectedTags = debouncedQuery.selectedTags
+  const debouncedToYear = debouncedQuery.toYear
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
   const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
@@ -1390,6 +1410,38 @@ function App() {
   const selectedEntryIdRef = useRef(selectedEntryId)
   const initialEntrySlugRef = useRef(entrySlugFromUrl())
   const hasAppliedInitialEntrySlugRef = useRef(false)
+
+  const authHeaders = useCallback(
+    () => (adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined),
+    [adminToken],
+  )
+
+  const loadContentPackageImportHistory = useCallback(async () => {
+    if (!adminToken) {
+      setContentPackageImportHistory([])
+      return
+    }
+
+    setLoadingContentPackageImportHistory(true)
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package/history?take=20`, {
+        headers: authHeaders(),
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        setContentPackageImportHistory([])
+        return
+      }
+
+      const result = (await response.json()) as ContentPackageImportHistoryResult
+      setContentPackageImportHistory(result.items)
+    } catch {
+      setContentPackageImportHistory([])
+    } finally {
+      setLoadingContentPackageImportHistory(false)
+    }
+  }, [adminToken, authHeaders])
 
   useEffect(() => {
     selectedEntryIdRef.current = selectedEntryId
@@ -1523,31 +1575,53 @@ function App() {
         const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
         const shouldFindRequestedEntry = requestedEntrySlug !== null
         const [entriesResult, periodsResult, tagsResult] = await Promise.all([
-          apiClient.GET('/api/entries', {
-            params: {
-              query: {
-                language,
-                search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
-                tag: shouldFindRequestedEntry ? [] : selectedTags,
-                fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
-                toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
-              },
-            },
-          }),
-          apiClient.GET('/api/time-periods', {
-            params: {
-              query: {
-                language,
-              },
-            },
-          }),
-          apiClient.GET('/api/tags', {
-            params: {
-              query: {
-                language,
-              },
-            },
-          }),
+          cachedQuery(
+            [
+              'entries',
+              language,
+              shouldFindRequestedEntry ? requestedEntrySlug : debouncedSearchText.trim(),
+              shouldFindRequestedEntry ? [] : debouncedSelectedTags,
+              shouldFindRequestedEntry ? null : debouncedFromYear,
+              shouldFindRequestedEntry ? null : debouncedToYear,
+              reloadKey,
+            ],
+            () =>
+              apiClient.GET('/api/entries', {
+                params: {
+                  query: {
+                    language,
+                    search: shouldFindRequestedEntry ? undefined : debouncedSearchText.trim() || undefined,
+                    tag: shouldFindRequestedEntry ? [] : debouncedSelectedTags,
+                    fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(debouncedFromYear),
+                    toYear: shouldFindRequestedEntry ? undefined : numberOrNull(debouncedToYear),
+                  },
+                },
+              }),
+          ),
+          cachedQuery(
+            ['time-periods', language, reloadKey],
+            () =>
+              apiClient.GET('/api/time-periods', {
+                params: {
+                  query: {
+                    language,
+                  },
+                },
+              }),
+            { ttlMs: 120_000 },
+          ),
+          cachedQuery(
+            ['tags', language, reloadKey],
+            () =>
+              apiClient.GET('/api/tags', {
+                params: {
+                  query: {
+                    language,
+                  },
+                },
+              }),
+            { ttlMs: 120_000 },
+          ),
         ])
 
         if (!isActive) {
@@ -1609,7 +1683,17 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, searchText, selectedTags, reloadKey, setEntryDetailOpen, setSelectedEntryId, toYear, ui])
+  }, [
+    debouncedFromYear,
+    debouncedSearchText,
+    debouncedSelectedTags,
+    debouncedToYear,
+    language,
+    reloadKey,
+    setEntryDetailOpen,
+    setSelectedEntryId,
+    ui,
+  ])
 
   useEffect(() => {
     let isActive = true
@@ -1619,22 +1703,37 @@ function App() {
       try {
         const requestedEntrySlug = hasAppliedInitialEntrySlugRef.current ? null : initialEntrySlugRef.current
         const shouldFindRequestedEntry = requestedEntrySlug !== null
-        const mapResult = await apiClient.GET('/api/map/entries', {
-          params: {
-            query: {
-              language,
-              search: shouldFindRequestedEntry ? undefined : searchText.trim() || undefined,
-              tag: shouldFindRequestedEntry ? [] : selectedTags,
-              fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(fromYear),
-              toYear: shouldFindRequestedEntry ? undefined : numberOrNull(toYear),
-              west: mapViewport?.west,
-              south: mapViewport?.south,
-              east: mapViewport?.east,
-              north: mapViewport?.north,
-              selectedEntryId: selectedEntryId || undefined,
-            },
-          },
-        })
+        const mapResult = await cachedQuery(
+          [
+            'map-entries',
+            language,
+            shouldFindRequestedEntry ? requestedEntrySlug : debouncedSearchText.trim(),
+            shouldFindRequestedEntry ? [] : debouncedSelectedTags,
+            shouldFindRequestedEntry ? null : debouncedFromYear,
+            shouldFindRequestedEntry ? null : debouncedToYear,
+            debouncedMapViewport,
+            selectedEntryId,
+            reloadKey,
+          ],
+          () =>
+            apiClient.GET('/api/map/entries', {
+              params: {
+                query: {
+                  language,
+                  search: shouldFindRequestedEntry ? undefined : debouncedSearchText.trim() || undefined,
+                  tag: shouldFindRequestedEntry ? [] : debouncedSelectedTags,
+                  fromYear: shouldFindRequestedEntry ? undefined : numberOrNull(debouncedFromYear),
+                  toYear: shouldFindRequestedEntry ? undefined : numberOrNull(debouncedToYear),
+                  west: debouncedMapViewport?.west,
+                  south: debouncedMapViewport?.south,
+                  east: debouncedMapViewport?.east,
+                  north: debouncedMapViewport?.north,
+                  selectedEntryId: selectedEntryId || undefined,
+                },
+              },
+            }),
+          { ttlMs: 20_000 },
+        )
 
         if (!isActive) {
           return
@@ -1651,8 +1750,8 @@ function App() {
           (count, entry) => count + entry.points.length + entry.routes.reduce((sum, route) => sum + route.geometry.length, 0),
           0,
         )
-        const yearRangeLabel = fromYear || toYear ? ui.yearRangeSuffix(fromYear, toYear) : ''
-        const viewportLabel = mapViewport ? ui.viewportSuffix : ''
+        const yearRangeLabel = debouncedFromYear || debouncedToYear ? ui.yearRangeSuffix(debouncedFromYear, debouncedToYear) : ''
+        const viewportLabel = debouncedMapViewport ? ui.viewportSuffix : ''
         setMapEntries(mapPayload)
         if (mapPayload.length === 0) {
           setMapEmptyResult(true)
@@ -1683,7 +1782,17 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [fromYear, language, mapViewport, searchText, selectedEntryId, selectedTags, reloadKey, toYear, ui])
+  }, [
+    debouncedFromYear,
+    debouncedMapViewport,
+    debouncedSearchText,
+    debouncedSelectedTags,
+    debouncedToYear,
+    language,
+    selectedEntryId,
+    reloadKey,
+    ui,
+  ])
 
   useEffect(() => {
     let isActive = true
@@ -1702,16 +1811,21 @@ function App() {
       setLoadingSelectedEntryDetail(true)
 
       try {
-        const result = await apiClient.GET('/api/entries/{slug}', {
-          params: {
-            path: {
-              slug: selectedEntry.slug,
-            },
-            query: {
-              language,
-            },
-          },
-        })
+        const result = await cachedQuery(
+          ['entry-detail', selectedEntry.slug, language, reloadKey],
+          () =>
+            apiClient.GET('/api/entries/{slug}', {
+              params: {
+                path: {
+                  slug: selectedEntry.slug,
+                },
+                query: {
+                  language,
+                },
+              },
+            }),
+          { ttlMs: 60_000 },
+        )
 
         if (!isActive) {
           return
@@ -1734,7 +1848,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [entries, language, selectedEntryId])
+  }, [entries, language, selectedEntryId, reloadKey])
 
   useEffect(() => {
     if (adminToken) {
@@ -1746,16 +1860,21 @@ function App() {
 
       async function loadSignedInAdminEntries() {
         setLoadingAdminEntries(true)
-        const result = await apiClient.GET('/api/admin/entries', {
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-          params: {
-            query: {
-              language,
-            },
-          },
-        })
+        const result = await cachedQuery(
+          ['admin-entries', language, adminToken, reloadKey],
+          () =>
+            apiClient.GET('/api/admin/entries', {
+              headers: {
+                Authorization: `Bearer ${adminToken}`,
+              },
+              params: {
+                query: {
+                  language,
+                },
+              },
+            }),
+          { ttlMs: 15_000 },
+        )
 
         if (!isActive) {
           return
@@ -1820,7 +1939,7 @@ function App() {
     }
 
     void loadContentPackageImportHistory()
-  }, [adminToken, isAdminOpen, adminPage, reloadKey])
+  }, [adminToken, isAdminOpen, adminPage, reloadKey, loadContentPackageImportHistory])
 
   useEffect(() => {
     persistAdminSession(adminSession)
@@ -1971,14 +2090,14 @@ function App() {
 
   const mapAutoFitKey = useMemo(
     () => JSON.stringify({
-      fromYear,
+      fromYear: debouncedFromYear,
       language,
       reloadKey,
-      searchText,
-      selectedTags,
-      toYear,
+      searchText: debouncedSearchText,
+      selectedTags: debouncedSelectedTags,
+      toYear: debouncedToYear,
     }),
-    [fromYear, language, reloadKey, searchText, selectedTags, toYear],
+    [debouncedFromYear, debouncedSearchText, debouncedSelectedTags, debouncedToYear, language, reloadKey],
   )
 
   const relatedEntryGroups = useMemo(() => {
@@ -2392,37 +2511,6 @@ function App() {
       }, 1600)
     } catch {
       setAdminStatus('Entry slug could not be copied.')
-    }
-  }
-
-  function authHeaders() {
-    return adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined
-  }
-
-  async function loadContentPackageImportHistory() {
-    if (!adminToken) {
-      setContentPackageImportHistory([])
-      return
-    }
-
-    setLoadingContentPackageImportHistory(true)
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/admin/imports/content-package/history?take=20`, {
-        headers: authHeaders(),
-        credentials: 'include',
-      })
-
-      if (!response.ok) {
-        setContentPackageImportHistory([])
-        return
-      }
-
-      const result = (await response.json()) as ContentPackageImportHistoryResult
-      setContentPackageImportHistory(result.items)
-    } catch {
-      setContentPackageImportHistory([])
-    } finally {
-      setLoadingContentPackageImportHistory(false)
     }
   }
 
@@ -4226,7 +4314,7 @@ function App() {
     uploadBulkAudioZip,
     uploadPrimaryAudioFile,
     uploadPrimaryImageFile,
-  }
+  } satisfies AdminPanelProps
 
   return (
     <main className="app-shell" data-theme={theme}>
@@ -4486,7 +4574,22 @@ function App() {
           />
         )}
 
-        {isAdminOpen && <AdminPanel {...adminPanelProps} />}
+        {isAdminOpen && (
+          <Suspense
+            fallback={(
+              <aside className="admin-panel" aria-label="Admin tools">
+                <div className="panel-header">
+                  <span>Admin</span>
+                </div>
+                <div className="admin-status">
+                  <span>Loading admin tools...</span>
+                </div>
+              </aside>
+            )}
+          >
+            <AdminPanel {...adminPanelProps} />
+          </Suspense>
+        )}
       </section>
     </main>
   )

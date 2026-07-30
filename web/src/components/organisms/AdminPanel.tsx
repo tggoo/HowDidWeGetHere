@@ -1,10 +1,7 @@
 import { Icon } from '@iconify/react'
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import {
-  AlertCircle,
-  CheckCircle2,
-  GitCommitHorizontal,
   Image as ImageIcon,
-  Lock,
   MapPin,
   Music,
   Plus,
@@ -15,11 +12,14 @@ import {
   Tags,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react'
 import type { components } from '../../api/schema'
 import type { AdminPage } from '../../store/appStore'
+import { VirtualizedTableBody } from '../molecules/VirtualizedTableBody'
 import { MarkdownEditor } from '../molecules/MarkdownEditor'
+import { AdminEntryPicker } from './admin/AdminEntryPicker'
+import { AdminImportPreviewTable } from './admin/AdminImportPreviewTable'
+import { AdminPanelChrome } from './admin/AdminPanelChrome'
 
 type ContentStatus = components['schemas']['ContentStatus']
 type EntryKind = components['schemas']['EntryKind']
@@ -33,7 +33,478 @@ type SpatialConfidence = components['schemas']['SpatialConfidence']
 type TimePeriodType = components['schemas']['TimePeriodType']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
 
-type AdminPanelProps = Record<string, any>
+type Numberish = number | string
+type AsyncAction = () => void | Promise<void>
+type FormAction = (event: FormEvent<HTMLFormElement>) => void | Promise<void>
+
+type AdminPageOption = {
+  id: AdminPage
+  label: string
+}
+
+type DeploymentInfo = {
+  commitUrl?: string | null
+  deployedAtUtc?: string | null
+  shortCommitSha?: string | null
+}
+
+type ContentLanguage = {
+  code: string
+  label: string
+}
+
+type UploadProgressState = {
+  phase: 'uploading' | 'processing' | 'complete' | 'error'
+  loadedBytes: number
+  totalBytes: number | null
+  percent: number | null
+  message: string
+}
+
+type ContentPackageBatchItem = {
+  name: string
+  status: 'pending' | 'uploading' | 'processing' | 'done' | 'error' | 'skipped'
+  message?: string
+}
+
+type ContentPackageImportHistoryItem = {
+  importBatchId: string
+  fileName: string
+  packageSlug?: string | null
+  title?: string | null
+  status: string
+  completedAt?: string | null
+}
+
+type ContentPackageImportPreviewRow = {
+  slug: string
+  title: string
+  sourceSheet?: string | null
+  sourceRow?: Numberish | null
+  willUpdateExistingEntry: boolean
+  existingEntryId?: string | null
+  tags: Numberish
+  timePeriods: Numberish
+  places: Numberish
+  sources: Numberish
+  audioFiles: Numberish
+  imageFiles: Numberish
+  warnings: string[]
+}
+
+type ContentPackageImportPreviewResult = {
+  packageSlug: string
+  title: string
+  entriesRead: Numberish
+  willClearExistingData: boolean
+  existingEntriesToDelete: Numberish
+  entriesToCreate: Numberish
+  entriesToUpdate: Numberish
+  tagsToAttach: Numberish
+  timePeriodsToAttach: Numberish
+  placesToAttach: Numberish
+  sourcesToAttach: Numberish
+  audioFilesToAttach: Numberish
+  imageFilesToAttach: Numberish
+  rows: ContentPackageImportPreviewRow[]
+  warnings: string[]
+}
+
+type ContentPackageImportResult = {
+  importBatchId: string
+  fileName: string
+  packageSlug: string
+  title: string
+  entriesRead: Numberish
+  entriesDeletedBeforeImport: Numberish
+  entriesCreated: Numberish
+  entriesUpdated: Numberish
+  clearedExistingData: boolean
+  tagsAttached: Numberish
+  timePeriodsAttached: Numberish
+  placesAttached: Numberish
+  sourcesAttached: Numberish
+  audioTracksCreated: Numberish
+  audioTracksUpdated: Numberish
+  imagesCreated: Numberish
+  imagesUpdated: Numberish
+  warnings: string[]
+}
+
+type BulkAudioUploadPreviewResult = {
+  filesRead: Numberish
+  filesSupported: Numberish
+  entriesMatched: Numberish
+  entriesMissing: Numberish
+  rows: Array<{
+    fileName: string
+    entrySlug: string
+    languageCode: string
+    isSupportedAudio: boolean
+    entryExists: boolean
+    warning?: string | null
+  }>
+  warnings: string[]
+}
+
+type BulkAudioUploadResult = {
+  filesRead: Numberish
+  tracksCreated: Numberish
+  tracksUpdated: Numberish
+  entriesMatched: Numberish
+  entriesMissing: Numberish
+  warnings: string[]
+}
+
+type TimePeriodListItem = {
+  id: string
+  slug: string
+  parentPeriodId?: string | null
+  periodType: string
+  name: string
+  shortDescription?: string | null
+  startYear?: Numberish | null
+  endYear?: Numberish | null
+}
+
+type TagSummary = {
+  id: string
+  slug: string
+  tagGroup: string
+  name: string
+  parentTagId?: string | null
+}
+
+type TagListItem = TagSummary & {
+  entryCount: Numberish
+}
+
+type AdminEntryListItem = {
+  id: string
+  slug: string
+  status: string
+  kind: string
+  iconKey?: string | null
+  title: string
+}
+
+type AdminEntryTranslation = {
+  languageCode: string
+  title: string
+  hasSummary: boolean
+  hasDescription: boolean
+  hasWhyItMatters: boolean
+  hasDatingNote: boolean
+}
+
+type EntryPlaceDetail = {
+  placeId: string
+  slug: string
+  name: string
+  role: string
+  sortOrder: Numberish
+  note?: string | null
+  placeType: string
+  spatialConfidence: string
+  longitude?: number | null
+  latitude?: number | null
+}
+
+type EntryRouteDetail = {
+  id: string
+  name: string
+  routeType: string
+  spatialConfidence: string
+  sourceNote?: string | null
+  geometry: Array<{ longitude: number; latitude: number }>
+  points: Array<{
+    placeId: string
+    slug: string
+    name: string
+    role: string
+    sortOrder: Numberish
+    dateLabel?: string | null
+    note?: string | null
+    longitude?: number | null
+    latitude?: number | null
+  }>
+}
+
+type AdminEntryRelationshipDetail = {
+  id: string
+  targetEntryId: string
+  targetEntrySlug: string
+  targetEntryTitle: string
+  targetEntryKind: string
+  relationshipType: string
+  confidence?: Numberish | null
+  note?: string | null
+}
+
+type EntrySourceDetail = {
+  sourceId: string
+  url: string
+  title?: string | null
+  publisher?: string | null
+  languageCode?: string | null
+  supportsField: string
+  note?: string | null
+}
+
+type EntryImageDetail = {
+  id: string
+  url: string
+  kind: string
+  isPrimary: boolean
+  sortOrder: Numberish
+  altText?: string | null
+  caption?: string | null
+}
+
+type EntryAudioTrackDetail = {
+  id: string
+  url: string
+  kind: string
+  languageCode: string
+  isPrimary: boolean
+  sortOrder: Numberish
+  title?: string | null
+}
+
+type EntryFormState = {
+  id: string | null
+  title: string
+  slug: string
+  languageCode: string
+  summary: string
+  description: string
+  whyItMatters: string
+  datingNote: string
+  kind: EntryKind
+  iconKey: string
+  status: ContentStatus
+  realityStatus: RealityStatus
+  dateLabel: string
+  startYear: string
+  endYear: string
+  timePrecision: TimePrecision | ''
+  timeConfidence: string
+  primaryTimePeriodId: string
+}
+
+type TimePeriodFormState = {
+  id: string | null
+  name: string
+  slug: string
+  languageCode: string
+  shortDescription: string
+  longDescription: string
+  periodType: TimePeriodType
+  parentPeriodId: string
+  startYear: string
+  endYear: string
+  startPrecision: TimePrecision
+  endPrecision: TimePrecision
+  sortOrder: string
+}
+
+type MediaFormState = {
+  imageId: string | null
+  imageUrl: string
+  imageAlt: string
+  imageFile: File | null
+  audioTrackId: string | null
+  audioUrl: string
+  audioTitle: string
+  audioFile: File | null
+}
+
+type PlaceFormState = {
+  name: string
+  slug: string
+  role: EntryPlaceRole
+  placeType: PlaceType
+  spatialConfidence: SpatialConfidence
+  longitude: string
+  latitude: string
+  countryCode: string
+  note: string
+  sortOrder: string
+}
+
+type RouteFormState = {
+  id: string | null
+  name: string
+  routeType: RouteType
+  spatialConfidence: SpatialConfidence
+  sourceNote: string
+  pointsText: string
+}
+
+type RelationshipFormState = {
+  id: string | null
+  targetEntrySlug: string
+  relationshipType: EntryRelationshipType
+  confidence: string
+  note: string
+}
+
+type SourceFormState = {
+  sourceId: string | null
+  originalSupportsField: SourceSupportKind | ''
+  url: string
+  title: string
+  publisher: string
+  supportsField: SourceSupportKind
+  note: string
+}
+
+type TagFormState = {
+  id: string | null
+  name: string
+  slug: string
+  tagGroup: string
+  parentTagId: string
+  attachSlug: string
+}
+
+export type AdminPanelProps = {
+  addEntryPlace: AsyncAction
+  adminEmail: string
+  adminEntries: AdminEntryListItem[]
+  adminEntryAudioTracks: EntryAudioTrackDetail[]
+  adminEntryImages: EntryImageDetail[]
+  adminEntryPlaces: EntryPlaceDetail[]
+  adminEntryRelationships: AdminEntryRelationshipDetail[]
+  adminEntryRoutes: EntryRouteDetail[]
+  adminEntrySources: EntrySourceDetail[]
+  adminEntryTags: TagSummary[]
+  adminEntryTranslations: AdminEntryTranslation[]
+  adminPage: AdminPage
+  adminPages: AdminPageOption[]
+  adminPassword: string
+  adminStatus: string
+  adminToken: string | null
+  attachTagToEntry: AsyncAction
+  bulkAudioLanguage: string
+  bulkAudioPreview: BulkAudioUploadPreviewResult | null
+  bulkAudioResult: BulkAudioUploadResult | null
+  clearContentPackageBeforeImport: boolean
+  contentLanguages: ContentLanguage[]
+  contentPackageBatchItems: ContentPackageBatchItem[]
+  contentPackageFiles: File[]
+  contentPackageImportHistory: ContentPackageImportHistoryItem[]
+  contentPackagePreview: ContentPackageImportPreviewResult | null
+  contentPackageResult: ContentPackageImportResult | null
+  contentPackageUploadProgress: UploadProgressState | null
+  contentStatuses: ContentStatus[]
+  defaultTimePeriodForm: TimePeriodFormState
+  deleteEntryAudioTrack: (audioTrackId: string) => void | Promise<void>
+  deleteEntryImage: (imageId: string) => void | Promise<void>
+  deleteEntryRelationship: (relationshipId: string) => void | Promise<void>
+  deleteEntryRoute: (routeId: string) => void | Promise<void>
+  deleteEntrySource: (sourceId: string, supportsField: string) => void | Promise<void>
+  deleteTag: AsyncAction
+  deleteTimePeriod: AsyncAction
+  deploymentInfo: DeploymentInfo | null
+  describeBatchProgress: (items: ContentPackageBatchItem[]) => string
+  describeImportStatus: (status: string) => string
+  detachTagFromEntry: (tagId: string) => void | Promise<void>
+  entryForm: EntryFormState
+  entryIconKey: (entry: Pick<AdminEntryListItem, 'iconKey' | 'kind'>) => string
+  entryKinds: EntryKind[]
+  entryPlaceRoles: EntryPlaceRole[]
+  formatBytes: (bytes: number) => string
+  formatDeploymentTime: (value: string | null | undefined) => string
+  formatImportTime: (value: string | null | undefined) => string
+  importContentPackage: AsyncAction
+  isBulkAudioPreviewing: boolean
+  isBulkAudioUploading: boolean
+  isImportingContentPackage: boolean
+  isLoadingAdminEntries: boolean
+  isLoadingContentPackageImportHistory: boolean
+  isPreviewingContentPackage: boolean
+  language: string
+  loadAdminEntries: AsyncAction
+  loadAdminEntryDetail: (entryId: string, requestedLanguage?: string) => void | Promise<void>
+  loadAudioForm: (audioTrack: EntryAudioTrackDetail) => void
+  loadContentPackageImportHistory: AsyncAction
+  loadImageForm: (image: EntryImageDetail) => void
+  loadRelationshipForm: (relationship: AdminEntryRelationshipDetail) => void
+  loadRouteForm: (route: EntryRouteDetail) => void
+  loadSourceForm: (source: EntrySourceDetail) => void
+  loadTagForm: (tag: TagSummary) => void
+  loadTimePeriodForm: (period: TimePeriodListItem) => void
+  mediaForm: MediaFormState
+  mediaInputResetKey: number
+  patchEntryForm: (patch: Partial<EntryFormState>) => void
+  patchPlaceForm: (patch: Partial<PlaceFormState>) => void
+  patchRelationshipForm: (patch: Partial<RelationshipFormState>) => void
+  patchRouteForm: (patch: Partial<RouteFormState>) => void
+  patchSourceForm: (patch: Partial<SourceFormState>) => void
+  patchTagForm: (patch: Partial<TagFormState>) => void
+  patchTimePeriodForm: (patch: Partial<TimePeriodFormState>) => void
+  periods: TimePeriodListItem[]
+  periodYearLabel: (period: TimePeriodListItem, dateUnknown: string) => string
+  placeForm: PlaceFormState
+  placeTypes: PlaceType[]
+  previewBulkAudioZip: AsyncAction
+  previewContentPackage: AsyncAction
+  realityStatuses: RealityStatus[]
+  relationshipForm: RelationshipFormState
+  relationshipTypes: EntryRelationshipType[]
+  resetAudioForm: () => void
+  resetEntryForm: () => void
+  resetImageForm: () => void
+  resetRelationshipForm: () => void
+  resetRouteForm: () => void
+  resetSourceForm: () => void
+  routeForm: RouteFormState
+  routeTypes: RouteType[]
+  saveEntry: FormAction
+  saveEntryRelationship: AsyncAction
+  saveEntryRoute: AsyncAction
+  saveEntrySource: AsyncAction
+  savePrimaryAudio: AsyncAction
+  savePrimaryImage: AsyncAction
+  saveTag: FormAction
+  saveTimePeriod: FormAction
+  setAdminEmail: (value: string) => void
+  setAdminOpen: (value: boolean | ((current: boolean) => boolean)) => void
+  setAdminPage: (page: AdminPage) => void
+  setAdminPassword: (value: string) => void
+  setBulkAudioFile: (file: File | null) => void
+  setBulkAudioLanguage: (language: string) => void
+  setBulkAudioPreview: Dispatch<SetStateAction<BulkAudioUploadPreviewResult | null>>
+  setBulkAudioResult: Dispatch<SetStateAction<BulkAudioUploadResult | null>>
+  setClearContentPackageBeforeImport: (value: boolean) => void
+  setContentPackageBatchItems: Dispatch<SetStateAction<ContentPackageBatchItem[]>>
+  setContentPackageFiles: Dispatch<SetStateAction<File[]>>
+  setContentPackagePreview: Dispatch<SetStateAction<ContentPackageImportPreviewResult | null>>
+  setContentPackageResult: Dispatch<SetStateAction<ContentPackageImportResult | null>>
+  setContentPackageUploadProgress: Dispatch<SetStateAction<UploadProgressState | null>>
+  setMediaForm: Dispatch<SetStateAction<MediaFormState>>
+  setTagForm: Dispatch<SetStateAction<TagFormState>>
+  setTimePeriodForm: Dispatch<SetStateAction<TimePeriodFormState>>
+  signInAdmin: FormAction
+  signOutAdmin: AsyncAction
+  sourceForm: SourceFormState
+  sourceSupportKinds: SourceSupportKind[]
+  spatialConfidences: SpatialConfidence[]
+  summarizeImportHistoryItem: (item: ContentPackageImportHistoryItem) => string
+  switchEntryLanguage: (languageCode: string) => void | Promise<void>
+  tagForm: TagFormState
+  tags: TagListItem[]
+  timePeriodForm: TimePeriodFormState
+  timePeriodTypes: TimePeriodType[]
+  timePrecisions: TimePrecision[]
+  ui: {
+    dateUnknown: string
+  }
+  uploadBulkAudioZip: AsyncAction
+  uploadPrimaryAudioFile: AsyncAction
+  uploadPrimaryImageFile: AsyncAction
+}
 
 export function AdminPanel(props: AdminPanelProps) {
   const {
@@ -173,88 +644,22 @@ export function AdminPanel(props: AdminPanelProps) {
   } = props
 
   return (
-          <aside className="admin-panel" aria-label="Admin tools">
-            <div className="panel-header">
-              <span>
-                <Lock aria-hidden="true" />
-                Admin
-              </span>
-              <div className="panel-header-actions">
-                {adminToken && (
-                  <button className="panel-text-button" type="button" onClick={signOutAdmin}>
-                    Sign out
-                  </button>
-                )}
-                <button
-                  className="panel-close"
-                  type="button"
-                  aria-label="Close admin panel"
-                  title="Close admin panel"
-                  onClick={() => setAdminOpen(false)}
-                >
-                  <X aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-            <div className="admin-status">
-              {adminToken ? <CheckCircle2 aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}
-              <span>{adminStatus}</span>
-            </div>
-            {adminToken && deploymentInfo && (
-              <div className="admin-deployment-info">
-                <GitCommitHorizontal aria-hidden="true" />
-                <span>Deploy</span>
-                {deploymentInfo.commitUrl && deploymentInfo.shortCommitSha ? (
-                  <a href={deploymentInfo.commitUrl} target="_blank" rel="noreferrer">
-                    {deploymentInfo.shortCommitSha}
-                  </a>
-                ) : (
-                  <code>{deploymentInfo.shortCommitSha ?? 'unknown commit'}</code>
-                )}
-                <time dateTime={deploymentInfo.deployedAtUtc ?? undefined}>
-                  {formatDeploymentTime(deploymentInfo.deployedAtUtc)}
-                </time>
-              </div>
-            )}
-            {!adminToken ? (
-              <form className="admin-form" onSubmit={signInAdmin}>
-                <label>
-                  Email
-                  <input
-                    autoComplete="email"
-                    type="email"
-                    value={adminEmail}
-                    onChange={(event) => setAdminEmail(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Password
-                  <input
-                    autoComplete="current-password"
-                    type="password"
-                    value={adminPassword}
-                    onChange={(event) => setAdminPassword(event.target.value)}
-                  />
-                </label>
-                <button className="admin-action" type="submit">
-                  <Lock aria-hidden="true" />
-                  Sign in
-                </button>
-              </form>
-            ) : (
-              <>
-                <nav className="admin-page-tabs" aria-label="Admin sections">
-                  {adminPages.map((page) => (
-                    <button
-                      className={adminPage === page.id ? 'active' : ''}
-                      key={page.id}
-                      type="button"
-                      onClick={() => setAdminPage(page.id)}
-                    >
-                      {page.label}
-                    </button>
-                  ))}
-                </nav>
+    <AdminPanelChrome
+      adminEmail={adminEmail}
+      adminPages={adminPages}
+      adminPage={adminPage}
+      adminPassword={adminPassword}
+      adminStatus={adminStatus}
+      adminToken={adminToken}
+      deploymentInfo={deploymentInfo}
+      formatDeploymentTime={formatDeploymentTime}
+      onAdminEmailChange={setAdminEmail}
+      onAdminPageChange={setAdminPage}
+      onAdminPasswordChange={setAdminPassword}
+      onClose={() => setAdminOpen(false)}
+      onSignIn={signInAdmin}
+      onSignOut={signOutAdmin}
+    >
                 {adminPage === 'import' && (
                   <div className="admin-form">
                     <div className="recent-imports">
@@ -428,39 +833,7 @@ export function AdminPanel(props: AdminPanelProps) {
                         ))}
                       </div>
                     )}
-                    <div className="admin-table-scroll">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Entry</th>
-                            <th>Action</th>
-                            <th>Links</th>
-                            <th>Media</th>
-                            <th>Warnings</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contentPackagePreview.rows.slice(0, 60).map((row) => (
-                            <tr key={row.slug}>
-                              <td>
-                                {row.title}
-                                <small>
-                                  {row.sourceSheet && row.sourceRow ? `${row.sourceSheet} #${row.sourceRow}` : row.slug}
-                                </small>
-                              </td>
-                              <td>{row.willUpdateExistingEntry ? 'Update' : 'Create'}</td>
-                              <td>
-                                {row.tags} tags / {row.places} places / {row.sources} sources
-                              </td>
-                              <td>
-                                {row.audioFiles} audio / {row.imageFiles} images
-                              </td>
-                              <td>{row.warnings.length > 0 ? row.warnings.join(', ') : 'OK'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <AdminImportPreviewTable rows={contentPackagePreview.rows} />
                   </>
                 )}
                 {adminPage === 'import' && contentPackageResult && (
@@ -495,7 +868,7 @@ export function AdminPanel(props: AdminPanelProps) {
               </button>
             </div>
             <div className="admin-table-scroll">
-              <table className="admin-table">
+              <table className="admin-table virtualized">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -503,19 +876,22 @@ export function AdminPanel(props: AdminPanelProps) {
                     <th>Years</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {periods.map((period) => (
-                    <tr
-                      className={timePeriodForm.id === period.id ? 'active' : ''}
-                      key={period.id}
-                      onClick={() => loadTimePeriodForm(period)}
-                    >
+                <VirtualizedTableBody
+                  columnCount={3}
+                  getKey={(period) => period.id}
+                  getRowClassName={(period) => (timePeriodForm.id === period.id ? 'active' : undefined)}
+                  height={220}
+                  items={periods}
+                  onRowClick={loadTimePeriodForm}
+                  renderRow={(period) => (
+                    <>
                       <td>{period.name}</td>
                       <td>{period.periodType}</td>
                       <td>{periodYearLabel(period, ui.dateUnknown)}</td>
-                    </tr>
-                  ))}
-                </tbody>
+                    </>
+                  )}
+                  rowHeight={43}
+                />
               </table>
             </div>
             <form className="entry-editor" onSubmit={saveTimePeriod}>
@@ -624,7 +1000,7 @@ export function AdminPanel(props: AdminPanelProps) {
               </button>
             </div>
             <div className="admin-table-scroll">
-              <table className="admin-table">
+              <table className="admin-table virtualized">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -632,19 +1008,22 @@ export function AdminPanel(props: AdminPanelProps) {
                     <th>Entries</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {tags.map((tag) => (
-                    <tr
-                      className={tagForm.id === tag.id ? 'active' : ''}
-                      key={tag.id}
-                      onClick={() => loadTagForm(tag)}
-                    >
+                <VirtualizedTableBody
+                  columnCount={3}
+                  getKey={(tag) => tag.id}
+                  getRowClassName={(tag) => (tagForm.id === tag.id ? 'active' : undefined)}
+                  height={220}
+                  items={tags}
+                  onRowClick={(tag) => loadTagForm(tag)}
+                  renderRow={(tag) => (
+                    <>
                       <td>{tag.name}</td>
                       <td>{tag.tagGroup}</td>
                       <td>{tag.entryCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
+                    </>
+                  )}
+                  rowHeight={43}
+                />
               </table>
             </div>
             <form className="entry-editor" onSubmit={saveTag}>
@@ -749,25 +1128,13 @@ export function AdminPanel(props: AdminPanelProps) {
                 <Plus aria-hidden="true" />
               </button>
             </div>
-            <div className="admin-entry-list">
-              <button className="admin-action secondary" disabled={isLoadingAdminEntries} type="button" onClick={loadAdminEntries}>
-                <RefreshCw aria-hidden="true" />
-                {isLoadingAdminEntries ? 'Loading...' : 'Reload entries'}
-              </button>
-              {adminEntries.slice(0, 8).map((entry) => (
-                <button
-                  className={entryForm.id === entry.id ? 'admin-entry active' : 'admin-entry'}
-                  key={entry.id}
-                  type="button"
-                  onClick={() => loadAdminEntryDetail(entry.id)}
-                >
-                  <span>{entry.title}</span>
-                  <small>
-                    {entry.status} / {entry.kind}
-                  </small>
-                </button>
-              ))}
-            </div>
+            <AdminEntryPicker
+              activeEntryId={entryForm.id}
+              entries={adminEntries}
+              isLoading={isLoadingAdminEntries}
+              onReload={loadAdminEntries}
+              onSelectEntry={loadAdminEntryDetail}
+            />
             <form className="entry-editor" onSubmit={saveEntry}>
               <div className="translation-switcher" aria-label="Entry translation language">
                 {contentLanguages.map((contentLanguage) => {
@@ -1642,8 +2009,6 @@ export function AdminPanel(props: AdminPanelProps) {
               )}
             </div>
                 )}
-              </>
-            )}
-          </aside>
+    </AdminPanelChrome>
   )
 }
