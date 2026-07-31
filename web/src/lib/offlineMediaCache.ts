@@ -58,47 +58,50 @@ export async function inspectOfflineMediaCache(candidates: OfflineMediaCandidate
   }
 
   const cache = await caches.open(offlineMediaCacheName)
-  const requests = await cache.keys()
   const items = await Promise.all(
-    requests.map(async (request) => {
-      const url = normalizeUrl(request.url)
-      const candidate = candidateByUrl.get(url)
-      const response = await cache.match(request)
+    [...candidateByUrl.entries()].map(async ([url, candidate]): Promise<OfflineMediaCacheItem | null> => {
+      if (!isInspectableOfflineMediaKind(candidate.kind)) {
+        return null
+      }
+
+      const response = await cache.match(url)
+      if (!response) {
+        return null
+      }
+
       const contentType = response?.headers.get('content-type') ?? null
-      const kind = candidate?.kind ?? inferMediaKind(url, contentType)
-      const languageCode = candidate?.languageCode ?? inferLanguageCode(url)
+      const languageCode = candidate.languageCode ?? inferLanguageCode(url)
 
       return {
         contentType,
-        entryId: candidate?.entryId,
-        entryTitle: candidate?.entryTitle,
         fileName: fileNameFromUrl(url),
-        isKnown: Boolean(candidate),
-        kind,
-        label: candidate?.label,
+        isKnown: true,
+        kind: candidate.kind,
         languageCode,
-        sizeBytes: response ? await responseSize(response) : null,
+        sizeBytes: await responseSize(response),
         url,
+        ...(candidate.entryId ? { entryId: candidate.entryId } : {}),
+        ...(candidate.entryTitle ? { entryTitle: candidate.entryTitle } : {}),
+        ...(candidate.label !== undefined ? { label: candidate.label } : {}),
       }
     }),
   )
+  const mediaItems = items.filter((item): item is OfflineMediaCacheItem => item !== null)
 
   const cachedEntryIds = new Set(
-    items
+    mediaItems
       .map((item) => item.entryId)
       .filter((entryId): entryId is string => Boolean(entryId)),
   )
   const languages = [
     ...new Set(
-      items
+      mediaItems
         .filter((item) => item.kind === 'audio')
         .map((item) => item.languageCode)
         .filter((languageCode): languageCode is string => Boolean(languageCode)),
     ),
   ].sort((left, right) => left.localeCompare(right))
-  const knownItems = items.filter((item) => item.isKnown)
-  const unknownItems = items.filter((item) => !item.isKnown)
-  const sortedItems = [...knownItems, ...unknownItems].sort(compareOfflineMediaItems)
+  const sortedItems = mediaItems.sort(compareOfflineMediaItems)
   const knownSizes = sortedItems
     .map((item) => item.sizeBytes)
     .filter((sizeBytes): sizeBytes is number => sizeBytes !== null)
@@ -109,7 +112,7 @@ export async function inspectOfflineMediaCache(candidates: OfflineMediaCandidate
     imageCount: sortedItems.filter((item) => item.kind === 'image').length,
     items: sortedItems,
     languages,
-    otherCount: sortedItems.filter((item) => item.kind === 'other').length,
+    otherCount: 0,
     totalSizeBytes: knownSizes.length === sortedItems.length
       ? knownSizes.reduce((total, sizeBytes) => total + sizeBytes, 0)
       : null,
@@ -179,25 +182,8 @@ function fileNameFromUrl(url: string) {
   return fileName ? decodeURIComponent(fileName) : url
 }
 
-function inferMediaKind(url: string, contentType: string | null): OfflineMediaKind {
-  if (contentType?.startsWith('image/')) {
-    return 'image'
-  }
-
-  if (contentType?.startsWith('audio/')) {
-    return 'audio'
-  }
-
-  const pathname = new URL(url).pathname
-  if (/\.(avif|gif|jpe?g|png|webp)$/i.test(pathname)) {
-    return 'image'
-  }
-
-  if (/\.(m4a|mp3|mp4|ogg|opus|wav|webm)$/i.test(pathname)) {
-    return 'audio'
-  }
-
-  return 'other'
+function isInspectableOfflineMediaKind(kind: OfflineMediaKind) {
+  return kind === 'audio' || kind === 'image'
 }
 
 function inferLanguageCode(url: string) {
