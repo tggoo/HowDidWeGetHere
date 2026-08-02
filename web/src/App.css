@@ -134,6 +134,54 @@
   outline: 0;
 }
 
+.map-section-switcher {
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
+  padding: 4px;
+}
+
+.map-section-switcher button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.map-section-switcher button.active {
+  background: var(--panel);
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+.map-section-switcher svg {
+  flex: 0 0 auto;
+  height: 16px;
+  width: 16px;
+}
+
+.map-section-switcher span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .icon-button {
   align-items: center;
   background: var(--text-strong);
@@ -233,7 +281,7 @@
   display: flex;
   flex-direction: column;
   grid-column: 1;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .detail-panel {
@@ -688,6 +736,244 @@
   cursor: pointer;
 }
 
+.world-divisions-block {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.world-division-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.world-division-tab {
+  background: var(--control-strong);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 5px 8px;
+}
+
+.world-division-tab.active {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.world-division-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.world-division-item {
+  align-items: center;
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 54px;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.world-division-item.active {
+  background: var(--panel);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.world-division-item strong,
+.world-division-detail-heading strong {
+  color: var(--text);
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.world-division-item small,
+.world-division-detail-heading small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.28;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.world-division-swatch {
+  background:
+    linear-gradient(135deg, rgba(47, 158, 68, 0.24), rgba(245, 159, 0, 0.34)),
+    var(--panel);
+  border: 2px solid #2f9e44;
+  border-radius: 50%;
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+.world-division-item.active .world-division-swatch {
+  border-color: #d9480f;
+}
+
+.world-division-detail {
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 11px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+.world-division-detail-heading {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.world-division-detail-heading svg,
+.world-division-detail-label svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+  height: 17px;
+  width: 17px;
+}
+
+.world-division-detail p,
+.world-division-empty {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.world-division-detail-section {
+  display: grid;
+  gap: 7px;
+}
+
+.world-division-detail-label {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.world-division-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.world-division-chip {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 4px 7px;
+}
+
+.world-division-facts {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.world-division-facts li {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  padding-left: 14px;
+  position: relative;
+}
+
+.world-division-facts li::before {
+  background: #2f9e44;
+  border-radius: 50%;
+  content: '';
+  height: 5px;
+  left: 0;
+  position: absolute;
+  top: 0.55em;
+  width: 5px;
+}
+
+.world-division-detail .world-division-map-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.world-division-title-row {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-top: 18px;
+}
+
+.world-division-title-row > svg {
+  color: var(--accent);
+  height: 24px;
+  margin-top: 2px;
+  width: 24px;
+}
+
+.world-division-title-row h1 {
+  margin: 0 0 5px;
+}
+
+.world-division-title-row p {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.world-division-detail-list strong {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.world-division-detail-list strong svg {
+  color: var(--accent);
+  height: 16px;
+  width: 16px;
+}
+
+.world-division-map-note-card {
+  align-items: flex-start;
+}
+
 .map-main {
   display: grid;
   grid-column: 2;
@@ -695,6 +981,10 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+.map-main.world-divisions-map-main {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .map-stage {
@@ -1145,6 +1435,19 @@
 
 .history-cluster-popup li {
   color: var(--text);
+}
+
+.world-division-polygon {
+  cursor: pointer;
+  transition: fill-opacity 0.15s ease, opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.world-division-polygon.selected {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.22));
+}
+
+.world-division-popup .leaflet-popup-content strong {
+  color: var(--text-strong);
 }
 
 .detail-panel h1 {
@@ -2745,6 +3048,10 @@
   .map-main {
     flex: 1;
     grid-template-rows: 120px minmax(0, 1fr);
+  }
+
+  .map-main.world-divisions-map-main {
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .timeline-ruler {

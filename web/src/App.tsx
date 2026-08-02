@@ -3,9 +3,12 @@ import {
   ChevronRight,
   Filter,
   Globe2,
+  MapPinned,
   LoaderCircle,
   PanelRight,
   PlayCircle,
+  Timeline,
+  X,
 } from 'lucide-react'
 import {
   lazy,
@@ -32,7 +35,15 @@ import { OfflineMediaPanel } from './components/organisms/OfflineMediaPanel'
 import { PersistentAudioPlayer } from './components/organisms/PersistentAudioPlayer'
 import { TagModal } from './components/organisms/TagModal'
 import { TimelineRuler } from './components/organisms/TimelineRuler'
+import { WorldDivisionDetailPanel } from './components/organisms/WorldDivisionDetailPanel'
+import { WorldDivisionsExplorer } from './components/organisms/WorldDivisionsExplorer'
 import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistoryQuery'
+import {
+  defaultWorldDivisionCategoryId,
+  defaultWorldDivisionId,
+  worldDivisions,
+  type WorldDivisionCategoryId,
+} from './features/worldDivisions/worldDivisions'
 import { cachedQuery } from './lib/queryCache'
 import {
   clearOfflineMediaCache,
@@ -654,6 +665,7 @@ const sourceSupportKinds: SourceSupportKind[] = [
 ]
 
 const visibleTagLimit = 10
+type MapSection = 'entries' | 'world-divisions'
 type SidePane = 'filter' | 'detail'
 
 const defaultFilterPaneWidth = 300
@@ -709,10 +721,13 @@ const uiCopy = {
     cachedEntries: 'Downloaded entries',
     cachedFiles: 'Local files',
     clear: 'Clear',
+    closeWorldDivisionDetail: 'Close world division detail',
     collapseEntryDetail: 'Collapse entry detail',
     collapseFilters: 'Collapse filters',
+    collapseWorldDivisionDetail: 'Collapse world division detail',
     closeEntryDetail: 'Close entry detail',
     closeImage: 'Close image',
+    closeWorldDivisions: 'Close world divisions',
     expandImage: 'Expand image',
     imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
     images: 'Images',
@@ -735,7 +750,18 @@ const uiCopy = {
     entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
       `Loaded ${entryCount} published entries${yearRange}${viewport}. Add places or move the map to show points.`,
     filters: 'Filters',
+    entriesSection: 'Entries',
+    historyMap: 'World history map',
     language: 'Language',
+    mapSection: 'Map section',
+    worldDivisionCategory: 'Division type',
+    worldDivisionFacts: 'Interesting facts',
+    worldDivisionIncludes: 'Includes',
+    worldDivisionMapNote: 'Map note',
+    worldDivisionNoSelection: 'No world division selected.',
+    worldDivisionDetail: 'World division detail',
+    worldDivisionsMap: 'World divisions map',
+    worldDivisions: 'World divisions',
     loadingInitial: 'Loading published map data.',
     mediaCacheCleared: 'Cached offline media were cleared.',
     moreCount: (count: number) => `More ${count}`,
@@ -752,6 +778,8 @@ const uiCopy = {
     openAdminPanel: 'Open admin panel',
     openEntryDetail: 'Open entry detail',
     openFilters: 'Open filters',
+    openWorldDivisions: 'Open world divisions',
+    openWorldDivisionDetail: 'Open world division detail',
     openOfflineMedia: 'Open offline media',
     openPlayingEntry: 'Open playing entry',
     minimizeAudio: 'Minimize player',
@@ -762,6 +790,7 @@ const uiCopy = {
     relatedTopics: 'Related topics',
     resetFilters: 'reset filters',
     resizeEntryDetail: 'Resize entry detail',
+    resizeWorldDivisionDetail: 'Resize world division detail',
     resizeFilters: 'Resize filters',
     routeRecords: (count: number) => `${count} route records`,
     searchEntries: 'Search entries',
@@ -803,10 +832,13 @@ const uiCopy = {
     cachedEntries: 'Stažené záznamy',
     cachedFiles: 'Lokální soubory',
     clear: 'Vyčistit',
+    closeWorldDivisionDetail: 'Zavřít detail dělení světa',
     collapseEntryDetail: 'Sbalit detail zaznamu',
     collapseFilters: 'Sbalit filtry',
+    collapseWorldDivisionDetail: 'Sbalit detail dělení světa',
     closeEntryDetail: 'Zavřít detail záznamu',
     closeImage: 'Zavřít obrázek',
+    closeWorldDivisions: 'Zavřít dělení světa',
     expandImage: 'Zvětšit obrázek',
     imageIndicator: (current: number, total: number) => `Zobrazit obrázek ${current} z ${total}`,
     images: 'Obrázky',
@@ -829,7 +861,18 @@ const uiCopy = {
     entriesLoadedNoPoints: (entryCount: number, yearRange: string, viewport: string) =>
       `Načteno ${entryCount} publikovaných záznamů${yearRange}${viewport}. Posuň mapu nebo doplň místa, aby se zobrazily body.`,
     filters: 'Filtry',
+    entriesSection: 'Záznamy',
+    historyMap: 'Mapa dějin světa',
     language: 'Jazyk',
+    mapSection: 'Sekce mapy',
+    worldDivisionCategory: 'Typ dělení',
+    worldDivisionFacts: 'Zajímavosti',
+    worldDivisionIncludes: 'Zahrnuje',
+    worldDivisionMapNote: 'Poznámka k mapě',
+    worldDivisionNoSelection: 'Není vybrané žádné dělení světa.',
+    worldDivisionDetail: 'Detail dělení světa',
+    worldDivisionsMap: 'Mapa dělení světa',
+    worldDivisions: 'Dělení světa',
     nowPlaying: 'Přehrává se',
     openPlayingEntry: 'Otevřít přehrávaný záznam',
     minimizeAudio: 'Skrýt přehrávač',
@@ -849,6 +892,8 @@ const uiCopy = {
     openAdminPanel: 'Otevřít administraci',
     openEntryDetail: 'Otevrit detail zaznamu',
     openFilters: 'Otevřít filtry',
+    openWorldDivisions: 'Otevřít dělení světa',
+    openWorldDivisionDetail: 'Otevřít detail dělení světa',
     openOfflineMedia: 'Otevřít offline média',
     places: 'Místa',
     otherFiles: 'Ostatní soubory',
@@ -856,6 +901,7 @@ const uiCopy = {
     relatedTopics: 'Související témata',
     resetFilters: 'resetovat filtr',
     resizeEntryDetail: 'Zmenit sirku detailu zaznamu',
+    resizeWorldDivisionDetail: 'Změnit šířku detailu dělení světa',
     resizeFilters: 'Zmenit sirku filtru',
     routeRecords: (count: number) => `${count} záznamů trasy`,
     searchEntries: 'Hledat záznamy',
@@ -1391,6 +1437,41 @@ function uploadContentPackageWithProgress(
   })
 }
 
+type MapSectionSwitcherProps = {
+  activeSection: MapSection
+  labels: {
+    entries: string
+    section: string
+    worldDivisions: string
+  }
+  onChange: (section: MapSection) => void
+}
+
+function MapSectionSwitcher({ activeSection, labels, onChange }: MapSectionSwitcherProps) {
+  return (
+    <div className="map-section-switcher" aria-label={labels.section}>
+      <button
+        className={activeSection === 'entries' ? 'active' : undefined}
+        type="button"
+        aria-pressed={activeSection === 'entries'}
+        onClick={() => onChange('entries')}
+      >
+        <Timeline aria-hidden="true" />
+        <span>{labels.entries}</span>
+      </button>
+      <button
+        className={activeSection === 'world-divisions' ? 'active' : undefined}
+        type="button"
+        aria-pressed={activeSection === 'world-divisions'}
+        onClick={() => onChange('world-divisions')}
+      >
+        <MapPinned aria-hidden="true" />
+        <span>{labels.worldDivisions}</span>
+      </button>
+    </div>
+  )
+}
+
 function App() {
   const adminPage = useAppStore((state) => state.adminPage)
   const clearFiltersState = useAppStore((state) => state.clearFilters)
@@ -1433,9 +1514,10 @@ function App() {
   const toggleTagState = useAppStore((state) => state.toggleTag)
   const uiLanguage = normalizeUiLanguage(language)
   const ui = uiCopy[uiLanguage]
+  const [activeMapSection, setActiveMapSection] = useState<MapSection>('entries')
   const debouncedQuery = useDebouncedHistoryQuery({
     fromYear,
-    mapViewport,
+    mapViewport: activeMapSection === 'entries' ? mapViewport : null,
     searchText,
     selectedTags,
     toYear,
@@ -1447,6 +1529,10 @@ function App() {
   const debouncedToYear = debouncedQuery.toYear
   const [entries, setEntries] = useState<EntryListItem[]>(fallbackEntries)
   const [mapEntries, setMapEntries] = useState<MapEntry[]>([])
+  const [activeWorldDivisionCategoryId, setActiveWorldDivisionCategoryId] =
+    useState<WorldDivisionCategoryId>(defaultWorldDivisionCategoryId)
+  const [selectedWorldDivisionId, setSelectedWorldDivisionId] = useState<string | null>(defaultWorldDivisionId)
+  const [worldDivisionFocusKey, setWorldDivisionFocusKey] = useState(0)
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
@@ -1573,6 +1659,7 @@ function App() {
     startX: number
   } | null>(null)
   const selectedEntryIdRef = useRef(selectedEntryId)
+  const activeMapSectionRef = useRef(activeMapSection)
   const initialEntrySlugRef = useRef(entrySlugFromUrl())
   const hasAppliedInitialEntrySlugRef = useRef(false)
 
@@ -1612,7 +1699,15 @@ function App() {
     selectedEntryIdRef.current = selectedEntryId
   }, [selectedEntryId])
 
+  useEffect(() => {
+    activeMapSectionRef.current = activeMapSection
+  }, [activeMapSection])
+
   const handleMapViewportChange = useCallback((viewport: MapViewport) => {
+    if (activeMapSectionRef.current !== 'entries') {
+      return
+    }
+
     const roundedViewport: MapViewport = {
       west: Number(viewport.west.toFixed(4)),
       south: Number(viewport.south.toFixed(4)),
@@ -1861,6 +1956,11 @@ function App() {
   ])
 
   useEffect(() => {
+    if (activeMapSection !== 'entries') {
+      setLoadingMap(false)
+      return
+    }
+
     let isActive = true
 
     async function loadMapData() {
@@ -1955,6 +2055,7 @@ function App() {
     debouncedSearchText,
     debouncedSelectedTags,
     debouncedToYear,
+    activeMapSection,
     language,
     selectedEntryId,
     reloadKey,
@@ -2390,6 +2491,63 @@ function App() {
   const expandedTagGroupModel = useMemo(
     () => tagGroups.find((group) => group.group === expandedTagGroup) ?? null,
     [expandedTagGroup, tagGroups],
+  )
+
+  const visibleWorldDivisions = useMemo(
+    () => worldDivisions.filter((division) => division.categoryId === activeWorldDivisionCategoryId),
+    [activeWorldDivisionCategoryId],
+  )
+
+  const selectedWorldDivision = useMemo(
+    () => worldDivisions.find((division) => division.id === selectedWorldDivisionId) ?? null,
+    [selectedWorldDivisionId],
+  )
+
+  const isWorldDivisionsSection = activeMapSection === 'world-divisions'
+  const isEntriesSection = activeMapSection === 'entries'
+
+  const changeMapSection = useCallback((section: MapSection) => {
+    setActiveMapSection(section)
+    setAdminOpen(false)
+    setOfflineMediaPanelOpen(false)
+    setDetailPaneCollapsed(false)
+    setEntryImageExpanded(false)
+
+    if (section === 'world-divisions') {
+      setEntryDetailOpen(false)
+      setWorldDivisionFocusKey((value) => value + 1)
+    }
+  }, [setAdminOpen, setEntryDetailOpen, setOfflineMediaPanelOpen])
+
+  const selectWorldDivision = useCallback((divisionId: string) => {
+    const division = worldDivisions.find((item) => item.id === divisionId)
+    if (!division) {
+      return
+    }
+
+    setActiveWorldDivisionCategoryId(division.categoryId)
+    setSelectedWorldDivisionId(division.id)
+    setWorldDivisionFocusKey((value) => value + 1)
+    setEntryDetailOpen(true)
+  }, [setEntryDetailOpen])
+
+  const selectWorldDivisionCategory = useCallback((categoryId: WorldDivisionCategoryId) => {
+    const firstDivisionInCategory = worldDivisions.find((division) => division.categoryId === categoryId)
+    setActiveWorldDivisionCategoryId(categoryId)
+    setSelectedWorldDivisionId(firstDivisionInCategory?.id ?? null)
+    setWorldDivisionFocusKey((value) => value + 1)
+  }, [])
+
+  const mapSectionSwitcher = (
+    <MapSectionSwitcher
+      activeSection={activeMapSection}
+      labels={{
+        entries: ui.entriesSection,
+        section: ui.mapSection,
+        worldDivisions: ui.worldDivisions,
+      }}
+      onChange={changeMapSection}
+    />
   )
 
   const offlineMediaDownloadSourceCount = entries.length + (selectedEntryDetail ? 1 : 0)
@@ -4464,7 +4622,7 @@ function App() {
     labels: {
       language: ui.language,
       openAdminPanel: ui.openAdminPanel,
-      openFilters: ui.openFilters,
+      openFilters: isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters,
       openOfflineMedia: ui.openOfflineMedia,
       playRandom: ui.playRandom,
       switchToDarkMode: ui.switchToDarkMode,
@@ -4479,7 +4637,7 @@ function App() {
     onOpenOfflineMedia: openOfflineMediaPanel,
     onPlayRandom: () => playRandomEntry(),
     onToggleTheme: toggleTheme,
-    playableRandomEntryCount: playableRandomEntries.length,
+    playableRandomEntryCount: isEntriesSection ? playableRandomEntries.length : 0,
     theme,
   }
 
@@ -4635,11 +4793,11 @@ function App() {
           <button
             className="side-pane-tab left desktop-only"
             type="button"
-            aria-label={ui.openFilters}
-            title={ui.openFilters}
+            aria-label={isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters}
+            title={isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters}
             onClick={() => setFilterPaneCollapsed(false)}
           >
-            <Filter aria-hidden="true" />
+            {isWorldDivisionsSection ? <MapPinned aria-hidden="true" /> : <Filter aria-hidden="true" />}
             <ChevronRight aria-hidden="true" />
           </button>
         )}
@@ -4647,58 +4805,107 @@ function App() {
           <button
             className="side-pane-tab right desktop-only"
             type="button"
-            aria-label={ui.openEntryDetail}
-            title={ui.openEntryDetail}
+            aria-label={isWorldDivisionsSection ? ui.openWorldDivisionDetail : ui.openEntryDetail}
+            title={isWorldDivisionsSection ? ui.openWorldDivisionDetail : ui.openEntryDetail}
             onClick={() => setDetailPaneCollapsed(false)}
           >
             <ChevronLeft aria-hidden="true" />
             <PanelRight aria-hidden="true" />
           </button>
         )}
-        <FilterPanel
-          className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'}
-          formatPeriodYear={periodYearLabel}
-          fromYear={fromYear}
-          isLoadingMap={isLoadingMap}
-          isMapEmptyResult={isMapEmptyResult}
-          labels={{
-            appName: ui.appName,
-            clear: ui.clear,
-            closeFilters: ui.closeFilters,
-            collapseFilters: ui.collapseFilters,
-            dateUnknown: ui.dateUnknown,
-            filters: ui.filters,
-            moreCount: ui.moreCount,
-            resetFilters: ui.resetFilters,
-            searchEntries: ui.searchEntries,
-            tags: ui.tags,
-            timePeriod: ui.timePeriod,
-            yearFrom: ui.yearFrom,
-            yearTo: ui.yearTo,
-          }}
-          mapStatus={mapStatus}
-          periodHierarchy={periodHierarchy}
-          searchText={searchText}
-          selectedPeriodId={selectedPeriodId}
-          selectedTags={selectedTags}
-          tagGroups={tagGroups}
-          toYear={toYear}
-          onClearFilters={clearFilters}
-          onClose={() => setFilterPanelOpen(false)}
-          onCollapse={() => setFilterPaneCollapsed(true)}
-          onExpandTagGroup={setExpandedTagGroup}
-          onFromYearChange={(value) => {
-            setSelectedPeriodId(null)
-            setFromYear(value)
-          }}
-          onSearchTextChange={setSearchText}
-          onSelectPeriod={selectPeriodFilter}
-          onToYearChange={(value) => {
-            setSelectedPeriodId(null)
-            setToYear(value)
-          }}
-          onToggleTag={toggleTag}
-        />
+        {isEntriesSection ? (
+          <FilterPanel
+            className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'}
+            formatPeriodYear={periodYearLabel}
+            fromYear={fromYear}
+            isLoadingMap={isLoadingMap}
+            isMapEmptyResult={isMapEmptyResult}
+            labels={{
+              appName: ui.appName,
+              clear: ui.clear,
+              closeFilters: ui.closeFilters,
+              collapseFilters: ui.collapseFilters,
+              dateUnknown: ui.dateUnknown,
+              filters: ui.filters,
+              moreCount: ui.moreCount,
+              resetFilters: ui.resetFilters,
+              searchEntries: ui.searchEntries,
+              tags: ui.tags,
+              timePeriod: ui.timePeriod,
+              yearFrom: ui.yearFrom,
+              yearTo: ui.yearTo,
+            }}
+            mapStatus={mapStatus}
+            periodHierarchy={periodHierarchy}
+            searchText={searchText}
+            selectedPeriodId={selectedPeriodId}
+            selectedTags={selectedTags}
+            sectionSwitcher={mapSectionSwitcher}
+            tagGroups={tagGroups}
+            toYear={toYear}
+            onClearFilters={clearFilters}
+            onClose={() => setFilterPanelOpen(false)}
+            onCollapse={() => setFilterPaneCollapsed(true)}
+            onExpandTagGroup={setExpandedTagGroup}
+            onFromYearChange={(value) => {
+              setSelectedPeriodId(null)
+              setFromYear(value)
+            }}
+            onSearchTextChange={setSearchText}
+            onSelectPeriod={selectPeriodFilter}
+            onToYearChange={(value) => {
+              setSelectedPeriodId(null)
+              setToYear(value)
+            }}
+            onToggleTag={toggleTag}
+          />
+        ) : (
+          <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label={ui.worldDivisions}>
+            <div className="filter-brand">
+              <span className="filter-brand-title">
+                <Globe2 aria-hidden="true" />
+                <span>{ui.appName}</span>
+              </span>
+              <button
+                className="panel-collapse-button desktop-only"
+                type="button"
+                aria-label={ui.collapseFilters}
+                title={ui.collapseFilters}
+                onClick={() => setFilterPaneCollapsed(true)}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </button>
+            </div>
+            <div className="panel-header filter-panel-header">
+              <span>
+                <MapPinned aria-hidden="true" />
+                {ui.worldDivisions}
+              </span>
+              <button
+                className="panel-close"
+                type="button"
+                aria-label={ui.closeWorldDivisions}
+                title={ui.closeWorldDivisions}
+                onClick={() => setFilterPanelOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+            {mapSectionSwitcher}
+            <WorldDivisionsExplorer
+              activeCategoryId={activeWorldDivisionCategoryId}
+              divisions={visibleWorldDivisions}
+              labels={{
+                category: ui.worldDivisionCategory,
+                title: ui.worldDivisions,
+              }}
+              language={language}
+              selectedDivisionId={selectedWorldDivisionId}
+              onSelectCategory={selectWorldDivisionCategory}
+              onSelectDivision={selectWorldDivision}
+            />
+          </aside>
+        )}
 
         {!isFilterPaneCollapsed && (
           <div
@@ -4718,27 +4925,34 @@ function App() {
           />
         )}
 
-        <div className="map-main">
-          <TimelineRuler
-            entries={entries}
-            fromYear={numberOrNull(fromYear)}
-            labels={{ timeline: ui.timeline, noTimelineEntries: ui.noTimelineEntries }}
-            selectedEntryId={selectedEntryId}
-            onSelectEntry={selectEntry}
-            toYear={numberOrNull(toYear)}
-          />
+        <div className={isWorldDivisionsSection ? 'map-main world-divisions-map-main' : 'map-main'}>
+          {isEntriesSection && (
+            <TimelineRuler
+              entries={entries}
+              fromYear={numberOrNull(fromYear)}
+              labels={{ timeline: ui.timeline, noTimelineEntries: ui.noTimelineEntries }}
+              selectedEntryId={selectedEntryId}
+              onSelectEntry={selectEntry}
+              toYear={numberOrNull(toYear)}
+            />
+          )}
           <div className="map-stage">
             <HistoryMap
-              autoFitKey={mapAutoFitKey}
-              entries={mapEntries}
+              ariaLabel={isWorldDivisionsSection ? ui.worldDivisionsMap : ui.historyMap}
+              autoFitKey={isEntriesSection ? mapAutoFitKey : 'world-divisions'}
+              entries={isEntriesSection ? mapEntries : []}
               fallbackEntryIds={entries.map((entry) => entry.id)}
               language={language}
-              showFallback={!mapViewport}
-              selectedEntryId={selectedEntryId}
+              showFallback={isEntriesSection && !mapViewport}
+              selectedEntryId={isEntriesSection ? selectedEntryId : undefined}
+              selectedWorldDivisionId={isWorldDivisionsSection ? selectedWorldDivisionId : null}
+              worldDivisionFocusKey={worldDivisionFocusKey}
+              worldDivisions={isWorldDivisionsSection ? visibleWorldDivisions : []}
               onViewportChange={handleMapViewportChange}
               onSelectEntry={selectEntry}
+              onSelectWorldDivision={selectWorldDivision}
             />
-            {isLoadingMap && (
+            {isEntriesSection && isLoadingMap && (
               <div className="map-loading-overlay" role="status" aria-live="polite">
                 <LoaderCircle aria-hidden="true" className="spin-icon" />
                 <span>{mapStatus}</span>
@@ -4752,7 +4966,7 @@ function App() {
             className="side-pane-resizer right desktop-only"
             role="separator"
             tabIndex={0}
-            aria-label={ui.resizeEntryDetail}
+            aria-label={isWorldDivisionsSection ? ui.resizeWorldDivisionDetail : ui.resizeEntryDetail}
             aria-orientation="vertical"
             aria-valuemin={minSidePaneWidth}
             aria-valuemax={maxResizablePaneWidth('detail')}
@@ -4765,7 +4979,7 @@ function App() {
           />
         )}
 
-        {expandedTagGroupModel && (
+        {isEntriesSection && expandedTagGroupModel && (
           <TagModal
             labels={{ closeTags: ui.closeTags, tags: ui.tags }}
             model={expandedTagGroupModel}
@@ -4775,62 +4989,82 @@ function App() {
           />
         )}
 
-        <EntryDetailPanel
-          activeEntryImageIndex={activeEntryImageIndex}
-          adminToken={adminToken}
-          className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}
-          copiedEntrySlug={copiedEntrySlug}
-          descriptionAudio={descriptionAudio}
-          hasMultipleEntryImages={hasMultipleEntryImages}
-          labels={{
-            collapseEntryDetail: ui.collapseEntryDetail,
-            closeEntryDetail: ui.closeEntryDetail,
-            dateUnknown: ui.dateUnknown,
-            description: ui.description,
-            expandImage: ui.expandImage,
-            imageIndicator: ui.imageIndicator,
-            imageSlide: ui.imageSlide,
-            knownPoints: ui.knownPoints,
-            nextImage: ui.nextImage,
-            places: ui.places,
-            playAll: ui.playAll,
-            previousImage: ui.previousImage,
-            relatedTopics: ui.relatedTopics,
-            routeRecords: ui.routeRecords,
-            selectedEntry: ui.selectedEntry,
-            sources: ui.sources,
-            summary: ui.summary,
-            whyItMatters: ui.whyItMatters,
-          }}
-          language={language}
-          relatedEntryGroups={relatedEntryGroups}
-          relationshipDirectionLabel={relationshipDirectionLabel}
-          relationshipLabel={relationshipLabel}
-          renderPlayButton={renderSectionPlayButton}
-          selectedEntry={selectedEntry}
-          selectedEntryDetail={selectedEntryDetail}
-          selectedEntryId={selectedEntryId}
-          selectedEntryImage={selectedEntryImage}
-          selectedEntryImageCount={selectedEntryImageCount}
-          selectedEntryImages={selectedEntryImages}
-          selectedEntryImageUrl={selectedEntryImageUrl}
-          selectedEntrySlug={selectedEntrySlug}
-          shellControls={<ShellControls {...shellControlProps} includeFilterButton={false} />}
-          summaryAudio={summaryAudio}
-          titleAudio={titleAudio}
-          ultimateAudioSequence={ultimateAudioSequence}
-          whyItMattersAudio={whyItMattersAudio}
-          onClose={() => setEntryDetailOpen(false)}
-          onCollapse={() => setDetailPaneCollapsed(true)}
-          onCopyEntrySlug={copyEntrySlug}
-          onExpandImage={() => setEntryImageExpanded(true)}
-          onPlayAudioSequence={playAudioSequence}
-          onSelectRelatedEntry={(entryId) => selectEntry(entries.find((item) => item.id === entryId)?.id ?? selectedEntryId)}
-          onShowAdjacentImage={showAdjacentEntryImage}
-          onShowEntryImage={showEntryImage}
-        />
+        {isEntriesSection ? (
+          <EntryDetailPanel
+            activeEntryImageIndex={activeEntryImageIndex}
+            adminToken={adminToken}
+            className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}
+            copiedEntrySlug={copiedEntrySlug}
+            descriptionAudio={descriptionAudio}
+            hasMultipleEntryImages={hasMultipleEntryImages}
+            labels={{
+              collapseEntryDetail: ui.collapseEntryDetail,
+              closeEntryDetail: ui.closeEntryDetail,
+              dateUnknown: ui.dateUnknown,
+              description: ui.description,
+              expandImage: ui.expandImage,
+              imageIndicator: ui.imageIndicator,
+              imageSlide: ui.imageSlide,
+              knownPoints: ui.knownPoints,
+              nextImage: ui.nextImage,
+              places: ui.places,
+              playAll: ui.playAll,
+              previousImage: ui.previousImage,
+              relatedTopics: ui.relatedTopics,
+              routeRecords: ui.routeRecords,
+              selectedEntry: ui.selectedEntry,
+              sources: ui.sources,
+              summary: ui.summary,
+              whyItMatters: ui.whyItMatters,
+            }}
+            language={language}
+            relatedEntryGroups={relatedEntryGroups}
+            relationshipDirectionLabel={relationshipDirectionLabel}
+            relationshipLabel={relationshipLabel}
+            renderPlayButton={renderSectionPlayButton}
+            selectedEntry={selectedEntry}
+            selectedEntryDetail={selectedEntryDetail}
+            selectedEntryId={selectedEntryId}
+            selectedEntryImage={selectedEntryImage}
+            selectedEntryImageCount={selectedEntryImageCount}
+            selectedEntryImages={selectedEntryImages}
+            selectedEntryImageUrl={selectedEntryImageUrl}
+            selectedEntrySlug={selectedEntrySlug}
+            shellControls={<ShellControls {...shellControlProps} includeFilterButton={false} />}
+            summaryAudio={summaryAudio}
+            titleAudio={titleAudio}
+            ultimateAudioSequence={ultimateAudioSequence}
+            whyItMattersAudio={whyItMattersAudio}
+            onClose={() => setEntryDetailOpen(false)}
+            onCollapse={() => setDetailPaneCollapsed(true)}
+            onCopyEntrySlug={copyEntrySlug}
+            onExpandImage={() => setEntryImageExpanded(true)}
+            onPlayAudioSequence={playAudioSequence}
+            onSelectRelatedEntry={(entryId) => selectEntry(entries.find((item) => item.id === entryId)?.id ?? selectedEntryId)}
+            onShowAdjacentImage={showAdjacentEntryImage}
+            onShowEntryImage={showEntryImage}
+          />
+        ) : (
+          <WorldDivisionDetailPanel
+            className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}
+            labels={{
+              close: ui.closeWorldDivisionDetail,
+              collapse: ui.collapseWorldDivisionDetail,
+              facts: ui.worldDivisionFacts,
+              includes: ui.worldDivisionIncludes,
+              mapNote: ui.worldDivisionMapNote,
+              noSelection: ui.worldDivisionNoSelection,
+              selected: ui.worldDivisionDetail,
+            }}
+            language={language}
+            selectedDivision={selectedWorldDivision}
+            shellControls={<ShellControls {...shellControlProps} includeFilterButton={false} />}
+            onClose={() => setEntryDetailOpen(false)}
+            onCollapse={() => setDetailPaneCollapsed(true)}
+          />
+        )}
 
-        {isEntryImageExpanded && selectedEntryImageUrl && (
+        {isEntriesSection && isEntryImageExpanded && selectedEntryImageUrl && (
           <ImageLightbox
             activeImageIndex={activeEntryImageIndex}
             hasMultipleImages={hasMultipleEntryImages}

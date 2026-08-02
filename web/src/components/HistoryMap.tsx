@@ -1,5 +1,6 @@
 import L from 'leaflet'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { worldDivisionText, type WorldDivision } from '../features/worldDivisions/worldDivisions'
 import 'leaflet/dist/leaflet.css'
 
 export type MapEntry = {
@@ -38,13 +39,18 @@ export type MapViewport = {
 }
 
 type HistoryMapProps = {
+  ariaLabel: string
   entries: MapEntry[]
   fallbackEntryIds: string[]
   language: string
+  selectedWorldDivisionId?: string | null
   selectedEntryId?: string
   autoFitKey: string
   showFallback: boolean
+  worldDivisionFocusKey: number
+  worldDivisions: readonly WorldDivision[]
   onSelectEntry: (entryId: string) => void
+  onSelectWorldDivision: (divisionId: string) => void
   onViewportChange: (viewport: MapViewport) => void
 }
 
@@ -164,6 +170,15 @@ function clusterPopupContent(markers: MapPointMarker[]) {
   `
 }
 
+function worldDivisionPopupContent(division: WorldDivision, polygonLabel: string | null, language: string) {
+  const label = polygonLabel ? `<small>${escapeHtml(polygonLabel)}</small>` : ''
+  return `
+    <strong>${escapeHtml(worldDivisionText(division.title, language))}</strong>
+    ${label}
+    <span>${escapeHtml(worldDivisionText(division.typeLabel, language))}</span>
+  `
+}
+
 function coordinateGroupKey(marker: MapPointMarker) {
   return coordinateKey(marker.coordinate)
 }
@@ -209,20 +224,27 @@ function clampLatitude(value: number) {
 }
 
 export function HistoryMap({
+  ariaLabel,
   entries,
   fallbackEntryIds,
   language,
+  selectedWorldDivisionId,
   selectedEntryId,
   autoFitKey,
   showFallback,
+  worldDivisionFocusKey,
+  worldDivisions,
   onSelectEntry,
+  onSelectWorldDivision,
   onViewportChange,
 }: HistoryMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const divisionOverlayRef = useRef<L.LayerGroup | null>(null)
   const overlayRef = useRef<L.LayerGroup | null>(null)
   const tileLayerRef = useRef<L.TileLayer | null>(null)
   const lastAutoFitKeyRef = useRef<string>('')
+  const lastWorldDivisionFocusKeyRef = useRef(worldDivisionFocusKey)
   const [mapRevision, setMapRevision] = useState(0)
 
   const hasRealMapData = entries.some((entry) => entry.points.length > 0 || entry.routes.length > 0)
@@ -252,6 +274,7 @@ export function HistoryMap({
     }).setView(defaultCenter, defaultZoom)
 
     L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('&copy; OpenStreetMap').addTo(map)
+    divisionOverlayRef.current = L.layerGroup().addTo(map)
     overlayRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
     const redraw = () => {
@@ -266,6 +289,7 @@ export function HistoryMap({
       tileLayerRef.current?.remove()
       map.remove()
       mapRef.current = null
+      divisionOverlayRef.current = null
       overlayRef.current = null
       tileLayerRef.current = null
     }
@@ -446,8 +470,72 @@ export function HistoryMap({
     }
   }, [autoFitKey, entries, mapRevision, onSelectEntry, selectedEntryId])
 
+  useEffect(() => {
+    const map = mapRef.current
+    const overlay = divisionOverlayRef.current
+    if (!map || !overlay) {
+      return
+    }
+
+    overlay.clearLayers()
+    const focusBounds = L.latLngBounds([])
+    const selectedDivision = worldDivisions.find((division) => division.id === selectedWorldDivisionId) ?? null
+
+    for (const division of worldDivisions) {
+      const isSelected = division.id === selectedWorldDivisionId
+      for (const shape of division.polygons) {
+        const coordinates = shape.points.map(([latitude, longitude]) => L.latLng(latitude, longitude))
+        const polygonLayer = L.polygon(coordinates, {
+          className: isSelected ? 'world-division-polygon selected' : 'world-division-polygon',
+          color: isSelected ? '#d9480f' : '#2f9e44',
+          fillColor: isSelected ? '#f59f00' : '#2f9e44',
+          fillOpacity: isSelected ? 0.22 : selectedWorldDivisionId ? 0.035 : 0.07,
+          opacity: isSelected ? 0.96 : 0.42,
+          pane: 'overlayPane',
+          weight: isSelected ? 3 : 1.4,
+        })
+
+        const polygonLabel = shape.label ? worldDivisionText(shape.label, language) : null
+        polygonLayer.bindPopup(worldDivisionPopupContent(division, polygonLabel, language), {
+          className: 'history-popup world-division-popup',
+        })
+        polygonLayer.on('click', () => onSelectWorldDivision(division.id))
+        polygonLayer.on('mouseover', () => {
+          if (!isSelected) {
+            polygonLayer.setStyle({ fillOpacity: 0.14, opacity: 0.72, weight: 2 })
+          }
+        })
+        polygonLayer.on('mouseout', () => {
+          if (!isSelected) {
+            polygonLayer.setStyle({
+              fillOpacity: selectedWorldDivisionId ? 0.035 : 0.07,
+              opacity: 0.42,
+              weight: 1.4,
+            })
+          }
+        })
+
+        polygonLayer.addTo(overlay)
+        if (isSelected) {
+          for (const coordinate of coordinates) {
+            focusBounds.extend(coordinate)
+          }
+        }
+      }
+    }
+
+    if (worldDivisionFocusKey !== lastWorldDivisionFocusKeyRef.current) {
+      lastWorldDivisionFocusKeyRef.current = worldDivisionFocusKey
+      if (selectedDivision && focusBounds.isValid()) {
+        const maxZoom =
+          selectedDivision.categoryId === 'hemispheres' ? 2 : selectedDivision.categoryId === 'continents' ? 3 : 6
+        map.fitBounds(focusBounds.pad(0.28), { animate: true, maxZoom })
+      }
+    }
+  }, [language, onSelectWorldDivision, selectedWorldDivisionId, worldDivisionFocusKey, worldDivisions])
+
   return (
-    <section className="map-canvas" aria-label="World history map">
+    <section className="map-canvas" aria-label={ariaLabel}>
       <div className="leaflet-map" ref={mapContainerRef} />
       {showFallback && !hasRealMapData && (
         <div className="map-fallback-layer">

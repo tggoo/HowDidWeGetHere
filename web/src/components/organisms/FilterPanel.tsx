@@ -1,4 +1,5 @@
 import { CalendarRange, CheckCircle2, ChevronLeft, Filter, Globe2, LoaderCircle, Search, Tags, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type FilterTag = {
   id: string
@@ -51,6 +52,7 @@ type FilterPanelProps<TPeriod extends PeriodFilterItem> = {
   searchText: string
   selectedPeriodId: string | null
   selectedTags: string[]
+  sectionSwitcher: ReactNode
   tagGroups: FilterTagGroup[]
   toYear: string
   formatPeriodYear: (period: TPeriod, dateUnknown: string) => string
@@ -86,6 +88,7 @@ export function FilterPanel<TPeriod extends PeriodFilterItem>({
   searchText,
   selectedPeriodId,
   selectedTags,
+  sectionSwitcher,
   tagGroups,
   toYear,
 }: FilterPanelProps<TPeriod>) {
@@ -121,6 +124,7 @@ export function FilterPanel<TPeriod extends PeriodFilterItem>({
           <X aria-hidden="true" />
         </button>
       </div>
+      {sectionSwitcher}
       <div className="status-pill">
         {isLoadingMap ? <LoaderCircle aria-hidden="true" className="spin-icon" /> : <CheckCircle2 aria-hidden="true" />}
         <span>{mapStatus}</span>
