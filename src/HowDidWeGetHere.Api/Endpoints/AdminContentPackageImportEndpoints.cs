@@ -12,6 +12,7 @@ using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
+using HowDidWeGetHere.Domain.WorldDivisions;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,16 @@ public static class AdminContentPackageImportEndpoints
         ["whyItMatters"] = new(AudioKind.WhyItMatters, false, 30),
         ["why-it-matters"] = new(AudioKind.WhyItMatters, false, 30),
         ["why_it_matters"] = new(AudioKind.WhyItMatters, false, 30)
+    };
+
+    private static readonly Dictionary<string, AudioAttributeDefinition> WorldDivisionAudioAttributes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["summary"] = new(AudioKind.Summary, true, 0),
+        ["title"] = new(AudioKind.Title, false, 10),
+        ["facts"] = new(AudioKind.WhyItMatters, false, 20),
+        ["mapNote"] = new(AudioKind.Description, false, 30),
+        ["map-note"] = new(AudioKind.Description, false, 30),
+        ["map_note"] = new(AudioKind.Description, false, 30)
     };
 
     private static readonly HashSet<string> PackageAudioLanguages = new(StringComparer.OrdinalIgnoreCase)
@@ -226,6 +237,14 @@ public static class AdminContentPackageImportEndpoints
                 rowWarnings));
         }
 
+        foreach (var division in document.WorldDivisions)
+        {
+            var divisionWarnings = ValidatePackageWorldDivision(division, archive);
+            var resolvedAudio = ResolveWorldDivisionAudioFiles(division, archive);
+            warnings.AddRange(divisionWarnings.Select(warning => $"world division {ResolveWorldDivisionId(division)}: {warning}"));
+            audioToAttach += resolvedAudio.Count;
+        }
+
         return Results.Ok(new ContentPackageImportPreviewResult(
             document.PackageSlug ?? Path.GetFileNameWithoutExtension(file.FileName),
             document.Title ?? document.PackageSlug ?? file.FileName,
@@ -293,6 +312,13 @@ public static class AdminContentPackageImportEndpoints
         foreach (var entry in document.Entries)
         {
             warnings.AddRange(ValidatePackageEntry(entry, archive).Select(warning => $"{ResolveSlug(entry)}: {warning}"));
+        }
+
+        foreach (var division in document.WorldDivisions)
+        {
+            warnings.AddRange(
+                ValidatePackageWorldDivision(division, archive)
+                    .Select(warning => $"world division {ResolveWorldDivisionId(division)}: {warning}"));
         }
 
         await using var transaction = shouldClearExistingData
@@ -368,6 +394,16 @@ public static class AdminContentPackageImportEndpoints
             .ToDictionaryAsync(place => place.Slug, StringComparer.OrdinalIgnoreCase, cancellationToken);
         var sourceCache = await dbContext.Sources
             .ToDictionaryAsync(source => source.Url, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var packageWorldDivisionIds = document.WorldDivisions
+            .Select(ResolveWorldDivisionId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        List<WorldDivisionAudioTrack> worldDivisionAudioTracks = packageWorldDivisionIds.Length == 0
+            ? []
+            : await dbContext.WorldDivisionAudioTracks
+                .Where(audio => packageWorldDivisionIds.Contains(audio.WorldDivisionId))
+                .OrderBy(audio => audio.CreatedAt)
+                .ToListAsync(cancellationToken);
 
         var entriesCreated = 0;
         var entriesUpdated = 0;
@@ -534,6 +570,67 @@ public static class AdminContentPackageImportEndpoints
             }
         }
 
+        for (var index = 0; index < document.WorldDivisions.Count; index++)
+        {
+            var packageWorldDivision = document.WorldDivisions[index];
+            var worldDivisionId = ResolveWorldDivisionId(packageWorldDivision);
+            var packageAudioFiles = ResolveWorldDivisionAudioFiles(packageWorldDivision, archive);
+            logger.LogInformation(
+                "Importing content package world division {DivisionIndex}/{DivisionCount}. FileName={FileName} PackageSlug={PackageSlug} WorldDivisionId={WorldDivisionId} AudioRefs={AudioRefs}",
+                index + 1,
+                document.WorldDivisions.Count,
+                file.FileName,
+                document.PackageSlug,
+                worldDivisionId,
+                packageAudioFiles.Count);
+
+            var importedRow = new ImportedRow
+            {
+                ImportBatch = batch,
+                SheetName = "world-divisions",
+                RowNumber = document.Entries.Count + index + 1,
+                RawJson = JsonSerializer.Serialize(packageWorldDivision, JsonOptions)
+            };
+            batch.Rows.Add(importedRow);
+
+            var divisionTracks = worldDivisionAudioTracks
+                .Where(track => track.WorldDivisionId.Equals(worldDivisionId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var audio in packageAudioFiles)
+            {
+                var stored = await StorePackageMediaAsync(
+                    archive,
+                    audio.Path,
+                    "audio/world-divisions",
+                    mediaStorage,
+                    httpRequest,
+                    cancellationToken);
+                if (stored is null)
+                {
+                    continue;
+                }
+
+                var wasUpdate = UpsertWorldDivisionAudio(
+                    worldDivisionId,
+                    packageWorldDivision,
+                    divisionTracks,
+                    audio,
+                    stored,
+                    dbContext,
+                    environment,
+                    configuration,
+                    userId);
+                if (wasUpdate)
+                {
+                    audioTracksUpdated++;
+                }
+                else
+                {
+                    audioTracksCreated++;
+                }
+            }
+        }
+
         batch.CompletedAt = DateTimeOffset.UtcNow;
         batch.Status = warnings.Count == 0 ? ImportStatus.Imported : ImportStatus.PartiallyImported;
         batch.SummaryJson = JsonSerializer.Serialize(new
@@ -606,6 +703,7 @@ public static class AdminContentPackageImportEndpoints
         await dbContext.EntryRoutes.ExecuteDeleteAsync(cancellationToken);
         await dbContext.EntryActors.ExecuteDeleteAsync(cancellationToken);
         await dbContext.EntryAudioTracks.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.WorldDivisionAudioTracks.ExecuteDeleteAsync(cancellationToken);
         await dbContext.EntryImageTranslations.ExecuteDeleteAsync(cancellationToken);
         await dbContext.EntryImages.ExecuteDeleteAsync(cancellationToken);
         await dbContext.EntryPlaces.ExecuteDeleteAsync(cancellationToken);
@@ -1484,6 +1582,82 @@ public static class AdminContentPackageImportEndpoints
             ParseEnum(audio.Kind, AudioKind.Narration),
             audio.SortOrder ?? 0);
 
+    private static bool UpsertWorldDivisionAudio(
+        string worldDivisionId,
+        ContentPackageWorldDivision division,
+        ICollection<WorldDivisionAudioTrack> existingTracks,
+        ContentPackageAudio audio,
+        StoredMediaFile stored,
+        HistoryDbContext dbContext,
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        string? userId)
+    {
+        var audioKey = ResolveAudioTrackImportKey(audio);
+        var language = audioKey.LanguageCode;
+        var kind = audioKey.Kind;
+        var sortOrder = audioKey.SortOrder;
+        var title = EmptyToNull(audio.Title);
+        var existing = existingTracks
+            .Where(track => track.LanguageCode == language && track.Kind == kind)
+            .OrderBy(track => track.SortOrder)
+            .FirstOrDefault(track =>
+                track.SortOrder == sortOrder ||
+                (title is not null && string.Equals(track.Title, title, StringComparison.OrdinalIgnoreCase)));
+        var isPrimary = audio.IsPrimary ?? existing?.IsPrimary ?? !existingTracks.Any(track => track.LanguageCode == language);
+        if (isPrimary)
+        {
+            foreach (var track in existingTracks.Where(track => track.LanguageCode == language))
+            {
+                track.IsPrimary = false;
+            }
+        }
+
+        if (existing is null)
+        {
+            var newTrack = new WorldDivisionAudioTrack
+            {
+                WorldDivisionId = worldDivisionId,
+                LanguageCode = language,
+                Kind = kind,
+                StorageProvider = stored.StorageProvider,
+                StorageKey = stored.StorageKey,
+                PublicUrl = stored.PublicUrl,
+                MediaType = stored.MediaType,
+                DurationSeconds = audio.DurationSeconds,
+                SortOrder = sortOrder,
+                IsPrimary = isPrimary,
+                Title = title ?? $"{ResolveWorldDivisionTitle(division)} narration",
+                Transcript = EmptyToNull(audio.Transcript),
+                Attribution = EmptyToNull(audio.Attribution),
+                License = EmptyToNull(audio.License),
+                SourceUrl = EmptyToNull(audio.SourceUrl),
+                CreatedByUserId = userId
+            };
+            dbContext.WorldDivisionAudioTracks.Add(newTrack);
+            existingTracks.Add(newTrack);
+            return false;
+        }
+
+        TryDeleteLocalFile(existing.StorageProvider, existing.StorageKey, environment, configuration);
+        existing.Kind = kind;
+        existing.StorageProvider = stored.StorageProvider;
+        existing.StorageKey = stored.StorageKey;
+        existing.PublicUrl = stored.PublicUrl;
+        existing.MediaType = stored.MediaType;
+        existing.DurationSeconds = audio.DurationSeconds;
+        existing.SortOrder = sortOrder;
+        existing.IsPrimary = isPrimary;
+        existing.Title = title ?? existing.Title ?? $"{ResolveWorldDivisionTitle(division)} narration";
+        existing.Transcript = EmptyToNull(audio.Transcript);
+        existing.Attribution = EmptyToNull(audio.Attribution);
+        existing.License = EmptyToNull(audio.License);
+        existing.SourceUrl = EmptyToNull(audio.SourceUrl);
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
+        existing.UpdatedByUserId = userId;
+        return true;
+    }
+
     private static bool UpsertImage(
         Entry entry,
         ContentPackageImage image,
@@ -1634,9 +1808,9 @@ public static class AdminContentPackageImportEndpoints
             return new PackageReadResult(null, "Unsupported entries.json schemaVersion. Expected 1.");
         }
 
-        if (document.Entries.Count == 0)
+        if (document.Entries.Count == 0 && document.WorldDivisions.Count == 0)
         {
-            return new PackageReadResult(null, "Content package contains no entries.");
+            return new PackageReadResult(null, "Content package contains no entries or world divisions.");
         }
 
         return new PackageReadResult(document, null);
@@ -1729,6 +1903,37 @@ public static class AdminContentPackageImportEndpoints
         return warnings;
     }
 
+    private static IReadOnlyList<string> ValidatePackageWorldDivision(ContentPackageWorldDivision division, ZipArchive archive)
+    {
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(division.Id))
+        {
+            warnings.Add("World division has no id.");
+        }
+
+        foreach (var audio in division.Audio)
+        {
+            if (string.IsNullOrWhiteSpace(audio.Path))
+            {
+                warnings.Add("Audio item has no path.");
+            }
+            else
+            {
+                var extension = Path.GetExtension(audio.Path);
+                if (!AllowedAudioExtensions.Contains(extension))
+                {
+                    warnings.Add($"Unsupported audio extension '{extension}' for '{audio.Path}'.");
+                }
+                else if (!PackageEntryExists(archive, audio.Path))
+                {
+                    warnings.Add($"Audio file '{audio.Path}' is missing from the ZIP.");
+                }
+            }
+        }
+
+        return warnings;
+    }
+
     private static IReadOnlyList<ContentPackageAudio> ResolvePackageAudioFiles(ContentPackageEntry entry, ZipArchive archive)
     {
         var resolved = new List<ContentPackageAudio>();
@@ -1757,6 +1962,52 @@ public static class AdminContentPackageImportEndpoints
         }
 
         foreach (var audio in DiscoverSlugFirstPackageAudio(entry, archive))
+        {
+            var normalizedPath = NormalizePackagePath(audio.Path);
+            if (normalizedPath is null || explicitPaths.Contains(normalizedPath))
+            {
+                continue;
+            }
+
+            if (resolvedKeys.Add(ResolveAudioTrackImportKey(audio)))
+            {
+                resolved.Add(audio);
+            }
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlyList<ContentPackageAudio> ResolveWorldDivisionAudioFiles(
+        ContentPackageWorldDivision division,
+        ZipArchive archive)
+    {
+        var resolved = new List<ContentPackageAudio>();
+        var resolvedKeys = new HashSet<AudioTrackImportKey>();
+        var explicitPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var audio in division.Audio)
+        {
+            var normalizedPath = NormalizePackagePath(audio.Path);
+            if (normalizedPath is null)
+            {
+                continue;
+            }
+
+            explicitPaths.Add(normalizedPath);
+            if (!AllowedAudioExtensions.Contains(Path.GetExtension(normalizedPath)) || !PackageEntryExists(archive, normalizedPath))
+            {
+                continue;
+            }
+
+            var resolvedAudio = ResolveWorldDivisionAudioMetadata(division, audio, normalizedPath);
+            if (resolvedKeys.Add(ResolveAudioTrackImportKey(resolvedAudio)))
+            {
+                resolved.Add(resolvedAudio);
+            }
+        }
+
+        foreach (var audio in DiscoverWorldDivisionAudio(division, archive))
         {
             var normalizedPath = NormalizePackagePath(audio.Path);
             if (normalizedPath is null || explicitPaths.Contains(normalizedPath))
@@ -1823,6 +2074,58 @@ public static class AdminContentPackageImportEndpoints
         }
     }
 
+    private static IEnumerable<ContentPackageAudio> DiscoverWorldDivisionAudio(
+        ContentPackageWorldDivision division,
+        ZipArchive archive)
+    {
+        var divisionId = ResolveWorldDivisionId(division);
+        var prefix = $"audio/world-divisions/{divisionId}/";
+        foreach (var archiveEntry in archive.Entries)
+        {
+            var packagePath = NormalizePackagePath(archiveEntry.FullName);
+            if (archiveEntry.Length <= 0 || packagePath is null || !packagePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(packagePath);
+            if (!AllowedAudioExtensions.Contains(extension))
+            {
+                continue;
+            }
+
+            var relativePath = packagePath[prefix.Length..];
+            var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length != 2)
+            {
+                continue;
+            }
+
+            var language = NormalizeLanguage(segments[0]);
+            if (!PackageAudioLanguages.Contains(language))
+            {
+                continue;
+            }
+
+            var attribute = Path.GetFileNameWithoutExtension(segments[1]);
+            if (!WorldDivisionAudioAttributes.TryGetValue(attribute, out var definition))
+            {
+                continue;
+            }
+
+            yield return new ContentPackageAudio
+            {
+                Path = packagePath,
+                LanguageCode = language,
+                Kind = definition.Kind.ToString(),
+                IsPrimary = definition.IsPrimary,
+                SortOrder = definition.SortOrder,
+                Title = $"{ResolveWorldDivisionTitle(division)} {attribute}",
+                Transcript = ReadPackageText(archive, $"audio/world-divisions/{divisionId}/{segments[0]}/{attribute}.txt")
+            };
+        }
+    }
+
     private static ContentPackageAudio ResolvePackageAudioMetadata(
         ContentPackageEntry entry,
         ContentPackageAudio audio,
@@ -1837,6 +2140,28 @@ public static class AdminContentPackageImportEndpoints
             IsPrimary = audio.IsPrimary ?? inferredDefinition?.IsPrimary,
             SortOrder = audio.SortOrder ?? inferredDefinition?.SortOrder,
             Title = EmptyToNull(audio.Title) ?? (inferredAttribute is null ? null : $"{ResolveTitle(entry)} {inferredAttribute}"),
+            Transcript = EmptyToNull(audio.Transcript),
+            DurationSeconds = audio.DurationSeconds,
+            Attribution = EmptyToNull(audio.Attribution),
+            License = EmptyToNull(audio.License),
+            SourceUrl = EmptyToNull(audio.SourceUrl)
+        };
+    }
+
+    private static ContentPackageAudio ResolveWorldDivisionAudioMetadata(
+        ContentPackageWorldDivision division,
+        ContentPackageAudio audio,
+        string normalizedPath)
+    {
+        TryResolveWorldDivisionAudioPath(division, normalizedPath, out var inferredLanguage, out var inferredAttribute, out var inferredDefinition);
+        return new ContentPackageAudio
+        {
+            Path = normalizedPath,
+            LanguageCode = EmptyToNull(audio.LanguageCode) ?? inferredLanguage,
+            Kind = EmptyToNull(audio.Kind) ?? inferredDefinition?.Kind.ToString(),
+            IsPrimary = audio.IsPrimary ?? inferredDefinition?.IsPrimary,
+            SortOrder = audio.SortOrder ?? inferredDefinition?.SortOrder,
+            Title = EmptyToNull(audio.Title) ?? (inferredAttribute is null ? null : $"{ResolveWorldDivisionTitle(division)} {inferredAttribute}"),
             Transcript = EmptyToNull(audio.Transcript),
             DurationSeconds = audio.DurationSeconds,
             Attribution = EmptyToNull(audio.Attribution),
@@ -1878,6 +2203,49 @@ public static class AdminContentPackageImportEndpoints
 
         var fileAttribute = Path.GetFileNameWithoutExtension(segments[1]);
         if (!PackageAudioAttributes.TryGetValue(fileAttribute, out var audioDefinition))
+        {
+            return false;
+        }
+
+        language = normalizedLanguage;
+        attribute = fileAttribute;
+        definition = audioDefinition;
+        return true;
+    }
+
+    private static bool TryResolveWorldDivisionAudioPath(
+        ContentPackageWorldDivision division,
+        string packagePath,
+        out string? language,
+        out string? attribute,
+        out AudioAttributeDefinition? definition)
+    {
+        language = null;
+        attribute = null;
+        definition = null;
+
+        var divisionId = ResolveWorldDivisionId(division);
+        var prefix = $"audio/world-divisions/{divisionId}/";
+        if (!packagePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var relativePath = packagePath[prefix.Length..];
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length != 2)
+        {
+            return false;
+        }
+
+        var normalizedLanguage = NormalizeLanguage(segments[0]);
+        if (!PackageAudioLanguages.Contains(normalizedLanguage))
+        {
+            return false;
+        }
+
+        var fileAttribute = Path.GetFileNameWithoutExtension(segments[1]);
+        if (!WorldDivisionAudioAttributes.TryGetValue(fileAttribute, out var audioDefinition))
         {
             return false;
         }
@@ -2029,6 +2397,12 @@ public static class AdminContentPackageImportEndpoints
             ? "Imported entry"
             : firstTranslationTitle!.Trim();
     }
+
+    private static string ResolveWorldDivisionId(ContentPackageWorldDivision division) =>
+        EndpointHelpers.Slugify(EmptyToNull(division.Id) ?? ResolveWorldDivisionTitle(division));
+
+    private static string ResolveWorldDivisionTitle(ContentPackageWorldDivision division) =>
+        EmptyToNull(division.Title) ?? EmptyToNull(division.Id) ?? "World division";
 
     private static string NormalizeLanguage(string? language)
     {
@@ -2200,6 +2574,14 @@ public static class AdminContentPackageImportEndpoints
         public string? Title { get; set; }
         public string? DefaultLanguage { get; set; }
         public List<ContentPackageEntry> Entries { get; set; } = [];
+        public List<ContentPackageWorldDivision> WorldDivisions { get; set; } = [];
+    }
+
+    private sealed class ContentPackageWorldDivision
+    {
+        public string? Id { get; set; }
+        public string? Title { get; set; }
+        public List<ContentPackageAudio> Audio { get; set; } = [];
     }
 
     private sealed class ContentPackageEntry

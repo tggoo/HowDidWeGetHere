@@ -19,7 +19,8 @@ type EntryImageItem = {
 }
 
 type EntryAudio = {
-  entryId: string
+  entryId?: string
+  worldDivisionId?: string
   title: string
   subtitle?: string | null
   url: string

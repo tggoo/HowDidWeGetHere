@@ -2,7 +2,8 @@ import { ChevronDown, Music, SkipForward, X } from 'lucide-react'
 import type { RefObject } from 'react'
 
 type ActiveAudio = {
-  entryId: string
+  entryId?: string
+  worldDivisionId?: string
   title: string
   subtitle?: string | null
   url: string

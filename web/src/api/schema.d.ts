@@ -625,6 +625,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/world-divisions/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    language?: string;
+                    divisionId?: string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorldDivisionAudioTrackResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-periods": {
         parameters: {
             query?: never;
@@ -650,6 +688,41 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["TimePeriodListItemResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/deployment-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeploymentInfoResponse"];
                     };
                 };
             };
@@ -2309,6 +2382,13 @@ export interface components {
         AudioKind: "Narration" | "Summary" | "Pronunciation" | "Ambience" | "Interview" | "Other" | "Title" | "Description" | "WhyItMatters";
         /** @enum {unknown} */
         ContentStatus: "Draft" | "Published" | "Archived";
+        DeploymentInfoResponse: {
+            commitSha: null | string;
+            shortCommitSha: null | string;
+            commitUrl: null | string;
+            /** Format: date-time */
+            deployedAtUtc: string;
+        };
         EntryAudioTrackResponse: {
             /** Format: uuid */
             id: string;
@@ -2643,6 +2723,8 @@ export interface components {
             entriesToCreate: number | string;
             /** Format: int32 */
             entriesToUpdate: number | string;
+            /** Format: int32 */
+            placesToAttach: number | string;
             rows: components["schemas"]["WorkbookImportPreviewRow"][];
             warnings: string[];
             validationSummary: components["schemas"]["WorkbookImportValidationSummary"];
@@ -2662,6 +2744,7 @@ export interface components {
             existingEntrySlug: null | string;
             sourceUrl: null | string;
             tags: string[];
+            places: string[];
             warnings: string[];
             validationIssues: components["schemas"]["WorkbookImportValidationIssue"][];
         };
@@ -2674,6 +2757,10 @@ export interface components {
             entriesCreated: number | string;
             /** Format: int32 */
             entriesUpdated: number | string;
+            /** Format: int32 */
+            placesCreated: number | string;
+            /** Format: int32 */
+            placesAttached: number | string;
             warnings: string[];
         };
         WorkbookImportValidationIssue: {
@@ -2691,6 +2778,24 @@ export interface components {
             warnings: number | string;
             /** Format: int32 */
             info: number | string;
+        };
+        WorldDivisionAudioTrackResponse: {
+            /** Format: uuid */
+            id: string;
+            worldDivisionId: string;
+            url: string;
+            kind: string;
+            languageCode: string;
+            isPrimary: boolean;
+            /** Format: int32 */
+            sortOrder: number | string;
+            title: null | string;
+            transcript: null | string;
+            /** Format: int32 */
+            durationSeconds: null | number | string;
+            attribution: null | string;
+            license: null | string;
+            sourceUrl: null | string;
         };
     };
     responses: never;

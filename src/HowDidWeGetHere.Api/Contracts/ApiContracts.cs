@@ -165,6 +165,21 @@ public sealed record EntryAudioTrackResponse(
     string? License,
     string? SourceUrl);
 
+public sealed record WorldDivisionAudioTrackResponse(
+    Guid Id,
+    string WorldDivisionId,
+    string Url,
+    string Kind,
+    string LanguageCode,
+    bool IsPrimary,
+    int SortOrder,
+    string? Title,
+    string? Transcript,
+    int? DurationSeconds,
+    string? Attribution,
+    string? License,
+    string? SourceUrl);
+
 public sealed record MapEntryResponse(
     Guid EntryId,
     string Slug,

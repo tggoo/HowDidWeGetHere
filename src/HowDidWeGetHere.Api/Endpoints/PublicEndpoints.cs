@@ -31,6 +31,9 @@ public static class PublicEndpoints
         api.MapGet("/map/entries", GetMapEntriesAsync)
             .Produces<List<MapEntryResponse>>(StatusCodes.Status200OK);
 
+        api.MapGet("/world-divisions/audio", GetWorldDivisionAudioTracksAsync)
+            .Produces<List<WorldDivisionAudioTrackResponse>>(StatusCodes.Status200OK);
+
         api.MapGet("/time-periods", GetTimePeriodsAsync)
             .Produces<List<TimePeriodListItemResponse>>(StatusCodes.Status200OK);
 
@@ -108,6 +111,51 @@ public static class PublicEndpoints
             .ToListAsync(cancellationToken);
 
         return Results.Ok(entries);
+    }
+
+    private static async Task<IResult> GetWorldDivisionAudioTracksAsync(
+        HistoryDbContext dbContext,
+        string? language,
+        string[]? divisionId,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var requestedDivisionIds = divisionId?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+        var query = dbContext.WorldDivisionAudioTracks.AsNoTracking();
+
+        if (requestedDivisionIds.Length > 0)
+        {
+            query = query.Where(audio => requestedDivisionIds.Contains(audio.WorldDivisionId));
+        }
+
+        var response = await query
+            .Where(audio => audio.LanguageCode == lang || audio.LanguageCode == "en")
+            .OrderBy(audio => audio.WorldDivisionId)
+            .ThenByDescending(audio => audio.LanguageCode == lang)
+            .ThenByDescending(audio => audio.LanguageCode == "en")
+            .ThenByDescending(audio => audio.IsPrimary)
+            .ThenBy(audio => audio.SortOrder)
+            .Select(audio => new WorldDivisionAudioTrackResponse(
+                audio.Id,
+                audio.WorldDivisionId,
+                audio.PublicUrl ?? audio.StorageKey,
+                audio.Kind.ToString(),
+                audio.LanguageCode,
+                audio.IsPrimary,
+                audio.SortOrder,
+                audio.Title,
+                audio.Transcript,
+                audio.DurationSeconds,
+                audio.Attribution,
+                audio.License,
+                audio.SourceUrl))
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> GetMapEntriesAsync(

@@ -41,6 +41,7 @@ import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistory
 import {
   defaultWorldDivisionCategoryId,
   defaultWorldDivisionId,
+  worldDivisionText,
   worldDivisions,
   type WorldDivisionCategoryId,
 } from './features/worldDivisions/worldDivisions'
@@ -84,6 +85,7 @@ type SpatialConfidence = components['schemas']['SpatialConfidence']
 type SourceSupportKind = components['schemas']['SourceSupportKind']
 type TimePrecision = Exclude<components['schemas']['TimePrecision'], null>
 type TimePeriodType = components['schemas']['TimePeriodType']
+type WorldDivisionAudioTrack = components['schemas']['WorldDivisionAudioTrackResponse']
 
 type EntryListItem = {
   id: string
@@ -223,7 +225,8 @@ type EntryDetail = EntryListItem & {
 type EntryRouteDetail = EntryDetail['routes'][number]
 
 type ActiveAudio = {
-  entryId: string
+  entryId?: string
+  worldDivisionId?: string
   title: string
   subtitle?: string | null
   url: string
@@ -781,7 +784,7 @@ const uiCopy = {
     openWorldDivisions: 'Open world divisions',
     openWorldDivisionDetail: 'Open world division detail',
     openOfflineMedia: 'Open offline media',
-    openPlayingEntry: 'Open playing entry',
+    openPlayingEntry: 'Open playing item',
     minimizeAudio: 'Minimize player',
     restoreAudio: 'Show player',
     otherFiles: 'Other files',
@@ -874,7 +877,7 @@ const uiCopy = {
     worldDivisionsMap: 'Mapa dělení světa',
     worldDivisions: 'Dělení světa',
     nowPlaying: 'Přehrává se',
-    openPlayingEntry: 'Otevřít přehrávaný záznam',
+    openPlayingEntry: 'Otevřít přehrávanou položku',
     minimizeAudio: 'Skrýt přehrávač',
     restoreAudio: 'Zobrazit přehrávač',
     loadingInitial: 'Načítám publikovaná mapová data.',
@@ -1206,6 +1209,35 @@ function addEntryDetailMediaCandidates(
   }
 }
 
+function addWorldDivisionAudioCandidates(
+  candidatesByUrl: Map<string, OfflineMediaCandidate>,
+  tracks: readonly WorldDivisionAudioTrack[],
+  languageCodes: readonly string[],
+) {
+  const languageSet = new Set(languageCodes)
+
+  for (const audioTrack of tracks) {
+    if (!languageSet.has(audioTrack.languageCode)) {
+      continue
+    }
+
+    const division = worldDivisions.find((item) => item.id === audioTrack.worldDivisionId)
+    const audioUrl = mediaUrlToAbsolute(audioTrack.url)
+    if (!division || !audioUrl) {
+      continue
+    }
+
+    addOfflineMediaCandidate(candidatesByUrl, {
+      entryId: `world-division:${audioTrack.worldDivisionId}`,
+      entryTitle: worldDivisionText(division.title, audioTrack.languageCode),
+      kind: 'audio',
+      label: audioTrack.title ?? audioTrack.kind,
+      languageCode: audioTrack.languageCode,
+      url: audioUrl,
+    })
+  }
+}
+
 function entrySlugFromUrl() {
   if (typeof window === 'undefined') {
     return null
@@ -1259,6 +1291,41 @@ function buildSectionAudio(
   return {
     entryId: entry.id,
     title: entry.title,
+    subtitle: label,
+    url,
+  }
+}
+
+function findWorldDivisionAudioTrack(
+  tracks: readonly WorldDivisionAudioTrack[],
+  kind: string,
+  language: string,
+): WorldDivisionAudioTrack | null {
+  const matches = tracks.filter((track) => track.kind === kind)
+  return matches.find((track) => track.languageCode === language) ??
+    matches.find((track) => track.languageCode === 'en') ??
+    matches[0] ??
+    null
+}
+
+function buildWorldDivisionSectionAudio(
+  division: (typeof worldDivisions)[number] | null,
+  track: WorldDivisionAudioTrack | null,
+  language: string,
+  label: string,
+): ActiveAudio | null {
+  if (!division || !track) {
+    return null
+  }
+
+  const url = mediaUrlToAbsolute(track.url)
+  if (!url) {
+    return null
+  }
+
+  return {
+    worldDivisionId: division.id,
+    title: worldDivisionText(division.title, language),
     subtitle: label,
     url,
   }
@@ -1533,6 +1600,7 @@ function App() {
     useState<WorldDivisionCategoryId>(defaultWorldDivisionCategoryId)
   const [selectedWorldDivisionId, setSelectedWorldDivisionId] = useState<string | null>(defaultWorldDivisionId)
   const [worldDivisionFocusKey, setWorldDivisionFocusKey] = useState(0)
+  const [worldDivisionAudioTracks, setWorldDivisionAudioTracks] = useState<WorldDivisionAudioTrack[]>([])
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
@@ -2064,6 +2132,57 @@ function App() {
 
   useEffect(() => {
     let isActive = true
+
+    async function loadWorldDivisionAudioTracks() {
+      try {
+        const audioLanguages = [...new Set([language, ...offlineAudioLanguages])]
+        const results = await Promise.all(
+          audioLanguages.map((audioLanguage) =>
+            cachedQuery(
+              ['world-division-audio', audioLanguage, reloadKey],
+              () =>
+                apiClient.GET('/api/world-divisions/audio', {
+                  params: {
+                    query: {
+                      language: audioLanguage,
+                    },
+                  },
+                }),
+              { ttlMs: 60_000 },
+            ),
+          ),
+        )
+
+        if (isActive) {
+          const tracksById = new Map<string, WorldDivisionAudioTrack>()
+          for (const result of results) {
+            if (result.error || !result.data) {
+              continue
+            }
+
+            for (const audioTrack of result.data as WorldDivisionAudioTrack[]) {
+              tracksById.set(audioTrack.id, audioTrack)
+            }
+          }
+
+          setWorldDivisionAudioTracks([...tracksById.values()])
+        }
+      } catch {
+        if (isActive) {
+          setWorldDivisionAudioTracks([])
+        }
+      }
+    }
+
+    void loadWorldDivisionAudioTracks()
+
+    return () => {
+      isActive = false
+    }
+  }, [language, reloadKey])
+
+  useEffect(() => {
+    let isActive = true
     const selectedEntry = entries.find((entry) => entry.id === selectedEntryId)
     setEntryImageExpanded(false)
     setEntryImageIndex(0)
@@ -2136,8 +2255,10 @@ function App() {
       })
     }
 
+    addWorldDivisionAudioCandidates(candidatesByUrl, worldDivisionAudioTracks, contentLanguages.map((item) => item.code))
+
     return [...candidatesByUrl.values()]
-  }, [entries, language, selectedEntryDetail])
+  }, [entries, language, selectedEntryDetail, worldDivisionAudioTracks])
 
   const offlineMediaInspectionCandidates = useMemo(() => {
     return mergeOfflineMediaCandidates([...knownOfflineMedia, ...downloadedOfflineMediaCandidates])
@@ -2502,6 +2623,44 @@ function App() {
     () => worldDivisions.find((division) => division.id === selectedWorldDivisionId) ?? null,
     [selectedWorldDivisionId],
   )
+  const selectedWorldDivisionAudioTracks = useMemo(
+    () =>
+      selectedWorldDivision
+        ? worldDivisionAudioTracks.filter((audioTrack) => audioTrack.worldDivisionId === selectedWorldDivision.id)
+        : [],
+    [selectedWorldDivision, worldDivisionAudioTracks],
+  )
+  const worldDivisionTitleAudio = buildWorldDivisionSectionAudio(
+    selectedWorldDivision,
+    findWorldDivisionAudioTrack(selectedWorldDivisionAudioTracks, 'Title', language),
+    language,
+    ui.titleAudioLabel,
+  )
+  const worldDivisionSummaryAudio = buildWorldDivisionSectionAudio(
+    selectedWorldDivision,
+    findWorldDivisionAudioTrack(selectedWorldDivisionAudioTracks, 'Summary', language),
+    language,
+    ui.summary,
+  )
+  const worldDivisionFactsAudio = buildWorldDivisionSectionAudio(
+    selectedWorldDivision,
+    findWorldDivisionAudioTrack(selectedWorldDivisionAudioTracks, 'WhyItMatters', language),
+    language,
+    ui.worldDivisionFacts,
+  )
+  const worldDivisionMapNoteAudio = buildWorldDivisionSectionAudio(
+    selectedWorldDivision,
+    findWorldDivisionAudioTrack(selectedWorldDivisionAudioTracks, 'Description', language),
+    language,
+    ui.worldDivisionMapNote,
+  )
+  const worldDivisionAudioSequence = useMemo(
+    () =>
+      [worldDivisionTitleAudio, worldDivisionSummaryAudio, worldDivisionFactsAudio, worldDivisionMapNoteAudio].filter(
+        (item): item is ActiveAudio => item !== null,
+      ),
+    [worldDivisionFactsAudio, worldDivisionMapNoteAudio, worldDivisionSummaryAudio, worldDivisionTitleAudio],
+  )
 
   const isWorldDivisionsSection = activeMapSection === 'world-divisions'
   const isEntriesSection = activeMapSection === 'entries'
@@ -2772,6 +2931,17 @@ function App() {
       return
     }
 
+    if (activeAudio.worldDivisionId) {
+      changeMapSection('world-divisions')
+      selectWorldDivision(activeAudio.worldDivisionId)
+      setAudioPlayerMinimized(false)
+      return
+    }
+
+    if (!activeAudio.entryId) {
+      return
+    }
+
     setSelectedEntryId(activeAudio.entryId)
     setEntryDetailOpen(true)
     setDetailPaneCollapsed(false)
@@ -2841,6 +3011,30 @@ function App() {
     return result.error || !result.data ? [] : (result.data as EntryListItem[])
   }
 
+  async function loadWorldDivisionAudioTracksForOfflineAudioLanguage(audioLanguage: OfflineAudioLanguage) {
+    const localTracks = worldDivisionAudioTracks.filter((audioTrack) => audioTrack.languageCode === audioLanguage)
+    if (localTracks.length > 0) {
+      return localTracks
+    }
+
+    const result = await cachedQuery(
+      ['offline-world-division-audio', audioLanguage, reloadKey],
+      () =>
+        apiClient.GET('/api/world-divisions/audio', {
+          params: {
+            query: {
+              language: audioLanguage,
+            },
+          },
+        }),
+      { ttlMs: 60_000 },
+    )
+
+    return result.error || !result.data
+      ? []
+      : (result.data as WorldDivisionAudioTrack[]).filter((audioTrack) => audioTrack.languageCode === audioLanguage)
+  }
+
   async function buildOfflineMediaDownloadCandidates() {
     const candidatesByUrl = new Map<string, OfflineMediaCandidate>()
     const audioLanguages = offlineAudioLanguagesForDownload(offlineMediaDownloadLanguage)
@@ -2884,6 +3078,17 @@ function App() {
         includeAudioLanguages: audioLanguages,
         includeImages: false,
       })
+    }
+
+    const localizedWorldDivisionAudioTracks = await Promise.all(
+      audioLanguages.map(async (audioLanguage) => ({
+        audioLanguage,
+        audioTracks: await loadWorldDivisionAudioTracksForOfflineAudioLanguage(audioLanguage),
+      })),
+    )
+
+    for (const localizedTracks of localizedWorldDivisionAudioTracks) {
+      addWorldDivisionAudioCandidates(candidatesByUrl, localizedTracks.audioTracks, [localizedTracks.audioLanguage])
     }
 
     return [...candidatesByUrl.values()]
@@ -5054,13 +5259,21 @@ function App() {
               includes: ui.worldDivisionIncludes,
               mapNote: ui.worldDivisionMapNote,
               noSelection: ui.worldDivisionNoSelection,
+              playAll: ui.playAll,
               selected: ui.worldDivisionDetail,
             }}
+            audioSequence={worldDivisionAudioSequence}
+            factsAudio={worldDivisionFactsAudio}
             language={language}
+            mapNoteAudio={worldDivisionMapNoteAudio}
+            renderPlayButton={renderSectionPlayButton}
             selectedDivision={selectedWorldDivision}
             shellControls={<ShellControls {...shellControlProps} includeFilterButton={false} />}
+            summaryAudio={worldDivisionSummaryAudio}
+            titleAudio={worldDivisionTitleAudio}
             onClose={() => setEntryDetailOpen(false)}
             onCollapse={() => setDetailPaneCollapsed(true)}
+            onPlayAudioSequence={playAudioSequence}
           />
         )}
 

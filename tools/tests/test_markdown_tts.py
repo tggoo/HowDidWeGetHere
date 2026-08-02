@@ -217,6 +217,59 @@ class TtsGeneratorTests(unittest.TestCase):
             self.assertTrue((package_dir / "audio" / "edict-of-milan" / "en" / "summary.mp3").exists())
             self.assertTrue((packages_root / "master-timeline.zip").exists())
 
+    def test_generator_updates_world_division_audio_references(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            package_dir = temp / "packages" / "world-divisions"
+            package_dir.mkdir(parents=True)
+            entries_path = package_dir / "entries.json"
+            document = {
+                "schemaVersion": 1,
+                "packageSlug": "world-divisions",
+                "title": "World divisions",
+                "defaultLanguage": "en",
+                "entries": [],
+                "worldDivisions": [
+                    {
+                        "id": "iberian-peninsula",
+                        "title": {"en": "Iberian Peninsula", "cs": "Pyrenejsk\u00fd poloostrov"},
+                        "summary": {"en": "A **peninsula** in southwestern Europe."},
+                        "facts": {"en": ["Includes Spain.", "Includes Portugal."]},
+                    }
+                ],
+            }
+            entries_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            out = temp / "audio"
+            mp3 = out / "world-divisions" / "iberian-peninsula" / "en" / "summary.mp3"
+            mp3.parent.mkdir(parents=True)
+            mp3.write_bytes(b"mp3")
+
+            command = [
+                sys.executable,
+                str(TOOLS / "generate-translation-audio.py"),
+                "--entries-json",
+                str(entries_path),
+                "--out",
+                str(out),
+                "--track",
+                "summary",
+            ]
+
+            subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+
+            reloaded = json.loads(entries_path.read_text(encoding="utf-8"))
+            audio = reloaded["worldDivisions"][0]["audio"]
+            self.assertEqual(len(audio), 1)
+            self.assertEqual(audio[0]["kind"], "Summary")
+            self.assertTrue(audio[0]["isPrimary"])
+            self.assertEqual(audio[0]["path"], "audio/world-divisions/iberian-peninsula/en/summary.mp3")
+            self.assertEqual(audio[0]["transcript"], "A peninsula in southwestern Europe.")
+            zip_path = package_dir.parent / "world-divisions.zip"
+            self.assertTrue(zip_path.exists())
+            with zipfile.ZipFile(zip_path) as archive:
+                self.assertIn("audio/world-divisions/iberian-peninsula/en/summary.mp3", archive.namelist())
+
     def test_content_package_zip_splits_when_package_exceeds_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

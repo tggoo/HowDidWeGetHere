@@ -936,7 +936,7 @@
   align-items: start;
   display: grid;
   gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   margin-top: 18px;
 }
 
@@ -956,6 +956,10 @@
   font-size: 14px;
   line-height: 1.35;
   margin: 0;
+}
+
+.world-division-title-row .section-play-button {
+  margin-top: 2px;
 }
 
 .world-division-detail-list strong {

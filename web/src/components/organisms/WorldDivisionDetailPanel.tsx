@@ -1,4 +1,4 @@
-import { BadgeInfo, ChevronRight, Layers, LocateFixed, MapPinned, PanelRight, X } from 'lucide-react'
+import { BadgeInfo, ChevronRight, Layers, LocateFixed, MapPinned, PanelRight, PlayCircle, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import {
   worldDivisionCategories,
@@ -14,27 +14,50 @@ export type WorldDivisionDetailPanelLabels = {
   includes: string
   mapNote: string
   noSelection: string
+  playAll: string
   selected: string
 }
 
+type WorldDivisionAudio = {
+  entryId?: string
+  worldDivisionId?: string
+  title: string
+  subtitle?: string | null
+  url: string
+}
+
 type WorldDivisionDetailPanelProps = {
+  audioSequence: WorldDivisionAudio[]
   className: string
+  factsAudio: WorldDivisionAudio | null
   labels: WorldDivisionDetailPanelLabels
   language: string
+  mapNoteAudio: WorldDivisionAudio | null
+  renderPlayButton: (audio: WorldDivisionAudio | null) => ReactNode
   selectedDivision: WorldDivision | null
   shellControls: ReactNode
+  summaryAudio: WorldDivisionAudio | null
+  titleAudio: WorldDivisionAudio | null
   onClose: () => void
   onCollapse: () => void
+  onPlayAudioSequence: (sequence: WorldDivisionAudio[]) => void
 }
 
 export function WorldDivisionDetailPanel({
+  audioSequence,
   className,
+  factsAudio,
   labels,
   language,
+  mapNoteAudio,
   onClose,
   onCollapse,
+  onPlayAudioSequence,
+  renderPlayButton,
   selectedDivision,
   shellControls,
+  summaryAudio,
+  titleAudio,
 }: WorldDivisionDetailPanelProps) {
   const category = selectedDivision
     ? worldDivisionCategories.find((item) => item.id === selectedDivision.categoryId)
@@ -74,6 +97,7 @@ export function WorldDivisionDetailPanel({
               <h1>{worldDivisionText(selectedDivision.title, language)}</h1>
               <p>{worldDivisionText(selectedDivision.subtitle, language)}</p>
             </div>
+            {renderPlayButton(titleAudio)}
           </div>
 
           <div className="entry-meta">
@@ -81,8 +105,20 @@ export function WorldDivisionDetailPanel({
             {category && <span>{worldDivisionText(category.title, language)}</span>}
           </div>
 
+          {audioSequence.length > 0 && (
+            <div className="entry-audio-actions">
+              <button className="play-all-button" type="button" onClick={() => onPlayAudioSequence(audioSequence)}>
+                <PlayCircle aria-hidden="true" />
+                {labels.playAll}
+              </button>
+            </div>
+          )}
+
           <div className="entry-text-section entry-summary-section">
-            <strong>{worldDivisionText(selectedDivision.title, language)}</strong>
+            <div className="entry-section-header">
+              <strong>{worldDivisionText(selectedDivision.title, language)}</strong>
+              {renderPlayButton(summaryAudio)}
+            </div>
             <p>{worldDivisionText(selectedDivision.summary, language)}</p>
           </div>
 
@@ -103,10 +139,13 @@ export function WorldDivisionDetailPanel({
           )}
 
           <div className="detail-list world-division-detail-list">
-            <strong>
-              <BadgeInfo aria-hidden="true" />
-              {labels.facts}
-            </strong>
+            <div className="entry-section-header">
+              <strong>
+                <BadgeInfo aria-hidden="true" />
+                {labels.facts}
+              </strong>
+              {renderPlayButton(factsAudio)}
+            </div>
             <ul className="world-division-facts">
               {facts.map((fact) => (
                 <li key={fact}>{fact}</li>
@@ -117,7 +156,10 @@ export function WorldDivisionDetailPanel({
           <div className="route-card world-division-map-note-card">
             <Layers aria-hidden="true" />
             <div>
-              <strong>{labels.mapNote}</strong>
+              <div className="entry-section-header">
+                <strong>{labels.mapNote}</strong>
+                {renderPlayButton(mapNoteAudio)}
+              </div>
               <p>{worldDivisionText(selectedDivision.mapNote, language)}</p>
             </div>
           </div>

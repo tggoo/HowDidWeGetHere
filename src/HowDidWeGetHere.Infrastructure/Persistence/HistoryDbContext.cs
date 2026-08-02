@@ -6,6 +6,7 @@ using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
 using HowDidWeGetHere.Domain.Tags;
+using HowDidWeGetHere.Domain.WorldDivisions;
 using HowDidWeGetHere.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
     public DbSet<TagTranslation> TagTranslations => Set<TagTranslation>();
     public DbSet<TimePeriod> TimePeriods => Set<TimePeriod>();
     public DbSet<TimePeriodTranslation> TimePeriodTranslations => Set<TimePeriodTranslation>();
+    public DbSet<WorldDivisionAudioTrack> WorldDivisionAudioTracks => Set<WorldDivisionAudioTrack>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -53,6 +55,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         ConfigureSources(builder);
         ConfigureTags(builder);
         ConfigureTimePeriods(builder);
+        ConfigureWorldDivisions(builder);
     }
 
     private static void ConfigureActors(ModelBuilder builder)
@@ -320,6 +323,24 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         {
             entity.ToTable("entry_time_periods");
             entity.HasKey(entryPeriod => new { entryPeriod.EntryId, entryPeriod.TimePeriodId, entryPeriod.RelationType });
+        });
+    }
+
+    private static void ConfigureWorldDivisions(ModelBuilder builder)
+    {
+        builder.Entity<WorldDivisionAudioTrack>(entity =>
+        {
+            entity.ToTable("world_division_audio_tracks");
+            entity.HasIndex(audio => new { audio.WorldDivisionId, audio.LanguageCode, audio.IsPrimary });
+            entity.Property(audio => audio.WorldDivisionId).HasMaxLength(180);
+            entity.Property(audio => audio.LanguageCode).HasMaxLength(8);
+            entity.Property(audio => audio.StorageKey).HasMaxLength(600);
+            entity.Property(audio => audio.PublicUrl).HasMaxLength(1000);
+            entity.Property(audio => audio.MediaType).HasMaxLength(120);
+            entity.Property(audio => audio.Title).HasMaxLength(260);
+            entity.Property(audio => audio.Attribution).HasMaxLength(500);
+            entity.Property(audio => audio.License).HasMaxLength(120);
+            entity.Property(audio => audio.SourceUrl).HasMaxLength(1000);
         });
     }
 }

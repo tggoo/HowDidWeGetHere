@@ -61,9 +61,6 @@ namespace HowDidWeGetHere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Geometry")
-                        .HasMethod("gist");
-
                     b.HasIndex("Slug")
                         .IsUnique();
 
@@ -798,6 +795,9 @@ namespace HowDidWeGetHere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Geometry")
+                        .HasMethod("gist");
+
                     b.HasIndex("Slug")
                         .IsUnique();
 
@@ -996,6 +996,88 @@ namespace HowDidWeGetHere.Infrastructure.Migrations
                     b.HasKey("TagId", "LanguageCode");
 
                     b.ToTable("tag_translations", (string)null);
+                });
+
+            modelBuilder.Entity("HowDidWeGetHere.Domain.WorldDivisions.WorldDivisionAudioTrack", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Attribution")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("License")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("MediaType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("PublicUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
+                    b.Property<int>("StorageProvider")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("Transcript")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WorldDivisionId")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorldDivisionId", "LanguageCode", "IsPrimary");
+
+                    b.ToTable("world_division_audio_tracks", (string)null);
                 });
 
             modelBuilder.Entity("HowDidWeGetHere.Infrastructure.Identity.ApplicationUser", b =>
