@@ -2402,7 +2402,40 @@ public static class AdminContentPackageImportEndpoints
         EndpointHelpers.Slugify(EmptyToNull(division.Id) ?? ResolveWorldDivisionTitle(division));
 
     private static string ResolveWorldDivisionTitle(ContentPackageWorldDivision division) =>
-        EmptyToNull(division.Title) ?? EmptyToNull(division.Id) ?? "World division";
+        TextFromJsonValue(division.Title) ?? EmptyToNull(division.Id) ?? "World division";
+
+    private static string? TextFromJsonValue(JsonElement? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (value.Value.ValueKind == JsonValueKind.String)
+        {
+            return EmptyToNull(value.Value.GetString());
+        }
+
+        if (value.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (value.Value.TryGetProperty("en", out var englishValue) && englishValue.ValueKind == JsonValueKind.String)
+        {
+            return EmptyToNull(englishValue.GetString());
+        }
+
+        foreach (var property in value.Value.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                return EmptyToNull(property.Value.GetString());
+            }
+        }
+
+        return null;
+    }
 
     private static string NormalizeLanguage(string? language)
     {
@@ -2580,7 +2613,7 @@ public static class AdminContentPackageImportEndpoints
     private sealed class ContentPackageWorldDivision
     {
         public string? Id { get; set; }
-        public string? Title { get; set; }
+        public JsonElement? Title { get; set; }
         public List<ContentPackageAudio> Audio { get; set; } = [];
     }
 
