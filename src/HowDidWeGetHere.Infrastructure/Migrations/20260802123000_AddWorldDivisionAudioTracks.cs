@@ -1,4 +1,6 @@
 using System;
+using HowDidWeGetHere.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,6 +8,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace HowDidWeGetHere.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(HistoryDbContext))]
+    [Migration("20260802123000_AddWorldDivisionAudioTracks")]
     public partial class AddWorldDivisionAudioTracks : Migration
     {
         /// <inheritdoc />
