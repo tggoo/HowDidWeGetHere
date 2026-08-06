@@ -2,6 +2,7 @@ using HowDidWeGetHere.Domain.Actors;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Imports;
 using HowDidWeGetHere.Domain.Media;
+using HowDidWeGetHere.Domain.MinMax;
 using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
@@ -32,6 +33,9 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<ImportedRow> ImportedRows => Set<ImportedRow>();
     public DbSet<MediaBlob> MediaBlobs => Set<MediaBlob>();
+    public DbSet<MinMaxItem> MinMaxItems => Set<MinMaxItem>();
+    public DbSet<MinMaxItemShape> MinMaxItemShapes => Set<MinMaxItemShape>();
+    public DbSet<MinMaxItemTranslation> MinMaxItemTranslations => Set<MinMaxItemTranslation>();
     public DbSet<Place> Places => Set<Place>();
     public DbSet<PlaceTranslation> PlaceTranslations => Set<PlaceTranslation>();
     public DbSet<RoutePoint> RoutePoints => Set<RoutePoint>();
@@ -50,6 +54,7 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
         ConfigureEntries(builder);
         ConfigureImports(builder);
         ConfigureMedia(builder);
+        ConfigureMinMax(builder);
         ConfigurePlaces(builder);
         ConfigureRoutes(builder);
         ConfigureSources(builder);
@@ -197,6 +202,48 @@ public sealed class HistoryDbContext(DbContextOptions<HistoryDbContext> options)
             entity.Property(blob => blob.ExternalId).HasMaxLength(120);
             entity.Property(blob => blob.ExternalUrl).HasMaxLength(1000);
             entity.Property(blob => blob.ExternalETag).HasMaxLength(240);
+        });
+    }
+
+    private static void ConfigureMinMax(ModelBuilder builder)
+    {
+        builder.Entity<MinMaxItem>(entity =>
+        {
+            entity.ToTable("min_max_items");
+            entity.HasIndex(item => item.Slug).IsUnique();
+            entity.HasIndex(item => new { item.Category, item.SortOrder });
+            entity.Property(item => item.Slug).HasMaxLength(180);
+            entity.Property(item => item.Category).HasMaxLength(80);
+            entity.Property(item => item.DefaultTitle).HasMaxLength(260);
+        });
+
+        builder.Entity<MinMaxItemTranslation>(entity =>
+        {
+            entity.ToTable("min_max_item_translations");
+            entity.HasKey(translation => new { translation.MinMaxItemId, translation.LanguageCode });
+            entity.Property(translation => translation.LanguageCode).HasMaxLength(8);
+            entity.Property(translation => translation.Title).HasMaxLength(260);
+            entity.Property(translation => translation.Subtitle).HasMaxLength(320);
+            entity.Property(translation => translation.TypeLabel).HasMaxLength(160);
+            entity.Property(translation => translation.ValueLabel).HasMaxLength(180);
+            entity.Property(translation => translation.FactsJson).HasColumnType("jsonb");
+            entity.HasOne(translation => translation.MinMaxItem)
+                .WithMany(item => item.Translations)
+                .HasForeignKey(translation => translation.MinMaxItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<MinMaxItemShape>(entity =>
+        {
+            entity.ToTable("min_max_item_shapes");
+            entity.HasIndex(shape => shape.Geometry)
+                .HasMethod("gist");
+            entity.Property(shape => shape.Kind).HasMaxLength(32);
+            entity.Property(shape => shape.Geometry).HasColumnType("geometry");
+            entity.HasOne(shape => shape.MinMaxItem)
+                .WithMany(item => item.Shapes)
+                .HasForeignKey(shape => shape.MinMaxItemId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

@@ -180,6 +180,26 @@ public sealed record WorldDivisionAudioTrackResponse(
     string? License,
     string? SourceUrl);
 
+public sealed record MinMaxItemResponse(
+    Guid Id,
+    string Slug,
+    string Category,
+    int SortOrder,
+    string Title,
+    string? Subtitle,
+    string? TypeLabel,
+    string? ValueLabel,
+    string? Summary,
+    string? MapNote,
+    IReadOnlyList<string> Facts,
+    IReadOnlyList<MinMaxShapeResponse> Shapes);
+
+public sealed record MinMaxShapeResponse(
+    Guid Id,
+    string Kind,
+    int SortOrder,
+    IReadOnlyList<GeoCoordinateResponse> Points);
+
 public sealed record MapEntryResponse(
     Guid EntryId,
     string Slug,
@@ -361,10 +381,14 @@ public sealed record ContentPackageImportResult(
     string PackageSlug,
     string Title,
     int EntriesRead,
+    int MinMaxItemsRead,
     bool ClearedExistingData,
     int EntriesDeletedBeforeImport,
+    int MinMaxItemsDeletedBeforeImport,
     int EntriesCreated,
     int EntriesUpdated,
+    int MinMaxItemsCreated,
+    int MinMaxItemsUpdated,
     int TagsAttached,
     int TimePeriodsAttached,
     int PlacesAttached,
@@ -390,6 +414,9 @@ public sealed record ContentPackageImportHistoryItem(
     int EntriesRead,
     int EntriesCreated,
     int EntriesUpdated,
+    int MinMaxItemsRead,
+    int MinMaxItemsCreated,
+    int MinMaxItemsUpdated,
     int AudioTracksCreated,
     int AudioTracksUpdated,
     int ImagesCreated,
@@ -400,10 +427,14 @@ public sealed record ContentPackageImportPreviewResult(
     string PackageSlug,
     string Title,
     int EntriesRead,
+    int MinMaxItemsRead,
     bool WillClearExistingData,
     int ExistingEntriesToDelete,
+    int ExistingMinMaxItemsToDelete,
     int EntriesToCreate,
     int EntriesToUpdate,
+    int MinMaxItemsToCreate,
+    int MinMaxItemsToUpdate,
     int TagsToAttach,
     int TimePeriodsToAttach,
     int PlacesToAttach,

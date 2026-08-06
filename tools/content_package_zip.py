@@ -26,6 +26,9 @@ def write_package_zips(package_dir: Path, max_zip_bytes: int = DEFAULT_MAX_ZIP_B
     world_divisions = document.get("worldDivisions", [])
     if not isinstance(world_divisions, list):
         raise ValueError(f"{entries_path} worldDivisions must be an array when present.")
+    min_max_items = document.get("minMaxItems", [])
+    if not isinstance(min_max_items, list):
+        raise ValueError(f"{entries_path} minMaxItems must be an array when present.")
 
     package_slug = str(document.get("packageSlug") or package_dir.name)
     output_dir = package_dir.parent
@@ -40,7 +43,7 @@ def write_package_zips(package_dir: Path, max_zip_bytes: int = DEFAULT_MAX_ZIP_B
     remove_existing_zips(output_dir, package_slug)
 
     single_zip_path = output_dir / f"{package_slug}.zip"
-    write_zip(single_zip_path, package_dir, document, entries, world_divisions)
+    write_zip(single_zip_path, package_dir, document, entries, world_divisions, min_max_items)
     if single_zip_path.stat().st_size <= max_zip_bytes:
         return [single_zip_path]
     if not entries:
@@ -52,13 +55,14 @@ def write_package_zips(package_dir: Path, max_zip_bytes: int = DEFAULT_MAX_ZIP_B
         )
 
     single_zip_path.unlink()
-    parts = split_entries(package_dir, document, entries, world_divisions, max_zip_bytes)
+    parts = split_entries(package_dir, document, entries, world_divisions, min_max_items, max_zip_bytes)
     zip_paths: list[Path] = []
     for index, part_entries in enumerate(parts, start=1):
         part_world_divisions = world_divisions if index == 1 else []
-        part_document = build_part_document(document, package_slug, index, part_entries, part_world_divisions)
+        part_min_max_items = min_max_items if index == 1 else []
+        part_document = build_part_document(document, package_slug, index, part_entries, part_world_divisions, part_min_max_items)
         zip_path = output_dir / f"{package_slug}-part-{index:03d}.zip"
-        write_zip(zip_path, package_dir, part_document, part_entries, part_world_divisions)
+        write_zip(zip_path, package_dir, part_document, part_entries, part_world_divisions, part_min_max_items)
         if zip_path.stat().st_size > max_zip_bytes:
             raise ValueError(
                 f"{zip_path} is {zip_path.stat().st_size / 1024 / 1024:.2f} MiB, "
@@ -74,6 +78,7 @@ def split_entries(
     document: dict[str, Any],
     entries: list[dict[str, Any]],
     world_divisions: list[dict[str, Any]],
+    min_max_items: list[dict[str, Any]],
     max_zip_bytes: int,
 ) -> list[list[dict[str, Any]]]:
     package_slug = str(document.get("packageSlug") or package_dir.name)
@@ -87,14 +92,16 @@ def split_entries(
             candidate_entries = [*current, entry]
             part_index = len(parts) + 1
             candidate_world_divisions = world_divisions if part_index == 1 else []
+            candidate_min_max_items = min_max_items if part_index == 1 else []
             candidate_document = build_part_document(
                 document,
                 package_slug,
                 part_index,
                 candidate_entries,
                 candidate_world_divisions,
+                candidate_min_max_items,
             )
-            write_zip(candidate_path, package_dir, candidate_document, candidate_entries, candidate_world_divisions)
+            write_zip(candidate_path, package_dir, candidate_document, candidate_entries, candidate_world_divisions, candidate_min_max_items)
             candidate_size = candidate_path.stat().st_size
             candidate_path.unlink()
 
@@ -112,14 +119,16 @@ def split_entries(
             current = [entry]
             part_index = len(parts) + 1
             candidate_world_divisions = world_divisions if part_index == 1 else []
+            candidate_min_max_items = min_max_items if part_index == 1 else []
             candidate_document = build_part_document(
                 document,
                 package_slug,
                 part_index,
                 current,
                 candidate_world_divisions,
+                candidate_min_max_items,
             )
-            write_zip(candidate_path, package_dir, candidate_document, current, candidate_world_divisions)
+            write_zip(candidate_path, package_dir, candidate_document, current, candidate_world_divisions, candidate_min_max_items)
             candidate_size = candidate_path.stat().st_size
             candidate_path.unlink()
             if candidate_size > max_zip_bytes:
@@ -143,17 +152,20 @@ def build_part_document(
     part_index: int,
     entries: list[dict[str, Any]],
     world_divisions: list[dict[str, Any]],
+    min_max_items: list[dict[str, Any]],
 ) -> dict[str, Any]:
     part_document = {
         key: value
         for key, value in document.items()
-        if key not in {"packageSlug", "title", "entries", "worldDivisions"}
+        if key not in {"packageSlug", "title", "entries", "worldDivisions", "minMaxItems"}
     }
     part_document["packageSlug"] = f"{package_slug}-part-{part_index:03d}"
     part_document["title"] = f"{document.get('title') or package_slug} Part {part_index}"
     part_document["entries"] = entries
     if world_divisions:
         part_document["worldDivisions"] = world_divisions
+    if min_max_items:
+        part_document["minMaxItems"] = min_max_items
     return part_document
 
 
@@ -163,6 +175,7 @@ def write_zip(
     document: dict[str, Any],
     entries: list[dict[str, Any]],
     world_divisions: list[dict[str, Any]],
+    min_max_items: list[dict[str, Any]],
 ) -> None:
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("entries.json", json.dumps(document, ensure_ascii=False, indent=2) + "\n")

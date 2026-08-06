@@ -16,6 +16,47 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: howdidwegethere-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      PORT: "5141"
+      HWDWGH_CONNECTION_STRING: "Host=postgres;Port=5432;Database=howdidwegethere;Username=postgres;Password=postgres;Gss Encryption Mode=Disable"
+      Database__ApplyMigrationsOnStartup: "true"
+      Database__FailStartupOnMigrationError: "true"
+      AdminBootstrap__Email: admin@localhost
+      AdminBootstrap__Password: LocalDev123!
+      Cors__AllowedOrigins__0: http://localhost:5173
+      Cors__AllowedOrigins__1: http://127.0.0.1:5173
+      DataProtection__KeysPath: /app/storage/data-protection-keys
+      Media__StorageRootPath: /app/storage
+    ports:
+      - "5141:5141"
+    volumes:
+      - howdidwegethere-api-storage:/app/storage
+
+  web:
+    image: node:24-alpine
+    container_name: howdidwegethere-web
+    depends_on:
+      - api
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:5141
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - howdidwegethere-web-node-modules:/app/node_modules
+
 volumes:
   howdidwegethere-postgres-data:
-
+  howdidwegethere-api-storage:
+  howdidwegethere-web-node-modules:

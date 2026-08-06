@@ -1,5 +1,6 @@
 import L from 'leaflet'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MinMaxItem } from '../features/minMax/minMax'
 import { worldDivisionText, type WorldDivision } from '../features/worldDivisions/worldDivisions'
 import 'leaflet/dist/leaflet.css'
 
@@ -43,6 +44,9 @@ type HistoryMapProps = {
   entries: MapEntry[]
   fallbackEntryIds: string[]
   language: string
+  minMaxFocusKey: number
+  minMaxItems: readonly MinMaxItem[]
+  selectedMinMaxItemId?: string | null
   selectedWorldDivisionId?: string | null
   selectedEntryId?: string
   autoFitKey: string
@@ -50,6 +54,7 @@ type HistoryMapProps = {
   worldDivisionFocusKey: number
   worldDivisions: readonly WorldDivision[]
   onSelectEntry: (entryId: string) => void
+  onSelectMinMaxItem: (itemId: string) => void
   onSelectWorldDivision: (divisionId: string) => void
   onViewportChange: (viewport: MapViewport) => void
 }
@@ -179,6 +184,16 @@ function worldDivisionPopupContent(division: WorldDivision, polygonLabel: string
   `
 }
 
+function minMaxPopupContent(item: MinMaxItem) {
+  const value = item.valueLabel ? `<small>${escapeHtml(item.valueLabel)}</small>` : ''
+  const type = item.typeLabel ? `<span>${escapeHtml(item.typeLabel)}</span>` : ''
+  return `
+    <strong>${escapeHtml(item.title)}</strong>
+    ${value}
+    ${type}
+  `
+}
+
 function coordinateGroupKey(marker: MapPointMarker) {
   return coordinateKey(marker.coordinate)
 }
@@ -228,6 +243,9 @@ export function HistoryMap({
   entries,
   fallbackEntryIds,
   language,
+  minMaxFocusKey,
+  minMaxItems,
+  selectedMinMaxItemId,
   selectedWorldDivisionId,
   selectedEntryId,
   autoFitKey,
@@ -235,15 +253,18 @@ export function HistoryMap({
   worldDivisionFocusKey,
   worldDivisions,
   onSelectEntry,
+  onSelectMinMaxItem,
   onSelectWorldDivision,
   onViewportChange,
 }: HistoryMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const divisionOverlayRef = useRef<L.LayerGroup | null>(null)
+  const minMaxOverlayRef = useRef<L.LayerGroup | null>(null)
   const overlayRef = useRef<L.LayerGroup | null>(null)
   const tileLayerRef = useRef<L.TileLayer | null>(null)
   const lastAutoFitKeyRef = useRef<string>('')
+  const lastMinMaxFocusKeyRef = useRef(minMaxFocusKey)
   const lastWorldDivisionFocusKeyRef = useRef(worldDivisionFocusKey)
   const [mapRevision, setMapRevision] = useState(0)
 
@@ -275,6 +296,7 @@ export function HistoryMap({
 
     L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('&copy; OpenStreetMap').addTo(map)
     divisionOverlayRef.current = L.layerGroup().addTo(map)
+    minMaxOverlayRef.current = L.layerGroup().addTo(map)
     overlayRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
     const redraw = () => {
@@ -290,6 +312,7 @@ export function HistoryMap({
       map.remove()
       mapRef.current = null
       divisionOverlayRef.current = null
+      minMaxOverlayRef.current = null
       overlayRef.current = null
       tileLayerRef.current = null
     }
@@ -533,6 +556,95 @@ export function HistoryMap({
       }
     }
   }, [language, onSelectWorldDivision, selectedWorldDivisionId, worldDivisionFocusKey, worldDivisions])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const overlay = minMaxOverlayRef.current
+    if (!map || !overlay) {
+      return
+    }
+
+    overlay.clearLayers()
+    const focusBounds = L.latLngBounds([])
+    const selectedItem = minMaxItems.find((item) => item.id === selectedMinMaxItemId) ?? null
+
+    for (const item of minMaxItems) {
+      const isSelected = item.id === selectedMinMaxItemId
+      for (const shape of item.shapes) {
+        const coordinates = shape.points.map((point) => L.latLng(point.latitude, point.longitude))
+        if (coordinates.length === 0) {
+          continue
+        }
+
+        if (shape.kind === 'Polygon' && coordinates.length >= 3) {
+          const polygonLayer = L.polygon(coordinates, {
+            className: isSelected ? 'min-max-polygon selected' : 'min-max-polygon',
+            color: isSelected ? '#9c2f1b' : '#7048e8',
+            fillColor: isSelected ? '#ff922b' : '#5f3dc4',
+            fillOpacity: isSelected ? 0.24 : selectedMinMaxItemId ? 0.045 : 0.09,
+            opacity: isSelected ? 0.96 : 0.46,
+            pane: 'overlayPane',
+            weight: isSelected ? 3 : 1.5,
+          })
+
+          polygonLayer.bindPopup(minMaxPopupContent(item), {
+            className: 'history-popup min-max-popup',
+          })
+          polygonLayer.on('click', () => onSelectMinMaxItem(item.id))
+          polygonLayer.on('mouseover', () => {
+            if (!isSelected) {
+              polygonLayer.setStyle({ fillOpacity: 0.16, opacity: 0.74, weight: 2 })
+            }
+          })
+          polygonLayer.on('mouseout', () => {
+            if (!isSelected) {
+              polygonLayer.setStyle({
+                fillOpacity: selectedMinMaxItemId ? 0.045 : 0.09,
+                opacity: 0.46,
+                weight: 1.5,
+              })
+            }
+          })
+
+          polygonLayer.addTo(overlay)
+          if (isSelected) {
+            for (const coordinate of coordinates) {
+              focusBounds.extend(coordinate)
+            }
+          }
+          continue
+        }
+
+        const point = coordinates[0]
+        const marker = L.circleMarker(point, {
+          className: isSelected ? 'min-max-point selected' : 'min-max-point',
+          color: isSelected ? '#9c2f1b' : '#7048e8',
+          fillColor: isSelected ? '#ff922b' : '#5f3dc4',
+          fillOpacity: isSelected ? 0.95 : selectedMinMaxItemId ? 0.5 : 0.78,
+          opacity: 1,
+          radius: isSelected ? 9 : 7,
+          weight: isSelected ? 3 : 2,
+        })
+
+        marker.bindPopup(minMaxPopupContent(item), {
+          className: 'history-popup min-max-popup',
+        })
+        marker.on('click', () => onSelectMinMaxItem(item.id))
+        marker.addTo(overlay)
+        if (isSelected) {
+          focusBounds.extend(point)
+        }
+      }
+    }
+
+    if (minMaxFocusKey !== lastMinMaxFocusKeyRef.current) {
+      lastMinMaxFocusKeyRef.current = minMaxFocusKey
+      if (selectedItem && focusBounds.isValid()) {
+        const maxZoom = selectedItem.category === 'water' ? 3 : selectedItem.category === 'countries' ? 4 : 6
+        map.fitBounds(focusBounds.pad(0.28), { animate: true, maxZoom })
+      }
+    }
+  }, [minMaxFocusKey, minMaxItems, onSelectMinMaxItem, selectedMinMaxItemId])
 
   return (
     <section className="map-canvas" aria-label={ariaLabel}>

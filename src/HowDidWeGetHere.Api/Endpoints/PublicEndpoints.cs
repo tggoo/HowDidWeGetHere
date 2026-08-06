@@ -1,6 +1,8 @@
+using System.Text.Json;
 using HowDidWeGetHere.Api.Contracts;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
+using HowDidWeGetHere.Domain.MinMax;
 using HowDidWeGetHere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
@@ -33,6 +35,9 @@ public static class PublicEndpoints
 
         api.MapGet("/world-divisions/audio", GetWorldDivisionAudioTracksAsync)
             .Produces<List<WorldDivisionAudioTrackResponse>>(StatusCodes.Status200OK);
+
+        api.MapGet("/min-max/items", GetMinMaxItemsAsync)
+            .Produces<List<MinMaxItemResponse>>(StatusCodes.Status200OK);
 
         api.MapGet("/time-periods", GetTimePeriodsAsync)
             .Produces<List<TimePeriodListItemResponse>>(StatusCodes.Status200OK);
@@ -154,6 +159,54 @@ public static class PublicEndpoints
                 audio.License,
                 audio.SourceUrl))
             .ToListAsync(cancellationToken);
+
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetMinMaxItemsAsync(
+        HistoryDbContext dbContext,
+        string? language,
+        CancellationToken cancellationToken)
+    {
+        var lang = EndpointHelpers.NormalizeLanguage(language);
+        var items = await dbContext.MinMaxItems
+            .AsNoTracking()
+            .Include(item => item.Translations)
+            .Include(item => item.Shapes)
+            .OrderBy(item => item.Category)
+            .ThenBy(item => item.SortOrder)
+            .ThenBy(item => item.DefaultTitle)
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
+
+        var response = items.Select(item =>
+        {
+            var translation = LocalizedMinMaxTranslation(item.Translations, lang);
+            var fallbackTranslation = LocalizedMinMaxTranslation(item.Translations, "en")
+                ?? item.Translations.FirstOrDefault();
+
+            return new MinMaxItemResponse(
+                item.Id,
+                item.Slug,
+                item.Category,
+                item.SortOrder,
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.Title) ?? item.DefaultTitle,
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.Subtitle),
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.TypeLabel),
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.ValueLabel),
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.Summary),
+                LocalizedTranslationValue(translation, fallbackTranslation, value => value.MapNote),
+                ParseFactsJson(LocalizedTranslationValue(translation, fallbackTranslation, value => value.FactsJson)),
+                item.Shapes
+                    .OrderBy(shape => shape.SortOrder)
+                    .ThenBy(shape => shape.Kind)
+                    .Select(shape => new MinMaxShapeResponse(
+                        shape.Id,
+                        shape.Kind,
+                        shape.SortOrder,
+                        GeometryCoordinates(shape.Geometry)))
+                    .ToList());
+        }).ToList();
 
         return Results.Ok(response);
     }
@@ -721,6 +774,46 @@ public static class PublicEndpoints
         return fallbackTranslation is null ? null : EmptyToNull(selector(fallbackTranslation));
     }
 
+    private static MinMaxItemTranslation? LocalizedMinMaxTranslation(
+        IEnumerable<MinMaxItemTranslation> translations,
+        string language) =>
+        translations.FirstOrDefault(translation => translation.LanguageCode == language);
+
+    private static string? LocalizedTranslationValue(
+        MinMaxItemTranslation? translation,
+        MinMaxItemTranslation? fallbackTranslation,
+        Func<MinMaxItemTranslation, string?> selector)
+    {
+        var value = translation is null ? null : EmptyToNull(selector(translation));
+        if (value is not null)
+        {
+            return value;
+        }
+
+        return fallbackTranslation is null ? null : EmptyToNull(selector(fallbackTranslation));
+    }
+
+    private static IReadOnlyList<string> ParseFactsJson(string? factsJson)
+    {
+        if (string.IsNullOrWhiteSpace(factsJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            var facts = JsonSerializer.Deserialize<List<string>>(factsJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            return facts?
+                .Select(EmptyToNull)
+                .OfType<string>()
+                .ToList() ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     private static string? EmptyToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -765,6 +858,19 @@ public static class PublicEndpoints
     private static IReadOnlyList<GeoCoordinateResponse> Coordinates(Geometry? geometry) =>
         geometry switch
         {
+            LineString lineString => lineString.Coordinates
+                .Select(coordinate => new GeoCoordinateResponse(coordinate.X, coordinate.Y))
+                .ToList(),
+            Point point => [new GeoCoordinateResponse(point.X, point.Y)],
+            _ => []
+        };
+
+    private static IReadOnlyList<GeoCoordinateResponse> GeometryCoordinates(Geometry? geometry) =>
+        geometry switch
+        {
+            Polygon polygon => polygon.ExteriorRing.Coordinates
+                .Select(coordinate => new GeoCoordinateResponse(coordinate.X, coordinate.Y))
+                .ToList(),
             LineString lineString => lineString.Coordinates
                 .Select(coordinate => new GeoCoordinateResponse(coordinate.X, coordinate.Y))
                 .ToList(),

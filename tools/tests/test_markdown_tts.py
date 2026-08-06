@@ -326,6 +326,52 @@ class TtsGeneratorTests(unittest.TestCase):
                     self.assertEqual(len(document["entries"]), 1)
                     self.assertIn(document["entries"][0]["audio"][0]["path"], names)
 
+    def test_content_package_zip_preserves_min_max_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            package_dir = temp / "packages" / "min-max"
+            package_dir.mkdir(parents=True)
+            (package_dir / "entries.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "packageSlug": "min-max",
+                        "title": "MinMax",
+                        "defaultLanguage": "en",
+                        "entries": [],
+                        "minMaxItems": [
+                            {
+                                "slug": "mount-everest",
+                                "category": "mountains",
+                                "translations": {
+                                    "en": {
+                                        "title": "Mount Everest",
+                                    }
+                                },
+                                "shapes": [
+                                    {
+                                        "kind": "Point",
+                                        "latitude": 27.9881,
+                                        "longitude": 86.925,
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            zip_paths = write_package_zips(package_dir)
+
+            self.assertEqual([path.name for path in zip_paths], ["min-max.zip"])
+            with zipfile.ZipFile(zip_paths[0]) as archive:
+                document = json.loads(archive.read("entries.json").decode("utf-8"))
+                self.assertEqual(document["minMaxItems"][0]["slug"], "mount-everest")
+
     def test_content_package_zip_fails_when_media_reference_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -140,7 +140,7 @@
   border-radius: 6px;
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 12px;
   padding: 4px;
 }
@@ -835,6 +835,17 @@
   border-color: #d9480f;
 }
 
+.min-max-swatch {
+  background:
+    linear-gradient(135deg, rgba(112, 72, 232, 0.24), rgba(255, 146, 43, 0.34)),
+    var(--panel);
+  border-color: #7048e8;
+}
+
+.world-division-item.active .min-max-swatch {
+  border-color: #9c2f1b;
+}
+
 .world-division-detail {
   background: var(--panel-muted);
   border: 1px solid var(--border);
@@ -1451,6 +1462,25 @@
 }
 
 .world-division-popup .leaflet-popup-content strong {
+  color: var(--text-strong);
+}
+
+.min-max-polygon {
+  cursor: pointer;
+  transition: fill-opacity 0.15s ease, opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.min-max-polygon.selected,
+.min-max-point.selected {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+.min-max-point {
+  cursor: pointer;
+  transition: fill-opacity 0.15s ease, r 0.15s ease, stroke-width 0.15s ease;
+}
+
+.min-max-popup .leaflet-popup-content strong {
   color: var(--text-strong);
 }
 

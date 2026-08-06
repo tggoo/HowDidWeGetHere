@@ -5,6 +5,7 @@ import {
   Globe2,
   MapPinned,
   LoaderCircle,
+  Mountain,
   PanelRight,
   PlayCircle,
   Timeline,
@@ -31,6 +32,8 @@ import type { AdminPanelProps } from './components/organisms/AdminPanel'
 import { EntryDetailPanel } from './components/organisms/EntryDetailPanel'
 import { FilterPanel } from './components/organisms/FilterPanel'
 import { ImageLightbox } from './components/organisms/ImageLightbox'
+import { MinMaxDetailPanel } from './components/organisms/MinMaxDetailPanel'
+import { MinMaxExplorer } from './components/organisms/MinMaxExplorer'
 import { OfflineMediaPanel } from './components/organisms/OfflineMediaPanel'
 import { PersistentAudioPlayer } from './components/organisms/PersistentAudioPlayer'
 import { TagModal } from './components/organisms/TagModal'
@@ -38,6 +41,7 @@ import { TimelineRuler } from './components/organisms/TimelineRuler'
 import { WorldDivisionDetailPanel } from './components/organisms/WorldDivisionDetailPanel'
 import { WorldDivisionsExplorer } from './components/organisms/WorldDivisionsExplorer'
 import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistoryQuery'
+import { minMaxCategories, type MinMaxItem } from './features/minMax/minMax'
 import {
   defaultWorldDivisionCategoryId,
   defaultWorldDivisionId,
@@ -267,10 +271,14 @@ type ContentPackageImportResult = {
   packageSlug: string
   title: string
   entriesRead: number | string
+  minMaxItemsRead: number | string
   clearedExistingData: boolean
   entriesDeletedBeforeImport: number | string
+  minMaxItemsDeletedBeforeImport: number | string
   entriesCreated: number | string
   entriesUpdated: number | string
+  minMaxItemsCreated: number | string
+  minMaxItemsUpdated: number | string
   tagsAttached: number | string
   timePeriodsAttached: number | string
   placesAttached: number | string
@@ -294,6 +302,9 @@ type ContentPackageImportHistoryItem = {
   entriesRead: number | string
   entriesCreated: number | string
   entriesUpdated: number | string
+  minMaxItemsRead: number | string
+  minMaxItemsCreated: number | string
+  minMaxItemsUpdated: number | string
   audioTracksCreated: number | string
   audioTracksUpdated: number | string
   imagesCreated: number | string
@@ -309,10 +320,14 @@ type ContentPackageImportPreviewResult = {
   packageSlug: string
   title: string
   entriesRead: number | string
+  minMaxItemsRead: number | string
   willClearExistingData: boolean
   existingEntriesToDelete: number | string
+  existingMinMaxItemsToDelete: number | string
   entriesToCreate: number | string
   entriesToUpdate: number | string
+  minMaxItemsToCreate: number | string
+  minMaxItemsToUpdate: number | string
   tagsToAttach: number | string
   timePeriodsToAttach: number | string
   placesToAttach: number | string
@@ -668,7 +683,7 @@ const sourceSupportKinds: SourceSupportKind[] = [
 ]
 
 const visibleTagLimit = 10
-type MapSection = 'entries' | 'world-divisions'
+type MapSection = 'entries' | 'world-divisions' | 'min-max'
 type SidePane = 'filter' | 'detail'
 
 const defaultFilterPaneWidth = 300
@@ -725,12 +740,15 @@ const uiCopy = {
     cachedFiles: 'Local files',
     clear: 'Clear',
     closeWorldDivisionDetail: 'Close world division detail',
+    closeMinMaxDetail: 'Close MinMax detail',
     collapseEntryDetail: 'Collapse entry detail',
     collapseFilters: 'Collapse filters',
     collapseWorldDivisionDetail: 'Collapse world division detail',
+    collapseMinMaxDetail: 'Collapse MinMax detail',
     closeEntryDetail: 'Close entry detail',
     closeImage: 'Close image',
     closeWorldDivisions: 'Close world divisions',
+    closeMinMax: 'Close MinMax',
     expandImage: 'Expand image',
     imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
     images: 'Images',
@@ -757,6 +775,13 @@ const uiCopy = {
     historyMap: 'World history map',
     language: 'Language',
     mapSection: 'Map section',
+    minMaxCategory: 'Record type',
+    minMaxFacts: 'Interesting facts',
+    minMaxMapNote: 'Map note',
+    minMaxNoSelection: 'No MinMax item selected.',
+    minMaxDetail: 'MinMax detail',
+    minMaxMap: 'MinMax map',
+    minMax: 'MinMax',
     worldDivisionCategory: 'Division type',
     worldDivisionFacts: 'Interesting facts',
     worldDivisionIncludes: 'Includes',
@@ -781,6 +806,8 @@ const uiCopy = {
     openAdminPanel: 'Open admin panel',
     openEntryDetail: 'Open entry detail',
     openFilters: 'Open filters',
+    openMinMax: 'Open MinMax',
+    openMinMaxDetail: 'Open MinMax detail',
     openWorldDivisions: 'Open world divisions',
     openWorldDivisionDetail: 'Open world division detail',
     openOfflineMedia: 'Open offline media',
@@ -793,6 +820,7 @@ const uiCopy = {
     relatedTopics: 'Related topics',
     resetFilters: 'reset filters',
     resizeEntryDetail: 'Resize entry detail',
+    resizeMinMaxDetail: 'Resize MinMax detail',
     resizeWorldDivisionDetail: 'Resize world division detail',
     resizeFilters: 'Resize filters',
     routeRecords: (count: number) => `${count} route records`,
@@ -823,6 +851,19 @@ const uiCopy = {
     knownPoints: (count: number) => `${count} known points.`,
   },
   cs: {
+    closeMinMax: 'Zavrit MinMax',
+    closeMinMaxDetail: 'Zavrit detail MinMax',
+    collapseMinMaxDetail: 'Sbalit detail MinMax',
+    minMax: 'MinMax',
+    minMaxCategory: 'Typ rekordu',
+    minMaxDetail: 'Detail MinMax',
+    minMaxFacts: 'Zajimavosti',
+    minMaxMap: 'Mapa MinMax',
+    minMaxMapNote: 'Poznamka k mape',
+    minMaxNoSelection: 'Neni vybrana zadna polozka MinMax.',
+    openMinMax: 'Otevrit MinMax',
+    openMinMaxDetail: 'Otevrit detail MinMax',
+    resizeMinMaxDetail: 'Zmenit sirku detailu MinMax',
     appName: 'HowDidWeGetHere',
     audio: 'Audio',
     audioLanguages: 'Audio jazyky',
@@ -1390,7 +1431,8 @@ function describeImportStatus(status: string) {
 }
 
 function summarizeImportHistoryItem(item: ContentPackageImportHistoryItem) {
-  return `${item.entriesRead} entries, ${item.audioTracksCreated} audio created, ${item.imagesCreated} images created`
+  const minMaxPart = Number(item.minMaxItemsRead) > 0 ? `, ${item.minMaxItemsRead} MinMax` : ''
+  return `${item.entriesRead} entries${minMaxPart}, ${item.audioTracksCreated} audio created, ${item.imagesCreated} images created`
 }
 
 async function copyTextToClipboard(value: string) {
@@ -1508,6 +1550,7 @@ type MapSectionSwitcherProps = {
   activeSection: MapSection
   labels: {
     entries: string
+    minMax: string
     section: string
     worldDivisions: string
   }
@@ -1534,6 +1577,15 @@ function MapSectionSwitcher({ activeSection, labels, onChange }: MapSectionSwitc
       >
         <MapPinned aria-hidden="true" />
         <span>{labels.worldDivisions}</span>
+      </button>
+      <button
+        className={activeSection === 'min-max' ? 'active' : undefined}
+        type="button"
+        aria-pressed={activeSection === 'min-max'}
+        onClick={() => onChange('min-max')}
+      >
+        <Mountain aria-hidden="true" />
+        <span>{labels.minMax}</span>
       </button>
     </div>
   )
@@ -1601,6 +1653,10 @@ function App() {
   const [selectedWorldDivisionId, setSelectedWorldDivisionId] = useState<string | null>(defaultWorldDivisionId)
   const [worldDivisionFocusKey, setWorldDivisionFocusKey] = useState(0)
   const [worldDivisionAudioTracks, setWorldDivisionAudioTracks] = useState<WorldDivisionAudioTrack[]>([])
+  const [minMaxItems, setMinMaxItems] = useState<MinMaxItem[]>([])
+  const [activeMinMaxCategoryId, setActiveMinMaxCategoryId] = useState<string>('mountains')
+  const [selectedMinMaxItemId, setSelectedMinMaxItemId] = useState<string | null>(null)
+  const [minMaxFocusKey, setMinMaxFocusKey] = useState(0)
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
   const [tags, setTags] = useState<TagListItem[]>(fallbackTags)
   const [expandedTagGroup, setExpandedTagGroup] = useState<string | null>(null)
@@ -2133,6 +2189,60 @@ function App() {
   useEffect(() => {
     let isActive = true
 
+    async function loadMinMaxItems() {
+      try {
+        const loadedItems = await cachedQuery(
+          ['min-max-items', language, reloadKey],
+          async () => {
+            const response = await fetch(`${apiBaseUrl}/api/min-max/items?language=${encodeURIComponent(language)}`, {
+              credentials: 'include',
+            })
+            if (!response.ok) {
+              throw new Error('MinMax query failed.')
+            }
+
+            return (await response.json()) as MinMaxItem[]
+          },
+          { ttlMs: 60_000 },
+        )
+
+        if (!isActive) {
+          return
+        }
+
+        setMinMaxItems(loadedItems)
+        setSelectedMinMaxItemId((current) => {
+          if (current && loadedItems.some((item) => item.id === current)) {
+            return current
+          }
+
+          return loadedItems[0]?.id ?? null
+        })
+        setActiveMinMaxCategoryId((current) => {
+          if (loadedItems.some((item) => item.category === current)) {
+            return current
+          }
+
+          return loadedItems[0]?.category ?? 'mountains'
+        })
+      } catch {
+        if (isActive) {
+          setMinMaxItems([])
+          setSelectedMinMaxItemId(null)
+        }
+      }
+    }
+
+    void loadMinMaxItems()
+
+    return () => {
+      isActive = false
+    }
+  }, [language, reloadKey])
+
+  useEffect(() => {
+    let isActive = true
+
     async function loadWorldDivisionAudioTracks() {
       try {
         const audioLanguages = [...new Set([language, ...offlineAudioLanguages])]
@@ -2619,9 +2729,24 @@ function App() {
     [activeWorldDivisionCategoryId],
   )
 
+  const minMaxCategoryIds = useMemo(
+    () => minMaxCategories(minMaxItems),
+    [minMaxItems],
+  )
+
+  const visibleMinMaxItems = useMemo(
+    () => minMaxItems.filter((item) => item.category === activeMinMaxCategoryId),
+    [activeMinMaxCategoryId, minMaxItems],
+  )
+
   const selectedWorldDivision = useMemo(
     () => worldDivisions.find((division) => division.id === selectedWorldDivisionId) ?? null,
     [selectedWorldDivisionId],
+  )
+
+  const selectedMinMaxItem = useMemo(
+    () => minMaxItems.find((item) => item.id === selectedMinMaxItemId) ?? null,
+    [minMaxItems, selectedMinMaxItemId],
   )
   const selectedWorldDivisionAudioTracks = useMemo(
     () =>
@@ -2663,7 +2788,9 @@ function App() {
   )
 
   const isWorldDivisionsSection = activeMapSection === 'world-divisions'
+  const isMinMaxSection = activeMapSection === 'min-max'
   const isEntriesSection = activeMapSection === 'entries'
+  const isReferenceMapSection = isWorldDivisionsSection || isMinMaxSection
 
   const changeMapSection = useCallback((section: MapSection) => {
     setActiveMapSection(section)
@@ -2675,6 +2802,9 @@ function App() {
     if (section === 'world-divisions') {
       setEntryDetailOpen(false)
       setWorldDivisionFocusKey((value) => value + 1)
+    } else if (section === 'min-max') {
+      setEntryDetailOpen(false)
+      setMinMaxFocusKey((value) => value + 1)
     }
   }, [setAdminOpen, setEntryDetailOpen, setOfflineMediaPanelOpen])
 
@@ -2697,11 +2827,31 @@ function App() {
     setWorldDivisionFocusKey((value) => value + 1)
   }, [])
 
+  const selectMinMaxItem = useCallback((itemId: string) => {
+    const item = minMaxItems.find((candidate) => candidate.id === itemId)
+    if (!item) {
+      return
+    }
+
+    setActiveMinMaxCategoryId(item.category)
+    setSelectedMinMaxItemId(item.id)
+    setMinMaxFocusKey((value) => value + 1)
+    setEntryDetailOpen(true)
+  }, [minMaxItems, setEntryDetailOpen])
+
+  const selectMinMaxCategory = useCallback((categoryId: string) => {
+    const firstItemInCategory = minMaxItems.find((item) => item.category === categoryId)
+    setActiveMinMaxCategoryId(categoryId)
+    setSelectedMinMaxItemId(firstItemInCategory?.id ?? null)
+    setMinMaxFocusKey((value) => value + 1)
+  }, [minMaxItems])
+
   const mapSectionSwitcher = (
     <MapSectionSwitcher
       activeSection={activeMapSection}
       labels={{
         entries: ui.entriesSection,
+        minMax: ui.minMax,
         section: ui.mapSection,
         worldDivisions: ui.worldDivisions,
       }}
@@ -3710,12 +3860,15 @@ function App() {
       setContentPackagePreview(result)
       setContentPackageResult(null)
       const cleanImportStatus = result.willClearExistingData
-        ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries first.`
+        ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries and ${result.existingMinMaxItemsToDelete} MinMax items first.`
+        : ''
+      const minMaxStatus = Number(result.minMaxItemsRead) > 0
+        ? ` ${result.minMaxItemsRead} MinMax items, ${result.minMaxItemsToCreate} new, ${result.minMaxItemsToUpdate} updates,`
         : ''
       const multiFileNote =
         contentPackageFiles.length > 1 ? ` Showing preview for the first of ${contentPackageFiles.length} selected files.` : ''
       setAdminStatus(
-        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates, ${result.audioFilesToAttach} audio files.${cleanImportStatus}${multiFileNote}`,
+        `Package preview: ${result.entriesRead} entries, ${result.entriesToCreate} new, ${result.entriesToUpdate} updates,${minMaxStatus} ${result.audioFilesToAttach} audio files.${cleanImportStatus}${multiFileNote}`,
       )
     } catch {
       setAdminStatus('Content package preview failed. Check API availability and CORS settings.')
@@ -3796,7 +3949,10 @@ function App() {
         lastResult = result
         importedCount += 1
         const cleanImportStatus = result.clearedExistingData
-          ? ` Deleted ${result.entriesDeletedBeforeImport} existing entries first.`
+          ? ` Deleted ${result.entriesDeletedBeforeImport} existing entries and ${result.minMaxItemsDeletedBeforeImport} MinMax items first.`
+          : ''
+        const minMaxMessage = Number(result.minMaxItemsRead) > 0
+          ? ` ${result.minMaxItemsCreated} MinMax created, ${result.minMaxItemsUpdated} MinMax updated.`
           : ''
         setContentPackageBatchItems((items) =>
           items.map((item, itemIndex) =>
@@ -3804,7 +3960,7 @@ function App() {
               ? {
                   ...item,
                   status: 'done',
-                  message: `${result.entriesCreated} created, ${result.entriesUpdated} updated. ${result.title || result.packageSlug || result.fileName}.${cleanImportStatus}`,
+                  message: `${result.entriesCreated} created, ${result.entriesUpdated} updated.${minMaxMessage} ${result.title || result.packageSlug || result.fileName}.${cleanImportStatus}`,
                 }
               : item,
           ),
@@ -4827,7 +4983,7 @@ function App() {
     labels: {
       language: ui.language,
       openAdminPanel: ui.openAdminPanel,
-      openFilters: isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters,
+      openFilters: isWorldDivisionsSection ? ui.openWorldDivisions : isMinMaxSection ? ui.openMinMax : ui.openFilters,
       openOfflineMedia: ui.openOfflineMedia,
       playRandom: ui.playRandom,
       switchToDarkMode: ui.switchToDarkMode,
@@ -4845,6 +5001,12 @@ function App() {
     playableRandomEntryCount: isEntriesSection ? playableRandomEntries.length : 0,
     theme,
   }
+  const referenceMapTitle = isMinMaxSection ? ui.minMax : ui.worldDivisions
+  const referenceMapIcon = isMinMaxSection ? <Mountain aria-hidden="true" /> : <MapPinned aria-hidden="true" />
+  const referenceOpenFilters = isMinMaxSection ? ui.openMinMax : ui.openWorldDivisions
+  const referenceOpenDetail = isMinMaxSection ? ui.openMinMaxDetail : ui.openWorldDivisionDetail
+  const referenceCloseFilters = isMinMaxSection ? ui.closeMinMax : ui.closeWorldDivisions
+  const referenceDetailResizeLabel = isMinMaxSection ? ui.resizeMinMaxDetail : ui.resizeWorldDivisionDetail
 
   const adminPanelProps = {
     addEntryPlace,
@@ -4998,11 +5160,11 @@ function App() {
           <button
             className="side-pane-tab left desktop-only"
             type="button"
-            aria-label={isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters}
-            title={isWorldDivisionsSection ? ui.openWorldDivisions : ui.openFilters}
+            aria-label={isReferenceMapSection ? referenceOpenFilters : ui.openFilters}
+            title={isReferenceMapSection ? referenceOpenFilters : ui.openFilters}
             onClick={() => setFilterPaneCollapsed(false)}
           >
-            {isWorldDivisionsSection ? <MapPinned aria-hidden="true" /> : <Filter aria-hidden="true" />}
+            {isReferenceMapSection ? referenceMapIcon : <Filter aria-hidden="true" />}
             <ChevronRight aria-hidden="true" />
           </button>
         )}
@@ -5010,8 +5172,8 @@ function App() {
           <button
             className="side-pane-tab right desktop-only"
             type="button"
-            aria-label={isWorldDivisionsSection ? ui.openWorldDivisionDetail : ui.openEntryDetail}
-            title={isWorldDivisionsSection ? ui.openWorldDivisionDetail : ui.openEntryDetail}
+            aria-label={isReferenceMapSection ? referenceOpenDetail : ui.openEntryDetail}
+            title={isReferenceMapSection ? referenceOpenDetail : ui.openEntryDetail}
             onClick={() => setDetailPaneCollapsed(false)}
           >
             <ChevronLeft aria-hidden="true" />
@@ -5065,7 +5227,7 @@ function App() {
             onToggleTag={toggleTag}
           />
         ) : (
-          <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label={ui.worldDivisions}>
+          <aside className={isFilterPanelOpen ? 'filter-panel mobile-open' : 'filter-panel'} aria-label={referenceMapTitle}>
             <div className="filter-brand">
               <span className="filter-brand-title">
                 <Globe2 aria-hidden="true" />
@@ -5083,32 +5245,48 @@ function App() {
             </div>
             <div className="panel-header filter-panel-header">
               <span>
-                <MapPinned aria-hidden="true" />
-                {ui.worldDivisions}
+                {referenceMapIcon}
+                {referenceMapTitle}
               </span>
               <button
                 className="panel-close"
                 type="button"
-                aria-label={ui.closeWorldDivisions}
-                title={ui.closeWorldDivisions}
+                aria-label={referenceCloseFilters}
+                title={referenceCloseFilters}
                 onClick={() => setFilterPanelOpen(false)}
               >
                 <X aria-hidden="true" />
               </button>
             </div>
             {mapSectionSwitcher}
-            <WorldDivisionsExplorer
-              activeCategoryId={activeWorldDivisionCategoryId}
-              divisions={visibleWorldDivisions}
-              labels={{
-                category: ui.worldDivisionCategory,
-                title: ui.worldDivisions,
-              }}
-              language={language}
-              selectedDivisionId={selectedWorldDivisionId}
-              onSelectCategory={selectWorldDivisionCategory}
-              onSelectDivision={selectWorldDivision}
-            />
+            {isWorldDivisionsSection ? (
+              <WorldDivisionsExplorer
+                activeCategoryId={activeWorldDivisionCategoryId}
+                divisions={visibleWorldDivisions}
+                labels={{
+                  category: ui.worldDivisionCategory,
+                  title: ui.worldDivisions,
+                }}
+                language={language}
+                selectedDivisionId={selectedWorldDivisionId}
+                onSelectCategory={selectWorldDivisionCategory}
+                onSelectDivision={selectWorldDivision}
+              />
+            ) : (
+              <MinMaxExplorer
+                activeCategoryId={activeMinMaxCategoryId}
+                categories={minMaxCategoryIds}
+                items={visibleMinMaxItems}
+                labels={{
+                  category: ui.minMaxCategory,
+                  title: ui.minMax,
+                }}
+                language={language}
+                selectedItemId={selectedMinMaxItemId}
+                onSelectCategory={selectMinMaxCategory}
+                onSelectItem={selectMinMaxItem}
+              />
+            )}
           </aside>
         )}
 
@@ -5130,7 +5308,7 @@ function App() {
           />
         )}
 
-        <div className={isWorldDivisionsSection ? 'map-main world-divisions-map-main' : 'map-main'}>
+        <div className={isReferenceMapSection ? 'map-main world-divisions-map-main' : 'map-main'}>
           {isEntriesSection && (
             <TimelineRuler
               entries={entries}
@@ -5143,18 +5321,22 @@ function App() {
           )}
           <div className="map-stage">
             <HistoryMap
-              ariaLabel={isWorldDivisionsSection ? ui.worldDivisionsMap : ui.historyMap}
-              autoFitKey={isEntriesSection ? mapAutoFitKey : 'world-divisions'}
+              ariaLabel={isWorldDivisionsSection ? ui.worldDivisionsMap : isMinMaxSection ? ui.minMaxMap : ui.historyMap}
+              autoFitKey={isEntriesSection ? mapAutoFitKey : activeMapSection}
               entries={isEntriesSection ? mapEntries : []}
               fallbackEntryIds={entries.map((entry) => entry.id)}
               language={language}
+              minMaxFocusKey={minMaxFocusKey}
+              minMaxItems={isMinMaxSection ? visibleMinMaxItems : []}
               showFallback={isEntriesSection && !mapViewport}
               selectedEntryId={isEntriesSection ? selectedEntryId : undefined}
+              selectedMinMaxItemId={isMinMaxSection ? selectedMinMaxItemId : null}
               selectedWorldDivisionId={isWorldDivisionsSection ? selectedWorldDivisionId : null}
               worldDivisionFocusKey={worldDivisionFocusKey}
               worldDivisions={isWorldDivisionsSection ? visibleWorldDivisions : []}
               onViewportChange={handleMapViewportChange}
               onSelectEntry={selectEntry}
+              onSelectMinMaxItem={selectMinMaxItem}
               onSelectWorldDivision={selectWorldDivision}
             />
             {isEntriesSection && isLoadingMap && (
@@ -5171,7 +5353,7 @@ function App() {
             className="side-pane-resizer right desktop-only"
             role="separator"
             tabIndex={0}
-            aria-label={isWorldDivisionsSection ? ui.resizeWorldDivisionDetail : ui.resizeEntryDetail}
+            aria-label={isReferenceMapSection ? referenceDetailResizeLabel : ui.resizeEntryDetail}
             aria-orientation="vertical"
             aria-valuemin={minSidePaneWidth}
             aria-valuemax={maxResizablePaneWidth('detail')}
@@ -5249,7 +5431,7 @@ function App() {
             onShowAdjacentImage={showAdjacentEntryImage}
             onShowEntryImage={showEntryImage}
           />
-        ) : (
+        ) : isWorldDivisionsSection ? (
           <WorldDivisionDetailPanel
             className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}
             labels={{
@@ -5274,6 +5456,23 @@ function App() {
             onClose={() => setEntryDetailOpen(false)}
             onCollapse={() => setDetailPaneCollapsed(true)}
             onPlayAudioSequence={playAudioSequence}
+          />
+        ) : (
+          <MinMaxDetailPanel
+            className={isEntryDetailOpen ? 'detail-panel mobile-open' : 'detail-panel'}
+            labels={{
+              close: ui.closeMinMaxDetail,
+              collapse: ui.collapseMinMaxDetail,
+              facts: ui.minMaxFacts,
+              mapNote: ui.minMaxMapNote,
+              noSelection: ui.minMaxNoSelection,
+              selected: ui.minMaxDetail,
+            }}
+            language={language}
+            selectedItem={selectedMinMaxItem}
+            shellControls={<ShellControls {...shellControlProps} includeFilterButton={false} />}
+            onClose={() => setEntryDetailOpen(false)}
+            onCollapse={() => setDetailPaneCollapsed(true)}
           />
         )}
 

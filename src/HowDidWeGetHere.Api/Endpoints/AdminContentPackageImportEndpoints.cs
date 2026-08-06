@@ -8,6 +8,7 @@ using HowDidWeGetHere.Application.Time;
 using HowDidWeGetHere.Domain.Entries;
 using HowDidWeGetHere.Domain.Enums;
 using HowDidWeGetHere.Domain.Imports;
+using HowDidWeGetHere.Domain.MinMax;
 using HowDidWeGetHere.Domain.Places;
 using HowDidWeGetHere.Domain.Routes;
 using HowDidWeGetHere.Domain.Sources;
@@ -142,6 +143,9 @@ public static class AdminContentPackageImportEndpoints
                         summary.EntriesRead,
                         summary.EntriesCreated,
                         summary.EntriesUpdated,
+                        summary.MinMaxItemsRead,
+                        summary.MinMaxItemsCreated,
+                        summary.MinMaxItemsUpdated,
                         summary.AudioTracksCreated,
                         summary.AudioTracksUpdated,
                         summary.ImagesCreated,
@@ -179,17 +183,28 @@ public static class AdminContentPackageImportEndpoints
         var existingEntriesToDelete = shouldClearExistingData
             ? await dbContext.Entries.CountAsync(cancellationToken)
             : 0;
+        var existingMinMaxItemsToDelete = shouldClearExistingData
+            ? await dbContext.MinMaxItems.CountAsync(cancellationToken)
+            : 0;
         List<ExistingPackageEntry> existingEntries = shouldClearExistingData
             ? []
             : await dbContext.Entries
                 .AsNoTracking()
                 .Select(entry => new ExistingPackageEntry(entry.Id, entry.Slug, entry.SourceSheet, entry.SourceRow))
                 .ToListAsync(cancellationToken);
+        HashSet<string> existingMinMaxItemSlugs = shouldClearExistingData || updateExistingRows == false
+            ? []
+            : await dbContext.MinMaxItems
+                .AsNoTracking()
+                .Select(item => item.Slug)
+                .ToHashSetAsync(StringComparer.OrdinalIgnoreCase, cancellationToken);
 
         var rows = new List<ContentPackageImportPreviewRow>();
         var warnings = new List<string>();
         var entriesToCreate = 0;
         var entriesToUpdate = 0;
+        var minMaxItemsToCreate = 0;
+        var minMaxItemsToUpdate = 0;
         var tagsToAttach = 0;
         var periodsToAttach = 0;
         var placesToAttach = 0;
@@ -245,14 +260,33 @@ public static class AdminContentPackageImportEndpoints
             audioToAttach += resolvedAudio.Count;
         }
 
+        foreach (var item in document.MinMaxItems)
+        {
+            var itemSlug = ResolveMinMaxItemSlug(item);
+            var itemWarnings = ValidatePackageMinMaxItem(item);
+            warnings.AddRange(itemWarnings.Select(warning => $"min-max {itemSlug}: {warning}"));
+            if (existingMinMaxItemSlugs.Contains(itemSlug))
+            {
+                minMaxItemsToUpdate++;
+            }
+            else
+            {
+                minMaxItemsToCreate++;
+            }
+        }
+
         return Results.Ok(new ContentPackageImportPreviewResult(
             document.PackageSlug ?? Path.GetFileNameWithoutExtension(file.FileName),
             document.Title ?? document.PackageSlug ?? file.FileName,
             document.Entries.Count,
+            document.MinMaxItems.Count,
             shouldClearExistingData,
             existingEntriesToDelete,
+            existingMinMaxItemsToDelete,
             entriesToCreate,
             entriesToUpdate,
+            minMaxItemsToCreate,
+            minMaxItemsToUpdate,
             tagsToAttach,
             periodsToAttach,
             placesToAttach,
@@ -319,6 +353,13 @@ public static class AdminContentPackageImportEndpoints
             warnings.AddRange(
                 ValidatePackageWorldDivision(division, archive)
                     .Select(warning => $"world division {ResolveWorldDivisionId(division)}: {warning}"));
+        }
+
+        foreach (var item in document.MinMaxItems)
+        {
+            warnings.AddRange(
+                ValidatePackageMinMaxItem(item)
+                    .Select(warning => $"min-max {ResolveMinMaxItemSlug(item)}: {warning}"));
         }
 
         await using var transaction = shouldClearExistingData
@@ -404,9 +445,30 @@ public static class AdminContentPackageImportEndpoints
                 .Where(audio => packageWorldDivisionIds.Contains(audio.WorldDivisionId))
                 .OrderBy(audio => audio.CreatedAt)
                 .ToListAsync(cancellationToken);
+        var packageMinMaxSlugs = document.MinMaxItems
+            .Select(ResolveMinMaxItemSlug)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        List<MinMaxItem> existingMinMaxItems = shouldClearExistingData || updateExistingRows == false || packageMinMaxSlugs.Length == 0
+            ? []
+            : await dbContext.MinMaxItems
+                .Where(item => packageMinMaxSlugs.Contains(item.Slug))
+                .Include(item => item.Translations)
+                .Include(item => item.Shapes)
+                .AsSplitQuery()
+                .OrderBy(item => item.CreatedAt)
+                .ToListAsync(cancellationToken);
+        var existingMinMaxBySlug = existingMinMaxItems
+            .GroupBy(item => item.Slug, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var usedMinMaxSlugs = await dbContext.MinMaxItems
+            .Select(item => item.Slug)
+            .ToHashSetAsync(StringComparer.OrdinalIgnoreCase, cancellationToken);
 
         var entriesCreated = 0;
         var entriesUpdated = 0;
+        var minMaxItemsCreated = 0;
+        var minMaxItemsUpdated = 0;
         var tagsAttached = 0;
         var timePeriodsAttached = 0;
         var placesAttached = 0;
@@ -631,6 +693,44 @@ public static class AdminContentPackageImportEndpoints
             }
         }
 
+        for (var index = 0; index < document.MinMaxItems.Count; index++)
+        {
+            var packageMinMaxItem = document.MinMaxItems[index];
+            var minMaxSlug = ResolveMinMaxItemSlug(packageMinMaxItem);
+            logger.LogInformation(
+                "Importing content package MinMax item {MinMaxIndex}/{MinMaxCount}. FileName={FileName} PackageSlug={PackageSlug} MinMaxSlug={MinMaxSlug} ShapeCount={ShapeCount}",
+                index + 1,
+                document.MinMaxItems.Count,
+                file.FileName,
+                document.PackageSlug,
+                minMaxSlug,
+                packageMinMaxItem.Shapes.Count);
+
+            var importedRow = new ImportedRow
+            {
+                ImportBatch = batch,
+                SheetName = "min-max",
+                RowNumber = document.Entries.Count + document.WorldDivisions.Count + index + 1,
+                RawJson = JsonSerializer.Serialize(packageMinMaxItem, JsonOptions)
+            };
+            batch.Rows.Add(importedRow);
+
+            var importedMinMaxItem = CreateMinMaxItem(packageMinMaxItem);
+            if (existingMinMaxBySlug.TryGetValue(minMaxSlug, out var matchedMinMaxItem))
+            {
+                ApplyMinMaxItemUpdate(matchedMinMaxItem, importedMinMaxItem, dbContext);
+                matchedMinMaxItem.UpdatedAt = DateTimeOffset.UtcNow;
+                matchedMinMaxItem.UpdatedByUserId = userId;
+                minMaxItemsUpdated++;
+                continue;
+            }
+
+            importedMinMaxItem.Slug = MakeUniqueSlug(importedMinMaxItem.Slug, usedMinMaxSlugs);
+            importedMinMaxItem.CreatedByUserId = userId;
+            dbContext.MinMaxItems.Add(importedMinMaxItem);
+            minMaxItemsCreated++;
+        }
+
         batch.CompletedAt = DateTimeOffset.UtcNow;
         batch.Status = warnings.Count == 0 ? ImportStatus.Imported : ImportStatus.PartiallyImported;
         batch.SummaryJson = JsonSerializer.Serialize(new
@@ -639,10 +739,13 @@ public static class AdminContentPackageImportEndpoints
             packageSlug = document.PackageSlug ?? string.Empty,
             title = document.Title ?? document.PackageSlug ?? file.FileName,
             entriesRead = document.Entries.Count,
+            minMaxItemsRead = document.MinMaxItems.Count,
             clearedExistingData = shouldClearExistingData,
             contentDataDeleted = shouldClearExistingData ? clearResult : null,
             entriesCreated,
             entriesUpdated,
+            minMaxItemsCreated,
+            minMaxItemsUpdated,
             tagsAttached,
             timePeriodsAttached,
             placesAttached,
@@ -679,10 +782,14 @@ public static class AdminContentPackageImportEndpoints
             document.PackageSlug ?? string.Empty,
             document.Title ?? document.PackageSlug ?? file.FileName,
             document.Entries.Count,
+            document.MinMaxItems.Count,
             shouldClearExistingData,
             clearResult.EntriesDeleted,
+            clearResult.MinMaxItemsDeleted,
             entriesCreated,
             entriesUpdated,
+            minMaxItemsCreated,
+            minMaxItemsUpdated,
             tagsAttached,
             timePeriodsAttached,
             placesAttached,
@@ -732,6 +839,9 @@ public static class AdminContentPackageImportEndpoints
         var tagsDeleted = await dbContext.Tags.ExecuteDeleteAsync(cancellationToken);
         await dbContext.ActorTranslations.ExecuteDeleteAsync(cancellationToken);
         var actorsDeleted = await dbContext.Actors.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.MinMaxItemShapes.ExecuteDeleteAsync(cancellationToken);
+        await dbContext.MinMaxItemTranslations.ExecuteDeleteAsync(cancellationToken);
+        var minMaxItemsDeleted = await dbContext.MinMaxItems.ExecuteDeleteAsync(cancellationToken);
         var sourcesDeleted = await dbContext.Sources.ExecuteDeleteAsync(cancellationToken);
         var mediaBlobsDeleted = await dbContext.MediaBlobs.ExecuteDeleteAsync(cancellationToken);
         var importBatchesDeleted = await dbContext.ImportBatches.ExecuteDeleteAsync(cancellationToken);
@@ -744,6 +854,7 @@ public static class AdminContentPackageImportEndpoints
             placesDeleted,
             sourcesDeleted,
             actorsDeleted,
+            minMaxItemsDeleted,
             mediaBlobsDeleted,
             importBatchesDeleted);
     }
@@ -932,6 +1043,158 @@ public static class AdminContentPackageImportEndpoints
                 translation.WhyItMatters = importedTranslation.WhyItMatters;
                 translation.DatingNote = importedTranslation.DatingNote;
             }
+        }
+    }
+
+    private static MinMaxItem CreateMinMaxItem(ContentPackageMinMaxItem packageItem)
+    {
+        var title = ResolveMinMaxItemTitle(packageItem);
+        return new MinMaxItem
+        {
+            Slug = ResolveMinMaxItemSlug(packageItem),
+            Category = ResolveMinMaxCategory(packageItem),
+            DefaultTitle = title,
+            SortOrder = packageItem.SortOrder ?? 0,
+            Translations = CreateMinMaxTranslations(packageItem, title),
+            Shapes = packageItem.Shapes
+                .Select((shape, index) => CreateMinMaxShape(shape, index))
+                .OfType<MinMaxItemShape>()
+                .ToList()
+        };
+    }
+
+    private static List<MinMaxItemTranslation> CreateMinMaxTranslations(
+        ContentPackageMinMaxItem packageItem,
+        string title)
+    {
+        var translations = new List<MinMaxItemTranslation>();
+        foreach (var packageTranslation in packageItem.Translations)
+        {
+            var language = NormalizeLanguage(packageTranslation.Key);
+            translations.Add(new MinMaxItemTranslation
+            {
+                LanguageCode = language,
+                Title = EmptyToNull(packageTranslation.Value.Title) ?? title,
+                Subtitle = EmptyToNull(packageTranslation.Value.Subtitle),
+                TypeLabel = EmptyToNull(packageTranslation.Value.TypeLabel),
+                ValueLabel = EmptyToNull(packageTranslation.Value.ValueLabel),
+                Summary = EmptyToNull(packageTranslation.Value.Summary),
+                MapNote = EmptyToNull(packageTranslation.Value.MapNote),
+                FactsJson = packageTranslation.Value.Facts.Count == 0
+                    ? null
+                    : JsonSerializer.Serialize(
+                        packageTranslation.Value.Facts
+                            .Select(EmptyToNull)
+                            .OfType<string>()
+                            .ToList(),
+                        JsonOptions)
+            });
+        }
+
+        if (translations.Count == 0)
+        {
+            translations.Add(new MinMaxItemTranslation
+            {
+                LanguageCode = "en",
+                Title = title
+            });
+        }
+
+        return translations
+            .OrderBy(translation => translation.LanguageCode == "en" ? 0 : 1)
+            .ThenBy(translation => translation.LanguageCode)
+            .ToList();
+    }
+
+    private static MinMaxItemShape? CreateMinMaxShape(ContentPackageMinMaxShape shape, int index)
+    {
+        var geometry = CreateMinMaxGeometry(shape);
+        if (geometry is null)
+        {
+            return null;
+        }
+
+        return new MinMaxItemShape
+        {
+            Kind = ResolveMinMaxShapeKind(shape),
+            Geometry = geometry,
+            SortOrder = shape.SortOrder ?? index
+        };
+    }
+
+    private static Geometry? CreateMinMaxGeometry(ContentPackageMinMaxShape shape)
+    {
+        var kind = ResolveMinMaxShapeKind(shape);
+        if (kind.Equals("Polygon", StringComparison.OrdinalIgnoreCase))
+        {
+            var coordinates = shape.Points
+                .Where(IsValidCoordinate)
+                .Select(point => new Coordinate(point.Longitude!.Value, point.Latitude!.Value))
+                .ToList();
+            if (coordinates.Count < 3)
+            {
+                return null;
+            }
+
+            if (!coordinates[0].Equals2D(coordinates[^1]))
+            {
+                coordinates.Add(new Coordinate(coordinates[0].X, coordinates[0].Y));
+            }
+
+            return GeometryFactory.CreatePolygon(coordinates.ToArray());
+        }
+
+        if (!IsValidCoordinate(shape))
+        {
+            return null;
+        }
+
+        return GeometryFactory.CreatePoint(new Coordinate(shape.Longitude!.Value, shape.Latitude!.Value));
+    }
+
+    private static void ApplyMinMaxItemUpdate(
+        MinMaxItem target,
+        MinMaxItem imported,
+        HistoryDbContext dbContext)
+    {
+        target.Category = imported.Category;
+        target.DefaultTitle = imported.DefaultTitle;
+        target.SortOrder = imported.SortOrder;
+
+        var importedLanguages = imported.Translations
+            .Select(translation => translation.LanguageCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var staleTranslation in target.Translations
+            .Where(translation => !importedLanguages.Contains(translation.LanguageCode))
+            .ToList())
+        {
+            dbContext.MinMaxItemTranslations.Remove(staleTranslation);
+        }
+
+        foreach (var importedTranslation in imported.Translations)
+        {
+            var translation = target.Translations.FirstOrDefault(item =>
+                item.LanguageCode.Equals(importedTranslation.LanguageCode, StringComparison.OrdinalIgnoreCase));
+            if (translation is null)
+            {
+                target.Translations.Add(importedTranslation);
+                continue;
+            }
+
+            translation.Title = importedTranslation.Title;
+            translation.Subtitle = importedTranslation.Subtitle;
+            translation.TypeLabel = importedTranslation.TypeLabel;
+            translation.ValueLabel = importedTranslation.ValueLabel;
+            translation.Summary = importedTranslation.Summary;
+            translation.MapNote = importedTranslation.MapNote;
+            translation.FactsJson = importedTranslation.FactsJson;
+        }
+
+        dbContext.MinMaxItemShapes.RemoveRange(target.Shapes);
+        target.Shapes.Clear();
+        foreach (var shape in imported.Shapes)
+        {
+            target.Shapes.Add(shape);
         }
     }
 
@@ -1808,9 +2071,9 @@ public static class AdminContentPackageImportEndpoints
             return new PackageReadResult(null, "Unsupported entries.json schemaVersion. Expected 1.");
         }
 
-        if (document.Entries.Count == 0 && document.WorldDivisions.Count == 0)
+        if (document.Entries.Count == 0 && document.WorldDivisions.Count == 0 && document.MinMaxItems.Count == 0)
         {
-            return new PackageReadResult(null, "Content package contains no entries or world divisions.");
+            return new PackageReadResult(null, "Content package contains no entries, world divisions or MinMax items.");
         }
 
         return new PackageReadResult(document, null);
@@ -1928,6 +2191,62 @@ public static class AdminContentPackageImportEndpoints
                 {
                     warnings.Add($"Audio file '{audio.Path}' is missing from the ZIP.");
                 }
+            }
+        }
+
+        return warnings;
+    }
+
+    private static IReadOnlyList<string> ValidatePackageMinMaxItem(ContentPackageMinMaxItem item)
+    {
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(item.Slug) && item.Translations.Count == 0)
+        {
+            warnings.Add("MinMax item has no slug or translations.");
+        }
+
+        if (item.Shapes.Count == 0)
+        {
+            warnings.Add("MinMax item has no map shapes.");
+        }
+
+        foreach (var translation in item.Translations)
+        {
+            var language = NormalizeLanguage(translation.Key);
+            if (string.IsNullOrWhiteSpace(language))
+            {
+                warnings.Add("MinMax translation has no language code.");
+            }
+
+            if (string.IsNullOrWhiteSpace(translation.Value.Title))
+            {
+                warnings.Add($"MinMax translation '{translation.Key}' has no title.");
+            }
+        }
+
+        for (var index = 0; index < item.Shapes.Count; index++)
+        {
+            var shape = item.Shapes[index];
+            var kind = ResolveMinMaxShapeKind(shape);
+            if (kind.Equals("Polygon", StringComparison.OrdinalIgnoreCase))
+            {
+                if (shape.Points.Count < 3)
+                {
+                    warnings.Add($"Shape {index + 1} polygon has fewer than three points.");
+                    continue;
+                }
+
+                if (shape.Points.Any(point => !IsValidCoordinate(point)))
+                {
+                    warnings.Add($"Shape {index + 1} polygon contains coordinates outside valid longitude/latitude bounds.");
+                }
+
+                continue;
+            }
+
+            if (!IsValidCoordinate(shape))
+            {
+                warnings.Add($"Shape {index + 1} point has missing or invalid longitude/latitude.");
             }
         }
 
@@ -2404,6 +2723,48 @@ public static class AdminContentPackageImportEndpoints
     private static string ResolveWorldDivisionTitle(ContentPackageWorldDivision division) =>
         TextFromJsonValue(division.Title) ?? EmptyToNull(division.Id) ?? "World division";
 
+    private static string ResolveMinMaxItemSlug(ContentPackageMinMaxItem item) =>
+        EndpointHelpers.Slugify(EmptyToNull(item.Slug) ?? ResolveMinMaxItemTitle(item));
+
+    private static string ResolveMinMaxItemTitle(ContentPackageMinMaxItem item)
+    {
+        var englishTitle = item.Translations
+            .Where(translation => NormalizeLanguage(translation.Key) == "en")
+            .Select(translation => EmptyToNull(translation.Value.Title))
+            .FirstOrDefault(title => title is not null);
+        if (englishTitle is not null)
+        {
+            return englishTitle;
+        }
+
+        var translatedTitle = item.Translations.Values
+            .Select(translation => EmptyToNull(translation.Title))
+            .FirstOrDefault(title => title is not null);
+        return translatedTitle ?? EmptyToNull(item.Slug) ?? "MinMax item";
+    }
+
+    private static string ResolveMinMaxCategory(ContentPackageMinMaxItem item) =>
+        EndpointHelpers.Slugify(EmptyToNull(item.Category) ?? "general");
+
+    private static string ResolveMinMaxShapeKind(ContentPackageMinMaxShape shape)
+    {
+        var kind = EmptyToNull(shape.Kind);
+        if (kind is null)
+        {
+            return shape.Points.Count > 0 ? "Polygon" : "Point";
+        }
+
+        return kind.Equals("Polygon", StringComparison.OrdinalIgnoreCase) ? "Polygon" : "Point";
+    }
+
+    private static bool IsValidCoordinate(ContentPackageMapCoordinate coordinate) =>
+        coordinate.Longitude is >= -180 and <= 180 &&
+        coordinate.Latitude is >= -90 and <= 90;
+
+    private static bool IsValidCoordinate(ContentPackageMinMaxShape shape) =>
+        shape.Longitude is >= -180 and <= 180 &&
+        shape.Latitude is >= -90 and <= 90;
+
     private static string? TextFromJsonValue(JsonElement? value)
     {
         if (value is null)
@@ -2535,6 +2896,9 @@ public static class AdminContentPackageImportEndpoints
                 GetInt32(root, "entriesRead"),
                 GetInt32(root, "entriesCreated"),
                 GetInt32(root, "entriesUpdated"),
+                GetInt32(root, "minMaxItemsRead"),
+                GetInt32(root, "minMaxItemsCreated"),
+                GetInt32(root, "minMaxItemsUpdated"),
                 GetInt32(root, "audioTracksCreated"),
                 GetInt32(root, "audioTracksUpdated"),
                 GetInt32(root, "imagesCreated"),
@@ -2570,13 +2934,16 @@ public static class AdminContentPackageImportEndpoints
         int EntriesRead,
         int EntriesCreated,
         int EntriesUpdated,
+        int MinMaxItemsRead,
+        int MinMaxItemsCreated,
+        int MinMaxItemsUpdated,
         int AudioTracksCreated,
         int AudioTracksUpdated,
         int ImagesCreated,
         int ImagesUpdated,
         int WarningCount)
     {
-        public static ContentPackageImportSummary Empty { get; } = new(null, null, 0, 0, 0, 0, 0, 0, 0, 0);
+        public static ContentPackageImportSummary Empty { get; } = new(null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     private sealed record ContentDataClearResult(
@@ -2586,10 +2953,11 @@ public static class AdminContentPackageImportEndpoints
         int PlacesDeleted,
         int SourcesDeleted,
         int ActorsDeleted,
+        int MinMaxItemsDeleted,
         int MediaBlobsDeleted,
         int ImportBatchesDeleted)
     {
-        public static ContentDataClearResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
+        public static ContentDataClearResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     private sealed record AudioTrackImportKey(string LanguageCode, AudioKind Kind, int SortOrder);
@@ -2608,6 +2976,7 @@ public static class AdminContentPackageImportEndpoints
         public string? DefaultLanguage { get; set; }
         public List<ContentPackageEntry> Entries { get; set; } = [];
         public List<ContentPackageWorldDivision> WorldDivisions { get; set; } = [];
+        public List<ContentPackageMinMaxItem> MinMaxItems { get; set; } = [];
     }
 
     private sealed class ContentPackageWorldDivision
@@ -2615,6 +2984,41 @@ public static class AdminContentPackageImportEndpoints
         public string? Id { get; set; }
         public JsonElement? Title { get; set; }
         public List<ContentPackageAudio> Audio { get; set; } = [];
+    }
+
+    private sealed class ContentPackageMinMaxItem
+    {
+        public string? Slug { get; set; }
+        public string? Category { get; set; }
+        public int? SortOrder { get; set; }
+        public Dictionary<string, ContentPackageMinMaxTranslation> Translations { get; set; } = [];
+        public List<ContentPackageMinMaxShape> Shapes { get; set; } = [];
+    }
+
+    private sealed class ContentPackageMinMaxTranslation
+    {
+        public string? Title { get; set; }
+        public string? Subtitle { get; set; }
+        public string? TypeLabel { get; set; }
+        public string? ValueLabel { get; set; }
+        public string? Summary { get; set; }
+        public string? MapNote { get; set; }
+        public List<string> Facts { get; set; } = [];
+    }
+
+    private sealed class ContentPackageMinMaxShape
+    {
+        public string? Kind { get; set; }
+        public double? Longitude { get; set; }
+        public double? Latitude { get; set; }
+        public int? SortOrder { get; set; }
+        public List<ContentPackageMapCoordinate> Points { get; set; } = [];
+    }
+
+    private sealed class ContentPackageMapCoordinate
+    {
+        public double? Longitude { get; set; }
+        public double? Latitude { get; set; }
     }
 
     private sealed class ContentPackageEntry

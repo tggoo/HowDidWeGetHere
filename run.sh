@@ -48,11 +48,28 @@ run_app() {
 
 run_database() {
   echo "Spoustim PostgreSQL/PostGIS v dockeru..."
-  docker compose --file docker-compose.DEV.yml up -d
+  docker compose --file docker-compose.DEV.yml up -d postgres
 }
 
 stop_database() {
   echo "Zastavuji PostgreSQL/PostGIS docker..."
+  docker compose --file docker-compose.DEV.yml down
+}
+
+run_docker_stack() {
+  echo "Spoustim lokalni Docker stack..."
+  docker compose --file docker-compose.DEV.yml up -d --build
+  echo "Frontend: http://localhost:5173"
+  echo "API:      http://localhost:5141/api/health"
+}
+
+build_docker_stack() {
+  echo "Sestavuji lokalni Docker image..."
+  docker compose --file docker-compose.DEV.yml build
+}
+
+stop_docker_stack() {
+  echo "Zastavuji lokalni Docker stack..."
   docker compose --file docker-compose.DEV.yml down
 }
 
@@ -213,6 +230,15 @@ case "$1" in
   app)
     run_app
     ;;
+  docker)
+    run_docker_stack
+    ;;
+  docker-build)
+    build_docker_stack
+    ;;
+  docker-down)
+    stop_docker_stack
+    ;;
   db)
     run_database
     ;;
@@ -268,6 +294,9 @@ case "$1" in
     echo "  fe                    - spusti frontend"
     echo "  bfe                   - sestavi frontend"
     echo "  app                   - spusti backend i frontend"
+    echo "  docker                - sestavi a spusti lokalni Docker stack (PostGIS, API, frontend)"
+    echo "  docker-build          - sestavi lokalni Docker image"
+    echo "  docker-down           - zastavi lokalni Docker stack"
     echo "  db                    - spusti PostgreSQL/PostGIS docker"
     echo "  db-down               - zastavi PostgreSQL/PostGIS docker"
     echo "  audio [packages-dir]  - vygeneruje plaintext, MP3, audio reference a package ZIPy"

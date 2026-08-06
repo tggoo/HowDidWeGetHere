@@ -3,9 +3,9 @@
 .vs/
 **/bin/
 **/obj/
+generated/
 web/dist/
 web/node_modules/
 publish/
 *.user
 *.suo
-
