@@ -359,7 +359,7 @@ public static class AdminContentPackageImportEndpoints
         {
             warnings.AddRange(
                 ValidatePackageMinMaxItem(item)
-                    .Select(warning => $"min-max {ResolveMinMaxItemSlug(item)}: {warning}"));
+                    .Select(warning => $"world-records {ResolveMinMaxItemSlug(item)}: {warning}"));
         }
 
         await using var transaction = shouldClearExistingData
@@ -698,7 +698,7 @@ public static class AdminContentPackageImportEndpoints
             var packageMinMaxItem = document.MinMaxItems[index];
             var minMaxSlug = ResolveMinMaxItemSlug(packageMinMaxItem);
             logger.LogInformation(
-                "Importing content package MinMax item {MinMaxIndex}/{MinMaxCount}. FileName={FileName} PackageSlug={PackageSlug} MinMaxSlug={MinMaxSlug} ShapeCount={ShapeCount}",
+                "Importing content package World Records item {MinMaxIndex}/{MinMaxCount}. FileName={FileName} PackageSlug={PackageSlug} MinMaxSlug={MinMaxSlug} ShapeCount={ShapeCount}",
                 index + 1,
                 document.MinMaxItems.Count,
                 file.FileName,
@@ -2073,7 +2073,7 @@ public static class AdminContentPackageImportEndpoints
 
         if (document.Entries.Count == 0 && document.WorldDivisions.Count == 0 && document.MinMaxItems.Count == 0)
         {
-            return new PackageReadResult(null, "Content package contains no entries, world divisions or MinMax items.");
+            return new PackageReadResult(null, "Content package contains no entries, world divisions or World Records items.");
         }
 
         return new PackageReadResult(document, null);
@@ -2202,12 +2202,12 @@ public static class AdminContentPackageImportEndpoints
         var warnings = new List<string>();
         if (string.IsNullOrWhiteSpace(item.Slug) && item.Translations.Count == 0)
         {
-            warnings.Add("MinMax item has no slug or translations.");
+            warnings.Add("World Records item has no slug or translations.");
         }
 
         if (item.Shapes.Count == 0)
         {
-            warnings.Add("MinMax item has no map shapes.");
+            warnings.Add("World Records item has no map shapes.");
         }
 
         foreach (var translation in item.Translations)
@@ -2215,12 +2215,12 @@ public static class AdminContentPackageImportEndpoints
             var language = NormalizeLanguage(translation.Key);
             if (string.IsNullOrWhiteSpace(language))
             {
-                warnings.Add("MinMax translation has no language code.");
+                warnings.Add("World Records translation has no language code.");
             }
 
             if (string.IsNullOrWhiteSpace(translation.Value.Title))
             {
-                warnings.Add($"MinMax translation '{translation.Key}' has no title.");
+                warnings.Add($"World Records translation '{translation.Key}' has no title.");
             }
         }
 
@@ -2740,7 +2740,7 @@ public static class AdminContentPackageImportEndpoints
         var translatedTitle = item.Translations.Values
             .Select(translation => EmptyToNull(translation.Title))
             .FirstOrDefault(title => title is not null);
-        return translatedTitle ?? EmptyToNull(item.Slug) ?? "MinMax item";
+        return translatedTitle ?? EmptyToNull(item.Slug) ?? "World Records item";
     }
 
     private static string ResolveMinMaxCategory(ContentPackageMinMaxItem item) =>

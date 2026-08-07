@@ -27,13 +27,19 @@ export type MinMaxItem = {
   shapes: MinMaxShape[]
 }
 
+export const allMinMaxCategoryId = 'all'
+
 const categoryLabels: Record<string, { en: string; cs: string }> = {
+  [allMinMaxCategoryId]: { en: 'All sections', cs: 'Všechny sekce' },
   countries: { en: 'Countries', cs: 'Státy' },
-  islands: { en: 'Islands', cs: 'Ostrovy' },
-  mountains: { en: 'Mountains', cs: 'Hory' },
-  water: { en: 'Water', cs: 'Voda' },
   extremes: { en: 'Extremes', cs: 'Extrémy' },
   general: { en: 'General', cs: 'Obecné' },
+  islands: { en: 'Islands', cs: 'Ostrovy' },
+  landforms: { en: 'Landforms', cs: 'Tvary reliéfu' },
+  mountains: { en: 'Mountains', cs: 'Hory' },
+  rivers: { en: 'Rivers', cs: 'Řeky' },
+  water: { en: 'Water', cs: 'Voda' },
+  waterfalls: { en: 'Waterfalls', cs: 'Vodopády' },
 }
 
 export function normalizeMinMaxLanguage(language: string) {
@@ -55,9 +61,20 @@ export function minMaxCategoryLabel(category: string, language: string) {
 }
 
 export function minMaxCategories(items: readonly MinMaxItem[]) {
-  const categories = new Set(items.map((item) => item.category))
+  const categories = new Set([allMinMaxCategoryId, ...items.map((item) => item.category)])
   return [...categories].sort((left, right) => {
-    const preferredOrder = ['mountains', 'water', 'countries', 'islands', 'extremes', 'general']
+    const preferredOrder = [
+      allMinMaxCategoryId,
+      'mountains',
+      'water',
+      'countries',
+      'islands',
+      'rivers',
+      'waterfalls',
+      'landforms',
+      'extremes',
+      'general',
+    ]
     const leftIndex = preferredOrder.indexOf(left)
     const rightIndex = preferredOrder.indexOf(right)
     if (leftIndex !== -1 || rightIndex !== -1) {

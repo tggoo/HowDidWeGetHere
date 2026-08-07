@@ -41,7 +41,7 @@ import { TimelineRuler } from './components/organisms/TimelineRuler'
 import { WorldDivisionDetailPanel } from './components/organisms/WorldDivisionDetailPanel'
 import { WorldDivisionsExplorer } from './components/organisms/WorldDivisionsExplorer'
 import { useDebouncedHistoryQuery } from './features/history/useDebouncedHistoryQuery'
-import { minMaxCategories, type MinMaxItem } from './features/minMax/minMax'
+import { allMinMaxCategoryId, minMaxCategories, type MinMaxItem } from './features/minMax/minMax'
 import {
   defaultWorldDivisionCategoryId,
   defaultWorldDivisionId,
@@ -740,15 +740,15 @@ const uiCopy = {
     cachedFiles: 'Local files',
     clear: 'Clear',
     closeWorldDivisionDetail: 'Close world division detail',
-    closeMinMaxDetail: 'Close MinMax detail',
+    closeMinMaxDetail: 'Close world record detail',
     collapseEntryDetail: 'Collapse entry detail',
     collapseFilters: 'Collapse filters',
     collapseWorldDivisionDetail: 'Collapse world division detail',
-    collapseMinMaxDetail: 'Collapse MinMax detail',
+    collapseMinMaxDetail: 'Collapse world record detail',
     closeEntryDetail: 'Close entry detail',
     closeImage: 'Close image',
     closeWorldDivisions: 'Close world divisions',
-    closeMinMax: 'Close MinMax',
+    closeMinMax: 'Close world records',
     expandImage: 'Expand image',
     imageIndicator: (current: number, total: number) => `Show image ${current} of ${total}`,
     images: 'Images',
@@ -775,13 +775,13 @@ const uiCopy = {
     historyMap: 'World history map',
     language: 'Language',
     mapSection: 'Map section',
-    minMaxCategory: 'Record type',
+    minMaxCategory: 'Record section',
     minMaxFacts: 'Interesting facts',
     minMaxMapNote: 'Map note',
-    minMaxNoSelection: 'No MinMax item selected.',
-    minMaxDetail: 'MinMax detail',
-    minMaxMap: 'MinMax map',
-    minMax: 'MinMax',
+    minMaxNoSelection: 'No world record selected.',
+    minMaxDetail: 'World record detail',
+    minMaxMap: 'World records map',
+    minMax: 'World Records',
     worldDivisionCategory: 'Division type',
     worldDivisionFacts: 'Interesting facts',
     worldDivisionIncludes: 'Includes',
@@ -806,8 +806,8 @@ const uiCopy = {
     openAdminPanel: 'Open admin panel',
     openEntryDetail: 'Open entry detail',
     openFilters: 'Open filters',
-    openMinMax: 'Open MinMax',
-    openMinMaxDetail: 'Open MinMax detail',
+    openMinMax: 'Open world records',
+    openMinMaxDetail: 'Open world record detail',
     openWorldDivisions: 'Open world divisions',
     openWorldDivisionDetail: 'Open world division detail',
     openOfflineMedia: 'Open offline media',
@@ -820,7 +820,7 @@ const uiCopy = {
     relatedTopics: 'Related topics',
     resetFilters: 'reset filters',
     resizeEntryDetail: 'Resize entry detail',
-    resizeMinMaxDetail: 'Resize MinMax detail',
+    resizeMinMaxDetail: 'Resize world record detail',
     resizeWorldDivisionDetail: 'Resize world division detail',
     resizeFilters: 'Resize filters',
     routeRecords: (count: number) => `${count} route records`,
@@ -851,19 +851,19 @@ const uiCopy = {
     knownPoints: (count: number) => `${count} known points.`,
   },
   cs: {
-    closeMinMax: 'Zavrit MinMax',
-    closeMinMaxDetail: 'Zavrit detail MinMax',
-    collapseMinMaxDetail: 'Sbalit detail MinMax',
-    minMax: 'MinMax',
-    minMaxCategory: 'Typ rekordu',
-    minMaxDetail: 'Detail MinMax',
-    minMaxFacts: 'Zajimavosti',
-    minMaxMap: 'Mapa MinMax',
-    minMaxMapNote: 'Poznamka k mape',
-    minMaxNoSelection: 'Neni vybrana zadna polozka MinMax.',
-    openMinMax: 'Otevrit MinMax',
-    openMinMaxDetail: 'Otevrit detail MinMax',
-    resizeMinMaxDetail: 'Zmenit sirku detailu MinMax',
+    closeMinMax: 'Zavřít světové rekordy',
+    closeMinMaxDetail: 'Zavřít detail světového rekordu',
+    collapseMinMaxDetail: 'Sbalit detail světového rekordu',
+    minMax: 'Světové rekordy',
+    minMaxCategory: 'Sekce rekordů',
+    minMaxDetail: 'Detail světového rekordu',
+    minMaxFacts: 'Zajímavosti',
+    minMaxMap: 'Mapa světových rekordů',
+    minMaxMapNote: 'Poznámka k mapě',
+    minMaxNoSelection: 'Není vybraný žádný světový rekord.',
+    openMinMax: 'Otevřít světové rekordy',
+    openMinMaxDetail: 'Otevřít detail světového rekordu',
+    resizeMinMaxDetail: 'Změnit šířku detailu světového rekordu',
     appName: 'HowDidWeGetHere',
     audio: 'Audio',
     audioLanguages: 'Audio jazyky',
@@ -1431,7 +1431,7 @@ function describeImportStatus(status: string) {
 }
 
 function summarizeImportHistoryItem(item: ContentPackageImportHistoryItem) {
-  const minMaxPart = Number(item.minMaxItemsRead) > 0 ? `, ${item.minMaxItemsRead} MinMax` : ''
+  const minMaxPart = Number(item.minMaxItemsRead) > 0 ? `, ${item.minMaxItemsRead} world records` : ''
   return `${item.entriesRead} entries${minMaxPart}, ${item.audioTracksCreated} audio created, ${item.imagesCreated} images created`
 }
 
@@ -1654,7 +1654,7 @@ function App() {
   const [worldDivisionFocusKey, setWorldDivisionFocusKey] = useState(0)
   const [worldDivisionAudioTracks, setWorldDivisionAudioTracks] = useState<WorldDivisionAudioTrack[]>([])
   const [minMaxItems, setMinMaxItems] = useState<MinMaxItem[]>([])
-  const [activeMinMaxCategoryId, setActiveMinMaxCategoryId] = useState<string>('mountains')
+  const [activeMinMaxCategoryId, setActiveMinMaxCategoryId] = useState<string>(allMinMaxCategoryId)
   const [selectedMinMaxItemId, setSelectedMinMaxItemId] = useState<string | null>(null)
   const [minMaxFocusKey, setMinMaxFocusKey] = useState(0)
   const [periods, setPeriods] = useState<TimePeriodListItem[]>(fallbackPeriods)
@@ -2192,13 +2192,13 @@ function App() {
     async function loadMinMaxItems() {
       try {
         const loadedItems = await cachedQuery(
-          ['min-max-items', language, reloadKey],
+          ['world-records-items', language, reloadKey],
           async () => {
-            const response = await fetch(`${apiBaseUrl}/api/min-max/items?language=${encodeURIComponent(language)}`, {
+            const response = await fetch(`${apiBaseUrl}/api/world-records/items?language=${encodeURIComponent(language)}`, {
               credentials: 'include',
             })
             if (!response.ok) {
-              throw new Error('MinMax query failed.')
+              throw new Error('World records query failed.')
             }
 
             return (await response.json()) as MinMaxItem[]
@@ -2216,14 +2216,14 @@ function App() {
             return current
           }
 
-          return loadedItems[0]?.id ?? null
+          return null
         })
         setActiveMinMaxCategoryId((current) => {
-          if (loadedItems.some((item) => item.category === current)) {
+          if (current === allMinMaxCategoryId || loadedItems.some((item) => item.category === current)) {
             return current
           }
 
-          return loadedItems[0]?.category ?? 'mountains'
+          return allMinMaxCategoryId
         })
       } catch {
         if (isActive) {
@@ -2735,7 +2735,10 @@ function App() {
   )
 
   const visibleMinMaxItems = useMemo(
-    () => minMaxItems.filter((item) => item.category === activeMinMaxCategoryId),
+    () =>
+      activeMinMaxCategoryId === allMinMaxCategoryId
+        ? minMaxItems
+        : minMaxItems.filter((item) => item.category === activeMinMaxCategoryId),
     [activeMinMaxCategoryId, minMaxItems],
   )
 
@@ -2833,16 +2836,22 @@ function App() {
       return
     }
 
-    setActiveMinMaxCategoryId(item.category)
+    setActiveMinMaxCategoryId((current) =>
+      current === allMinMaxCategoryId || current === item.category ? current : item.category,
+    )
     setSelectedMinMaxItemId(item.id)
     setMinMaxFocusKey((value) => value + 1)
     setEntryDetailOpen(true)
   }, [minMaxItems, setEntryDetailOpen])
 
   const selectMinMaxCategory = useCallback((categoryId: string) => {
-    const firstItemInCategory = minMaxItems.find((item) => item.category === categoryId)
     setActiveMinMaxCategoryId(categoryId)
-    setSelectedMinMaxItemId(firstItemInCategory?.id ?? null)
+    if (categoryId === allMinMaxCategoryId) {
+      setSelectedMinMaxItemId(null)
+    } else {
+      const firstItemInCategory = minMaxItems.find((item) => item.category === categoryId)
+      setSelectedMinMaxItemId(firstItemInCategory?.id ?? null)
+    }
     setMinMaxFocusKey((value) => value + 1)
   }, [minMaxItems])
 
@@ -3860,10 +3869,10 @@ function App() {
       setContentPackagePreview(result)
       setContentPackageResult(null)
       const cleanImportStatus = result.willClearExistingData
-        ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries and ${result.existingMinMaxItemsToDelete} MinMax items first.`
+        ? ` Clean import would delete ${result.existingEntriesToDelete} existing entries and ${result.existingMinMaxItemsToDelete} world records first.`
         : ''
       const minMaxStatus = Number(result.minMaxItemsRead) > 0
-        ? ` ${result.minMaxItemsRead} MinMax items, ${result.minMaxItemsToCreate} new, ${result.minMaxItemsToUpdate} updates,`
+        ? ` ${result.minMaxItemsRead} world records, ${result.minMaxItemsToCreate} new, ${result.minMaxItemsToUpdate} updates,`
         : ''
       const multiFileNote =
         contentPackageFiles.length > 1 ? ` Showing preview for the first of ${contentPackageFiles.length} selected files.` : ''
@@ -3949,10 +3958,10 @@ function App() {
         lastResult = result
         importedCount += 1
         const cleanImportStatus = result.clearedExistingData
-          ? ` Deleted ${result.entriesDeletedBeforeImport} existing entries and ${result.minMaxItemsDeletedBeforeImport} MinMax items first.`
+          ? ` Deleted ${result.entriesDeletedBeforeImport} existing entries and ${result.minMaxItemsDeletedBeforeImport} world records first.`
           : ''
         const minMaxMessage = Number(result.minMaxItemsRead) > 0
-          ? ` ${result.minMaxItemsCreated} MinMax created, ${result.minMaxItemsUpdated} MinMax updated.`
+          ? ` ${result.minMaxItemsCreated} world records created, ${result.minMaxItemsUpdated} world records updated.`
           : ''
         setContentPackageBatchItems((items) =>
           items.map((item, itemIndex) =>

@@ -36,6 +36,9 @@ public static class PublicEndpoints
         api.MapGet("/world-divisions/audio", GetWorldDivisionAudioTracksAsync)
             .Produces<List<WorldDivisionAudioTrackResponse>>(StatusCodes.Status200OK);
 
+        api.MapGet("/world-records/items", GetMinMaxItemsAsync)
+            .Produces<List<MinMaxItemResponse>>(StatusCodes.Status200OK);
+
         api.MapGet("/min-max/items", GetMinMaxItemsAsync)
             .Produces<List<MinMaxItemResponse>>(StatusCodes.Status200OK);
 

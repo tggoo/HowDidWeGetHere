@@ -565,6 +565,7 @@ export function HistoryMap({
     }
 
     overlay.clearLayers()
+    const allBounds = L.latLngBounds([])
     const focusBounds = L.latLngBounds([])
     const selectedItem = minMaxItems.find((item) => item.id === selectedMinMaxItemId) ?? null
 
@@ -574,6 +575,9 @@ export function HistoryMap({
         const coordinates = shape.points.map((point) => L.latLng(point.latitude, point.longitude))
         if (coordinates.length === 0) {
           continue
+        }
+        for (const coordinate of coordinates) {
+          allBounds.extend(coordinate)
         }
 
         if (shape.kind === 'Polygon' && coordinates.length >= 3) {
@@ -642,6 +646,10 @@ export function HistoryMap({
       if (selectedItem && focusBounds.isValid()) {
         const maxZoom = selectedItem.category === 'water' ? 3 : selectedItem.category === 'countries' ? 4 : 6
         map.fitBounds(focusBounds.pad(0.28), { animate: true, maxZoom })
+      } else if (allBounds.isValid()) {
+        map.fitBounds(allBounds.pad(0.22), { animate: true, maxZoom: 3 })
+      } else {
+        map.setView(defaultCenter, defaultZoom, { animate: true })
       }
     }
   }, [minMaxFocusKey, minMaxItems, onSelectMinMaxItem, selectedMinMaxItemId])

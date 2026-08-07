@@ -1,7 +1,7 @@
-# MinMax Import Package
+# World Records Import Package
 
-MinMax map data is imported through the normal admin content package ZIP flow.
-Add a `minMaxItems` array to the ZIP root `entries.json`.
+World Records map data is imported through the normal admin content package ZIP flow.
+The technical package field is still `minMaxItems` for compatibility. Add a `minMaxItems` array to the ZIP root `entries.json`.
 
 Minimal item:
 
@@ -9,7 +9,7 @@ Minimal item:
 {
   "schemaVersion": 1,
   "packageSlug": "min-max",
-  "title": "MinMax geography records",
+  "title": "World Records geography records",
   "entries": [],
   "minMaxItems": [
     {
@@ -44,6 +44,6 @@ Supported shape kinds:
 - `Point`: requires `latitude` and `longitude`.
 - `Polygon`: requires `points`, each with `latitude` and `longitude`.
 
-The importer upserts MinMax items by `slug` when `updateExistingRows=true`. Re-importing a package replaces stale shapes and updates translations.
+The importer upserts World Records items by `slug` when `updateExistingRows=true`. Re-importing a package replaces stale shapes and updates translations.
 
 The local sample package was generated at `generated/packages/min-max.zip`; `generated/` is git-ignored, so regenerate it from `generated/packages/min-max/entries.json` when needed.
